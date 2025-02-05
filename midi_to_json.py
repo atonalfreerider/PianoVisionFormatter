@@ -1,9 +1,8 @@
 import mido
 import json
 import os
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Tuple
 from dataclasses import dataclass
-from datetime import datetime
 
 @dataclass
 class Note:
@@ -21,7 +20,6 @@ class Track:
 def extract_tempo_events(mid: mido.MidiFile) -> List[Dict[str, Any]]:
     tempo_events = []
     current_time = 0
-    current_tempo = 500000  # Default tempo (120 BPM)
     
     for msg in mid:
         current_time += msg.time
@@ -66,12 +64,6 @@ def extract_time_signatures(mid: mido.MidiFile) -> List[Dict[str, Any]]:
 def extract_key_signatures(mid: mido.MidiFile) -> List[Dict[str, Any]]:
     key_sigs = []
     current_time = 0
-    
-    # Define mapping for MIDI key signatures
-    key_map = {
-        0: "C", 1: "G", 2: "D", 3: "A", 4: "E", 5: "B", 6: "F#",
-        -1: "F", -2: "Bb", -3: "Eb", -4: "Ab", -5: "Db", -6: "Gb"
-    }
     
     for msg in mid:
         current_time += msg.time
@@ -246,6 +238,57 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
         "left": measures_left
     }
 
+def get_midi_timings(midi_file: str) -> Dict[int, float]:
+    midi = mido.MidiFile(midi_file)
+    ticks_per_beat = midi.ticks_per_beat
+    tempo = 500000  # Default tempo (microseconds per beat)
+    time_signature = (4, 4)  # Default time signature
+    ticks_per_measure = ticks_per_beat * time_signature[0]
+
+    # Collect all MIDI events
+    events = []
+    for track in midi.tracks:
+        absolute_tick = 0
+        for msg in track:
+            absolute_tick += msg.time
+            events.append((absolute_tick, msg))
+
+    # Sort events by their absolute tick count
+    events.sort(key=lambda x: x[0])
+
+    midi_timings = {1: 0.0}  # Measure 1 starts at t=0
+    current_measure = 1
+    current_time = 0.0
+    current_ticks = 0
+    measure_start_ticks = 0
+    next_measure_ticks = ticks_per_measure
+
+    for event_ticks, msg in events:
+        # Calculate time up to this event
+        delta_ticks = event_ticks - current_ticks
+        current_time += (delta_ticks * tempo) / (1000000 * ticks_per_beat)
+        current_ticks = event_ticks
+
+        # Check if we've reached or passed measure boundaries
+        while current_ticks >= next_measure_ticks:
+            current_measure += 1
+            measure_start_time = current_time - ((current_ticks - next_measure_ticks) * tempo) / (1000000 * ticks_per_beat)
+            midi_timings[current_measure] = measure_start_time
+            measure_start_ticks = next_measure_ticks
+            next_measure_ticks += ticks_per_measure
+
+        # Process tempo and time signature changes
+        if msg.type == 'set_tempo':
+            tempo = msg.tempo
+        elif msg.type == 'time_signature':
+            # Update time signature and ticks per measure
+            ticks_per_measure = ticks_per_beat * 4 * msg.numerator // msg.denominator
+            
+            # Adjust the next measure boundary
+            next_measure_ticks = measure_start_ticks + ticks_per_measure
+
+    return midi_timings
+
 def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
     mid = mido.MidiFile(midi_path)
     tracks, song_length = get_notes_from_midi(midi_path)
@@ -256,7 +299,33 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
     author = os.path.basename(os.path.dirname(midi_path))
     
     time_sigs = extract_time_signatures(mid)
+    measure_timings = get_midi_timings(midi_path)
     
+    # Create measures list from timings with modified structure
+    measures = []
+    sorted_measures = sorted(measure_timings.items())
+    ticks_per_beat = mid.ticks_per_beat
+    
+    for i in range(len(sorted_measures)):
+        measure_num, start_time = sorted_measures[i]
+        end_time = sorted_measures[i + 1][1] if i + 1 < len(sorted_measures) else song_length
+        
+        # Find the time signature for this measure
+        time_sig = next((ts["timeSignature"] for ts in reversed(time_sigs) 
+                        if ts["ticks"] <= start_time * ticks_per_beat), [4, 4])
+        
+        # Calculate ticksPerMeasure based on time signature
+        ticks_per_measure = ticks_per_beat * 4 * time_sig[0] // time_sig[1]
+        
+        measures.append({
+            "time": start_time,
+            "timeSignature": time_sig,
+            "ticksPerMeasure": ticks_per_measure,
+            "ticksStart": start_time * ticks_per_beat,
+            "type": 2,  # This appears to be a constant in the reference
+            "totalTicks": ticks_per_measure  # This might need adjustment based on actual measure length
+        })
+
     return {
         "supportingTracks": [
             {
@@ -280,7 +349,7 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
         "tempos": extract_tempo_events(mid),
         "keySignatures": extract_key_signatures(mid),
         "timeSignatures": time_sigs,
-        "measures": [],  # This would need additional calculation
+        "measures": measures,
         "tracksV2": organize_tracks_v2(tracks, time_sigs),
         "accompanyingInstruments": [-2, -1],
         "accompanyingChannels": [0, 0],
