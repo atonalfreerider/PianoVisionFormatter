@@ -1,5 +1,5 @@
 import json
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List
 import sys
 from deepdiff import DeepDiff
 import os
