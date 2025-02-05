@@ -177,22 +177,25 @@ def organize_tracks_v2(tracks: List[Track], time_sigs: List[Dict[str, Any]]) -> 
     
     for track_idx, track in enumerate(tracks):
         for note in track.notes:
+            duration_beats = note.duration / TICKS_PER_BEAT
+            start_beats = note.time / TICKS_PER_BEAT
+            
             note_data = {
                 "note": note.midi,
                 "durationTicks": int(note.duration),
                 "noteOffVelocity": 0,
                 "ticksStart": int(note.time),
                 "velocity": note.velocity,
-                "measureBars": note.time / (TICKS_PER_BEAT * 4),
-                "duration": note.duration / TICKS_PER_BEAT,
+                "measureBars": start_beats / 4,
+                "duration": duration_beats,
                 "noteName": get_note_name(note.midi),
                 "octave": (note.midi // 12) - 1,
-                "notePitch": get_note_name(note.midi)[0],
-                "start": note.time / TICKS_PER_BEAT,
-                "end": (note.time + note.duration) / TICKS_PER_BEAT,
-                "noteLengthType": "dottedsixteenth",
-                "group": -1,
-                "measureInd": int(note.time / (TICKS_PER_BEAT * 4)),
+                "notePitch": get_note_name(note.midi).rstrip('0123456789'),
+                "start": start_beats,
+                "end": start_beats + duration_beats,
+                "noteLengthType": "eighth",
+                "group": 0,
+                "measureInd": int(start_beats / 4),
                 "noteMeasureInd": len(right_hand_notes) if track_idx == 0 else len(left_hand_notes),
                 "id": f"{'r' if track_idx == 0 else 'l'}{len(right_hand_notes) if track_idx == 0 else len(left_hand_notes)}"
             }
@@ -211,7 +214,9 @@ def organize_tracks_v2(tracks: List[Track], time_sigs: List[Dict[str, Any]]) -> 
 
 def get_note_name(midi_note: int) -> str:
     notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-    return notes[midi_note % 12]
+    note_name = notes[midi_note % 12]
+    octave = (midi_note // 12) - 1
+    return f"{note_name}{octave}"
 
 def create_measure_data(time_sigs: List[Dict[str, Any]], 
                        right_notes: List[Dict[str, Any]], 
@@ -222,18 +227,23 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
     if not time_sigs:
         return {"right": [], "left": []}
     
-    measure_duration = 2.1
-    
+    # Calculate actual measure durations based on time signatures
     for i, time_sig in enumerate(time_sigs):
-        start_time = i * measure_duration
-        end_time = (i + 1) * measure_duration
+        numerator, denominator = time_sig["timeSignature"]
+        measure_ticks = (480 * 4 * numerator) // denominator  # Standard MIDI resolution
+        end_ticks = time_sigs[i + 1]["ticks"] if i + 1 < len(time_sigs) else time_sig["ticks"] + measure_ticks
+        
+        # Convert ticks to time
+        start_time = time_sig["time"] if "time" in time_sig else 0
+        end_time = end_ticks * (60 / (120 * 480))  # Convert using standard tempo if not specified
         
         measure_right_notes = [n for n in right_notes if start_time <= n["start"] < end_time]
         measure_left_notes = [n for n in left_notes if start_time <= n["start"] < end_time]
         
+        # Create measure data using actual timings
         if measure_right_notes:
             measures_right.append({
-                "direction": "up",
+                "direction": "down",
                 "time": start_time,
                 "timeEnd": end_time,
                 "timeSignature": time_sig["timeSignature"],
@@ -241,10 +251,11 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
                 "max": max(n["note"] for n in measure_right_notes),
                 "min": min(n["note"] for n in measure_right_notes),
                 "measureTicksStart": time_sig["ticks"],
-                "measureTicksEnd": time_sigs[i + 1]["ticks"] if i + 1 < len(time_sigs) else time_sig["ticks"] + 1920,
+                "measureTicksEnd": end_ticks,
                 "rests": calculate_rests(measure_right_notes, start_time, end_time)
             })
         
+        # Same for left hand measures
         if measure_left_notes:
             measures_left.append({
                 "direction": "down",
@@ -255,7 +266,7 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
                 "max": max(n["note"] for n in measure_left_notes),
                 "min": min(n["note"] for n in measure_left_notes),
                 "measureTicksStart": time_sig["ticks"],
-                "measureTicksEnd": time_sigs[i + 1]["ticks"] if i + 1 < len(time_sigs) else time_sig["ticks"] + 1920,
+                "measureTicksEnd": end_ticks,
                 "rests": calculate_rests(measure_left_notes, start_time, end_time)
             })
     
@@ -289,10 +300,11 @@ def calculate_rests(notes: List[Dict[str, Any]], start_time: float, end_time: fl
 def get_midi_timings(midi_file: str) -> Dict[int, float]:
     midi = mido.MidiFile(midi_file)
     ticks_per_beat = midi.ticks_per_beat
-    tempo = 500000
-    time_signature = (4, 4)
+    tempo = 500000  # Default tempo (microseconds per beat)
+    time_signature = (4, 4)  # Default time signature
     ticks_per_measure = ticks_per_beat * time_signature[0]
 
+    # Collect all MIDI events
     events = []
     for track in midi.tracks:
         absolute_tick = 0
@@ -300,9 +312,10 @@ def get_midi_timings(midi_file: str) -> Dict[int, float]:
             absolute_tick += msg.time
             events.append((absolute_tick, msg))
 
+    # Sort events by their absolute tick count
     events.sort(key=lambda x: x[0])
 
-    midi_timings = {1: 0.0}
+    midi_timings = {1: 0.0}  # Measure 1 starts at t=0
     current_measure = 1
     current_time = 0.0
     current_ticks = 0
@@ -310,10 +323,12 @@ def get_midi_timings(midi_file: str) -> Dict[int, float]:
     next_measure_ticks = ticks_per_measure
 
     for event_ticks, msg in events:
+        # Calculate time up to this event
         delta_ticks = event_ticks - current_ticks
         current_time += (delta_ticks * tempo) / (1000000 * ticks_per_beat)
         current_ticks = event_ticks
 
+        # Check if we've reached or passed measure boundaries
         while current_ticks >= next_measure_ticks:
             current_measure += 1
             measure_start_time = current_time - ((current_ticks - next_measure_ticks) * tempo) / (1000000 * ticks_per_beat)
@@ -321,10 +336,14 @@ def get_midi_timings(midi_file: str) -> Dict[int, float]:
             measure_start_ticks = next_measure_ticks
             next_measure_ticks += ticks_per_measure
 
+        # Process tempo and time signature changes
         if msg.type == 'set_tempo':
             tempo = msg.tempo
         elif msg.type == 'time_signature':
+            # Update time signature and ticks per measure
             ticks_per_measure = ticks_per_beat * 4 * msg.numerator // msg.denominator
+            
+            # Adjust the next measure boundary
             next_measure_ticks = measure_start_ticks + ticks_per_measure
 
     return midi_timings
@@ -360,35 +379,31 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
         time_sig = next((ts["timeSignature"] for ts in reversed(time_sigs) 
                         if ts["ticks"] <= current_measure_tick), [4, 4])
         
-        ticks_per_measure = ticks_per_beat * 4 * time_sig[0] // time_sig[1]
-        total_ticks = ticks_per_measure + (0.35 if i > 0 else 0)
+        numerator, denominator = time_sig
+        ticks_per_measure = ticks_per_beat * 4 * numerator // denominator
         
         measures.append({
             "time": start_time,
             "timeSignature": time_sig,
             "ticksPerMeasure": ticks_per_measure,
             "ticksStart": current_measure_tick,
-            "type": 2,
-            "totalTicks": total_ticks
+            "totalTicks": ticks_per_measure,  # No arbitrary offset
+            "type": 0
         })
         
         current_measure_tick += ticks_per_measure
 
-    # Convert tick durations to seconds for supporting tracks
-    TICKS_PER_BEAT = 480
+    # Remove arbitrary scaling for supporting tracks
     supporting_tracks = []
     for track in tracks:
         supporting_track_notes = []
         for note in track.notes:
-            # Convert duration from ticks to seconds
-            duration_in_beats = note.duration / TICKS_PER_BEAT
-            duration_in_seconds = duration_in_beats * (2.1 / 4.0)  # Scale to reference time
-            
+            duration_in_beats = note.duration
             supporting_track_notes.append({
                 "midi": note.midi,
-                "time": note.time / TICKS_PER_BEAT * (2.1 / 4.0),  # Scale time to reference
+                "time": note.time,
                 "velocity": note.velocity,
-                "duration": duration_in_seconds
+                "duration": duration_in_beats
             })
         
         supporting_tracks.append({
