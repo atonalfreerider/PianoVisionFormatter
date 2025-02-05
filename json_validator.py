@@ -8,23 +8,22 @@ def load_json(file_path: str) -> Dict[str, Any]:
     with open(file_path, 'r') as f:
         return json.load(f)
 
-def is_numerically_similar(val1: Any, val2: Any, tolerance: float = 1.0, relative: bool = False) -> bool:
+def is_numerically_similar(val1: Any, val2: Any, tolerance: float = 0.1) -> bool:
     """Check if two values are numerically similar within tolerance."""
     try:
         num1 = float(val1)
         num2 = float(val2)
         
-        # Handle integers that might be represented as floats
+        # Handle integers that should be exactly equal
         if abs(round(num1) - num1) < 1e-10 and abs(round(num2) - num2) < 1e-10:
             return round(num1) == round(num2)
-            
-        if relative:
-            max_val = max(abs(num1), abs(num2))
-            if max_val > 0:
-                return abs(num1 - num2) / max_val < tolerance
-            return abs(num1 - num2) < tolerance
-            
-        return abs(num1 - num2) < tolerance
+        
+        # For all other numbers, use relative comparison
+        avg = (abs(num1) + abs(num2)) / 2
+        if avg > 0:
+            relative_diff = abs(num1 - num2) / avg
+            return relative_diff <= (2 * tolerance)  # multiply by 2 since we're using average
+        return abs(num1 - num2) <= tolerance
     except (ValueError, TypeError):
         return False
 
@@ -38,7 +37,21 @@ def preprocess_numbers(data: Any, tolerance: float = 1.0) -> Any:
         return [preprocess_numbers(item, tolerance) for item in data]
     return data
 
-def get_diff_text(diff: DeepDiff) -> List[str]:
+def are_dicts_similar(dict1: Dict, dict2: Dict, tolerance: float) -> bool:
+    """Compare two dictionaries for numerical similarity."""
+    if dict1.keys() != dict2.keys():
+        return False
+    
+    for key in dict1:
+        val1, val2 = dict1[key], dict2[key]
+        if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+            if not is_numerically_similar(val1, val2, tolerance):
+                return False
+        elif val1 != val2:
+            return False
+    return True
+
+def get_diff_text(diff: DeepDiff, similarity_threshold: float = 0.1) -> List[str]:
     output = []
     
     if 'dictionary_item_added' in diff:
@@ -56,24 +69,17 @@ def get_diff_text(diff: DeepDiff) -> List[str]:
         for path, change in diff['values_changed'].items():
             old_val, new_val = change['old_value'], change['new_value']
             
-            # Handle different types of numerical comparisons
-            if isinstance(old_val, (int, float)) and isinstance(new_val, (int, float)):
-                # Special handling for different value types
-                if 'ticksStart' in path or 'totalTicks' in path:
-                    if is_numerically_similar(old_val, new_val, tolerance=0.0001, relative=True):
-                        continue
-                elif 'time' in path:
-                    if is_numerically_similar(old_val, new_val, tolerance=0.1):
-                        continue
-                elif 'ticks' in path:
-                    if is_numerically_similar(old_val, new_val, tolerance=0.0001, relative=True):
-                        continue
-                elif 'bpm' in path:
-                    if is_numerically_similar(old_val, new_val, tolerance=0.0001):
-                        continue
-                else:
-                    if is_numerically_similar(old_val, new_val, tolerance=0.001):
-                        continue
+            # Handle dictionary comparisons
+            if isinstance(old_val, dict) and isinstance(new_val, dict):
+                if are_dicts_similar(old_val, new_val, similarity_threshold):
+                    continue
+            # Handle single numerical values
+            elif isinstance(old_val, (int, float)) and isinstance(new_val, (int, float)):
+                if is_numerically_similar(old_val, new_val, similarity_threshold):
+                    continue
+            # Handle other types that must be exactly equal
+            elif old_val == new_val:
+                continue
                     
             output.append(f"  {path}:")
             output.append(f"    Generated: {old_val}")
@@ -81,11 +87,11 @@ def get_diff_text(diff: DeepDiff) -> List[str]:
     
     return output
 
-def validate_jsons(generated_path: str, reference_path: str) -> None:
+def validate_jsons(generated_path: str, reference_path: str, similarity_threshold: float = 0.1) -> None:
     generated = load_json(generated_path)
     reference = load_json(reference_path)
 
-    # Compare with updated settings
+    # Compare with updated settings and custom similarity threshold
     diff = DeepDiff(generated, reference, 
                     ignore_order=True,
                     ignore_numeric_type_changes=True,
@@ -98,7 +104,8 @@ def validate_jsons(generated_path: str, reference_path: str) -> None:
         return
 
     print("❌ Differences found:")
-    diff_lines = get_diff_text(diff)
+    # Pass similarity threshold to get_diff_text
+    diff_lines = get_diff_text(diff, similarity_threshold)
     
     if not diff_lines:
         print("All numerical differences are within tolerance.")
@@ -116,11 +123,17 @@ def validate_jsons(generated_path: str, reference_path: str) -> None:
     print(f"\nDifferences written to: {diff_path}")
 
 def main():
-    if len(sys.argv) != 3:
-        print("Usage: python json_validator.py <generated_json> <reference_json>")
+    if len(sys.argv) < 3 or len(sys.argv) > 4:
+        print("Usage: python json_validator.py <generated_json> <reference_json> [similarity_threshold]")
+        print("similarity_threshold: Optional float between 0 and 1 (default: 0.1)")
         sys.exit(1)
 
-    validate_jsons(sys.argv[1], sys.argv[2])
+    similarity_threshold = float(sys.argv[3]) if len(sys.argv) > 3 else 0.1
+    if not 0 <= similarity_threshold <= 1:
+        print("Error: similarity_threshold must be between 0 and 1")
+        sys.exit(1)
+
+    validate_jsons(sys.argv[1], sys.argv[2], similarity_threshold)
 
 if __name__ == "__main__":
     main()
