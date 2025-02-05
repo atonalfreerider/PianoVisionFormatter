@@ -54,36 +54,42 @@ def are_dicts_similar(dict1: Dict, dict2: Dict, tolerance: float) -> bool:
 def get_diff_text(diff: DeepDiff, similarity_threshold: float = 0.1) -> List[str]:
     output = []
     
+    # Check for missing items in generated JSON
     if 'dictionary_item_added' in diff:
-        output.append("\nMissing in generated JSON:")
-        for item in diff['dictionary_item_added']:
-            output.append(f"  {item}")
+        output.append("\n❌ Missing in generated JSON:")
+        for item in sorted(diff['dictionary_item_added']):
+            path = item.replace("root", "")
+            output.append(f"  {path}")
     
+    # Check for extra items not in reference
     if 'dictionary_item_removed' in diff:
-        output.append("\nExtra items in generated JSON:")
-        for item in diff['dictionary_item_removed']:
-            output.append(f"  {item}")
+        output.append("\n⚠️ Extra items in generated JSON:")
+        for item in sorted(diff['dictionary_item_removed']):
+            path = item.replace("root", "")
+            output.append(f"  {path}")
     
+    # Check for value differences
     if 'values_changed' in diff:
-        output.append("\nValue differences:")
-        for path, change in diff['values_changed'].items():
+        output.append("\n⚠️ Value differences:")
+        for path, change in sorted(diff['values_changed'].items()):
             old_val, new_val = change['old_value'], change['new_value']
             
-            # Handle dictionary comparisons
-            if isinstance(old_val, dict) and isinstance(new_val, dict):
-                if are_dicts_similar(old_val, new_val, similarity_threshold):
-                    continue
-            # Handle single numerical values
-            elif isinstance(old_val, (int, float)) and isinstance(new_val, (int, float)):
+            # Skip if values are numerically similar within threshold
+            if isinstance(old_val, (int, float)) and isinstance(new_val, (int, float)):
                 if is_numerically_similar(old_val, new_val, similarity_threshold):
                     continue
-            # Handle other types that must be exactly equal
-            elif old_val == new_val:
-                continue
-                    
+            
+            path = path.replace("root", "")
             output.append(f"  {path}:")
             output.append(f"    Generated: {old_val}")
             output.append(f"    Reference: {new_val}")
+    
+    # Check for iterable differences
+    if 'iterable_item_added' in diff:
+        output.append("\n❌ Missing array items in generated JSON:")
+        for item in sorted(diff['iterable_item_added']):
+            path = item.replace("root", "")
+            output.append(f"  {path}")
     
     return output
 
@@ -108,8 +114,13 @@ def validate_jsons(generated_path: str, reference_path: str, similarity_threshol
     diff_lines = get_diff_text(diff, similarity_threshold)
     
     if not diff_lines:
-        print("All numerical differences are within tolerance.")
+        print("✅ All differences are within acceptable tolerance.")
         return
+    
+    # Count serious issues
+    serious_issues = len([line for line in diff_lines if "❌" in line])
+    if serious_issues > 0:
+        print(f"\n❌ Found {serious_issues} critical difference(s)")
     
     # Print differences to console
     for line in diff_lines:
