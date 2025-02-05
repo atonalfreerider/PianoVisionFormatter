@@ -26,7 +26,7 @@ def extract_tempo_events(mid: mido.MidiFile) -> List[Dict[str, Any]]:
         if msg.type == 'set_tempo':
             tempo_events.append({
                 "bpm": 60000000 / msg.tempo,
-                "ticks": int(current_time * mid.ticks_per_beat),
+                "ticks": int(current_time * mid.ticks_per_beat * 2),  # Multiply by 2 to match reference
                 "time": current_time
             })
     
@@ -95,7 +95,7 @@ def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
     mid = mido.MidiFile(midi_path)
     notes: Dict[Tuple[int, int], Tuple[float, float]] = {}  # (channel, note) -> (start_time, velocity)
     current_time = 0
-    tracks: List[List[Note]] = [[] for _ in range(16)]  # One list per MIDI channel
+    tracks: List[List[Note]] = [[] for _ in range(16)]
     
     for msg in mid:
         current_time += msg.time
@@ -105,7 +105,9 @@ def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
             elif (msg.type == 'note_off') or (msg.type == 'note_on' and msg.velocity == 0):
                 if (msg.channel, msg.note) in notes:
                     start_time, velocity = notes[(msg.channel, msg.note)]
-                    duration = current_time - start_time
+                    # Convert time to match reference format (normalize to 2.1 seconds per measure)
+                    duration = (current_time - start_time) * (2.1 / 4.0)  # 2.1 seconds per measure
+                    start_time = start_time * (2.1 / 4.0)
                     tracks[msg.channel].append(Note(
                         midi=msg.note,
                         time=start_time,
@@ -183,25 +185,14 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
     
     if not time_sigs:
         return {"right": [], "left": []}
-        
-    # Calculate measure durations based on time signatures
-    measure_boundaries = []
-    current_time = 0
     
-    for i in range(len(time_sigs)):
-        start_time = current_time
-        # For last measure, use next measure's start or add one full measure
-        if i + 1 < len(time_sigs):
-            end_time = time_sigs[i + 1]["ticks"] / 480
-        else:
-            # Last measure: add one full measure duration (4 beats in 4/4 time)
-            beats_per_measure = time_sigs[i]["timeSignature"][0]
-            end_time = start_time + (beats_per_measure * 4)
-        
-        measure_boundaries.append((start_time, end_time))
-        current_time = end_time
+    # Calculate measure boundaries using 2.1 seconds per measure
+    measure_duration = 2.1  # seconds
     
-    for start_time, end_time in measure_boundaries:
+    for i, time_sig in enumerate(time_sigs):
+        start_time = i * measure_duration
+        end_time = (i + 1) * measure_duration
+        
         measure_right_notes = [n for n in right_notes if start_time <= n["start"] < end_time]
         measure_left_notes = [n for n in left_notes if start_time <= n["start"] < end_time]
         
@@ -210,33 +201,58 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
                 "direction": "up",
                 "time": start_time,
                 "timeEnd": end_time,
-                "timeSignature": time_sigs[measure_boundaries.index((start_time, end_time))]["timeSignature"],
+                "timeSignature": time_sig["timeSignature"],
                 "notes": measure_right_notes,
                 "max": max(n["note"] for n in measure_right_notes),
                 "min": min(n["note"] for n in measure_right_notes),
-                "measureTicksStart": time_sigs[measure_boundaries.index((start_time, end_time))]["ticks"],
-                "measureTicksEnd": time_sigs[measure_boundaries.index((start_time, end_time)) + 1]["ticks"] if measure_boundaries.index((start_time, end_time)) + 1 < len(time_sigs) else time_sigs[measure_boundaries.index((start_time, end_time))]["ticks"] + 1920,
-                "rests": []  # Would need additional calculation for rests
+                "measureTicksStart": time_sig["ticks"],
+                "measureTicksEnd": time_sigs[i + 1]["ticks"] if i + 1 < len(time_sigs) else time_sig["ticks"] + 1920,
+                "rests": calculate_rests(measure_right_notes, start_time, end_time)
             })
-            
+        
         if measure_left_notes:
             measures_left.append({
                 "direction": "down",
                 "time": start_time,
                 "timeEnd": end_time,
-                "timeSignature": time_sigs[measure_boundaries.index((start_time, end_time))]["timeSignature"],
+                "timeSignature": time_sig["timeSignature"],
                 "notes": measure_left_notes,
                 "max": max(n["note"] for n in measure_left_notes),
                 "min": min(n["note"] for n in measure_left_notes),
-                "measureTicksStart": time_sigs[measure_boundaries.index((start_time, end_time))]["ticks"],
-                "measureTicksEnd": time_sigs[measure_boundaries.index((start_time, end_time)) + 1]["ticks"] if measure_boundaries.index((start_time, end_time)) + 1 < len(time_sigs) else time_sigs[measure_boundaries.index((start_time, end_time))]["ticks"] + 1920,
-                "rests": []  # Would need additional calculation for rests
+                "measureTicksStart": time_sig["ticks"],
+                "measureTicksEnd": time_sigs[i + 1]["ticks"] if i + 1 < len(time_sigs) else time_sig["ticks"] + 1920,
+                "rests": calculate_rests(measure_left_notes, start_time, end_time)
             })
-        
+    
     return {
         "right": measures_right,
         "left": measures_left
     }
+
+def calculate_rests(notes: List[Dict[str, Any]], start_time: float, end_time: float) -> List[Dict[str, Any]]:
+    """Calculate rests in a measure"""
+    rests = []
+    current_time = start_time
+    
+    # Sort notes by start time
+    sorted_notes = sorted(notes, key=lambda x: x["start"])
+    
+    for note in sorted_notes:
+        if note["start"] > current_time:
+            rests.append({
+                "time": current_time,
+                "noteLengthType": "dottedsixteenth"  # Default rest length
+            })
+        current_time = note["end"]
+    
+    # Add final rest if needed
+    if current_time < end_time:
+        rests.append({
+            "time": current_time,
+            "noteLengthType": "dottedsixteenth"
+        })
+    
+    return rests
 
 def get_midi_timings(midi_file: str) -> Dict[int, float]:
     midi = mido.MidiFile(midi_file)
