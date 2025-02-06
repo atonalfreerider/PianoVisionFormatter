@@ -226,10 +226,6 @@ def organize_tracks_v2(tracks: List[Track], time_sigs: List[Dict[str, Any]]) -> 
     left_hand_notes = []
     
     TICKS_PER_BEAT = 480
-    MICROSECONDS_PER_BEAT = 500000  # Default tempo
-    
-    # Calculate time scaling factor based on tempo
-    seconds_per_tick = MICROSECONDS_PER_BEAT / (TICKS_PER_BEAT * 1000000)
     
     for track_idx, track in enumerate(tracks):
         for note in track.notes:
@@ -312,9 +308,6 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
         measure_right_notes = [n for n in right_notes if n["measureInd"] == measure_idx]
         measure_left_notes = [n for n in left_notes if n["measureInd"] == measure_idx]
         
-        # Rest of the function remains the same...
-        # ...existing code...
-        
         # Add right hand measure if there are notes
         if measure_right_notes:
             measures_right.append({
@@ -374,49 +367,6 @@ def calculate_rests(notes: List[Dict[str, Any]], start_time: float, end_time: fl
     
     return rests
 
-def get_midi_timings(midi_file: str) -> Dict[int, float]:
-    midi = mido.MidiFile(midi_file)
-    ticks_per_beat = midi.ticks_per_beat
-    tempo = 500000  # Default tempo (microseconds per beat)
-    time_signature = (4, 4)  # Default time signature
-
-    # First collect all tempo changes
-    tempo_changes = [(0, tempo)]
-    absolute_tick = 0
-    for track in midi.tracks:
-        for msg in track:
-            absolute_tick += msg.time
-            if msg.type == 'set_tempo':
-                tempo_changes.append((absolute_tick, msg.tempo))
-    tempo_changes.sort(key=lambda x: x[0])
-
-    # Then compute measure timings with tempo changes
-    midi_timings = {1: 0.0}
-    current_measure = 1
-    current_time = 0.0
-    current_ticks = 0
-    last_tempo_idx = 0
-    
-    ticks_per_measure = ticks_per_beat * 4  # Default 4/4 time
-
-    while current_ticks < midi.length * ticks_per_beat:
-        # Update tempo if needed
-        while (last_tempo_idx + 1 < len(tempo_changes) and 
-               tempo_changes[last_tempo_idx + 1][0] <= current_ticks):
-            last_tempo_idx += 1
-        tempo = tempo_changes[last_tempo_idx][1]
-        
-        # Calculate time to next measure
-        next_measure_ticks = current_ticks + ticks_per_measure
-        time_delta = (ticks_per_measure * tempo) / (ticks_per_beat * 1000000)
-        
-        current_measure += 1
-        current_time += time_delta
-        current_ticks = next_measure_ticks
-        midi_timings[current_measure] = current_time
-
-    return midi_timings
-
 def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
     mid = mido.MidiFile(midi_path)
     tracks, song_length = get_notes_from_midi(midi_path)
@@ -427,15 +377,9 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
     
     # Get the full path to extract correct artist name
     parent_dir = os.path.dirname(midi_path)
-    grandparent_dir = os.path.dirname(parent_dir)
     artist = os.path.basename(parent_dir)
-    
-    # If artist name is generic, try one level up
-    if artist.lower() in ['film', 'music', 'piano', 'midi']:
-        artist = os.path.basename(grandparent_dir)
-    
+
     time_sigs = extract_time_signatures(mid)
-    measure_timings = get_midi_timings(midi_path)
     
     # Get total number of measures from tracks
     tracks_v2 = organize_tracks_v2(tracks, time_sigs)
