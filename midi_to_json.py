@@ -136,100 +136,64 @@ def ticks_to_seconds(ticks: int, tempos: List[Dict[str, Any]], ticks_per_beat: i
 
 def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
     mid = mido.MidiFile(midi_path)
-    tracks: List[List[Note]] = [[] for _ in range(2)]
+    tracks: List[List[Note]] = [[] for _ in range(2)]  # Right hand (1), Left hand (2)
     notes: Dict[Tuple[int, int], Tuple[int, float, float]] = {}
     tempos = extract_tempo_events(mid)
     max_time = 0.0
     
-    # First pass: find piano channel/track
-    piano_channels = set()
-    for track in mid.tracks:
+    # First pass: identify piano tracks by looking for "piano" in track names
+    piano_tracks = set()
+    for track_idx, track in enumerate(mid.tracks):
         for msg in track:
-            if msg.type == 'program_change' and msg.program == 0:  # Program 0 is piano
-                if hasattr(msg, 'channel'):
-                    piano_channels.add(msg.channel)
+            if msg.type == 'track_name' and 'piano' in msg.name.lower():
+                piano_tracks.add(track_idx)
+                break
     
-    # If no explicit piano program, look for channels with most notes
-    if not piano_channels:
-        channel_note_counts = {}
-        for track in mid.tracks:
+    # If no explicit piano tracks found, fallback to program change detection
+    if not piano_tracks:
+        for track_idx, track in enumerate(mid.tracks):
             for msg in track:
-                if hasattr(msg, 'channel') and msg.type == 'note_on' and msg.velocity > 0:
-                    channel_note_counts[msg.channel] = channel_note_counts.get(msg.channel, 0) + 1
-        if channel_note_counts:
-            main_channel = max(channel_note_counts.items(), key=lambda x: x[1])[0]
-            piano_channels.add(main_channel)
+                if msg.type == 'program_change' and msg.program == 0:  # Program 0 is piano
+                    piano_tracks.add(track_idx)
     
-    # Analyze notes for hand separation
-    channel_stats = {}
-    for track in mid.tracks:
-        for msg in track:
-            if (hasattr(msg, 'channel') and 
-                msg.channel in piano_channels and 
-                msg.type == 'note_on' and 
-                msg.velocity > 0):
-                if msg.channel not in channel_stats:
-                    channel_stats[msg.channel] = []
-                channel_stats[msg.channel].append(msg.note)
-
-    # Second pass: collect notes with proper hand assignment
-    for channel, notes_list in channel_stats.items():
-        if not notes_list:
+    # Process piano tracks and collect notes
+    for track_idx, track in enumerate(mid.tracks):
+        if track_idx not in piano_tracks:
             continue
-        # For each channel, split notes into hands based on pitch
-        median_note = sorted(notes_list)[len(notes_list) // 2]
-        threshold = 60 if median_note < 60 else median_note  # Middle C as default split point
 
-    # Reset notes dictionary for final pass
-    notes.clear()
-    
-    # Final pass: collect all notes with hand assignment
-    for track in mid.tracks:
-        track_time = 0.0
         track_ticks = 0
+        current_channel = None
+        
         for msg in track:
             track_ticks += msg.time
             track_time = ticks_to_seconds(track_ticks, tempos, mid.ticks_per_beat)
             max_time = max(max_time, track_time)
             
-            if msg.type == 'set_tempo':
-                current_tempo = msg.tempo
+            if hasattr(msg, 'channel'):
+                current_channel = msg.channel
             
-            if (hasattr(msg, 'channel') and msg.channel in piano_channels):
-                if msg.type == 'note_on' and msg.velocity > 0:
-                    notes[(msg.channel, msg.note)] = (track_ticks, track_time, msg.velocity / 127.0)
-                elif (msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0)):
-                    if (msg.channel, msg.note) in notes:
-                        start_tick, start_time, velocity = notes[(msg.channel, msg.note)]
-                        duration_seconds = track_time - start_time
-                        duration_ticks = track_ticks - start_tick
-                        
-                        # Assign to right hand if note is above threshold
-                        hand_idx = 0 if msg.note >= threshold else 1
-                        tracks[hand_idx].append(Note(
-                            midi=msg.note,
-                            time=start_time,
-                            velocity=velocity,
-                            duration=duration_seconds,
-                            ticks=start_tick,
-                            duration_ticks=duration_ticks
-                        ))
-                        del notes[(msg.channel, msg.note)]
+            if msg.type == 'note_on' and msg.velocity > 0:
+                if current_channel is not None:
+                    notes[(current_channel, msg.note)] = (track_ticks, track_time, msg.velocity / 127.0)
+            elif (msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0)):
+                if current_channel is not None and (current_channel, msg.note) in notes:
+                    start_tick, start_time, velocity = notes[(current_channel, msg.note)]
+                    duration_seconds = track_time - start_time
+                    duration_ticks = track_ticks - start_tick
+                    
+                    # Use track 1 for left hand, track 0 for right hand
+                    hand_idx = 1 if track_idx == 1 else 0
+                    tracks[hand_idx].append(Note(
+                        midi=msg.note,
+                        time=start_time,
+                        velocity=velocity,
+                        duration=duration_seconds,
+                        ticks=start_tick,
+                        duration_ticks=duration_ticks
+                    ))
+                    del notes[(current_channel, msg.note)]
 
-    # Ensure both hands have notes
-    if not tracks[0] and tracks[1]:  # If right hand empty but left hand has notes
-        # Find highest notes to move to right hand
-        tracks[1].sort(key=lambda x: x.midi, reverse=True)
-        split_point = len(tracks[1]) // 2
-        tracks[0] = tracks[1][:split_point]
-        tracks[1] = tracks[1][split_point:]
-    elif not tracks[1] and tracks[0]:  # If left hand empty but right hand has notes
-        # Find lowest notes to move to left hand
-        tracks[0].sort(key=lambda x: x.midi)
-        split_point = len(tracks[0]) // 2
-        tracks[1] = tracks[0][:split_point]
-        tracks[0] = tracks[0][split_point:]
-
+    # Create final tracks
     final_tracks = []
     for hand_idx, notes in enumerate(tracks):
         if notes:
@@ -294,11 +258,6 @@ def get_note_name(midi_note: int) -> str:
     note_name = notes[midi_note % 12]
     octave = (midi_note // 12) - 1
     return f"{note_name}{octave}"
-
-def calculate_measure_time(measure_idx: int, ticks_per_measure: int, tempo: int, ticks_per_beat: int) -> float:
-    """Calculate actual time in seconds for a measure based on tempo"""
-    total_ticks = measure_idx * ticks_per_measure
-    return (total_ticks * tempo) / (ticks_per_beat * 1000000)
 
 def create_measure_data(time_sigs: List[Dict[str, Any]], 
                        right_notes: List[Dict[str, Any]], 
