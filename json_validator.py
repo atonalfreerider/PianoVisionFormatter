@@ -66,6 +66,30 @@ def are_dicts_similar(dict1: Dict, dict2: Dict, tolerance: float) -> bool:
             return False
     return True
 
+def format_number(value: float) -> str:
+    """Format numbers according to specified rules:
+    - Numbers > 1 or < -1: truncate to integer
+    - Numbers between -1 and 1: 4 digits of precision
+    """
+    try:
+        num = float(value)
+        if abs(num) >= 1:
+            return str(int(num))
+        else:
+            return f"{num:.3f}"
+    except (ValueError, TypeError):
+        return str(value)
+
+def format_value(value: Any) -> Any:
+    """Recursively format all numbers in a value"""
+    if isinstance(value, (int, float)):
+        return format_number(value)
+    elif isinstance(value, dict):
+        return {k: format_value(v) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [format_value(v) for v in value]
+    return value
+
 def get_diff_text(diff: DeepDiff, similarity_threshold: float = 0.1) -> List[str]:
     output = []
     
@@ -79,22 +103,31 @@ def get_diff_text(diff: DeepDiff, similarity_threshold: float = 0.1) -> List[str
             # If both values are dicts, compare them
             if isinstance(old_val, dict) and isinstance(new_val, dict):
                 if not are_dicts_similar(old_val, new_val, similarity_threshold):
-                    filtered_changes[path] = change
+                    filtered_changes[path] = {
+                        'old_value': format_value(old_val),
+                        'new_value': format_value(new_val)
+                    }
             # If both values are numbers, compare them
             elif isinstance(old_val, (int, float)) and isinstance(new_val, (int, float)):
                 if not is_numerically_similar(old_val, new_val, similarity_threshold):
-                    filtered_changes[path] = change
-            # For non-numeric differences, keep them
+                    filtered_changes[path] = {
+                        'old_value': format_number(old_val),
+                        'new_value': format_number(new_val)
+                    }
+            # For non-numeric differences, keep them but still format any numbers
             elif old_val != new_val:
-                filtered_changes[path] = change
+                filtered_changes[path] = {
+                    'old_value': format_value(old_val),
+                    'new_value': format_value(new_val)
+                }
         
         if filtered_changes:
             output.append("\n⚠️ Value differences:")
             for path, change in sorted(filtered_changes.items()):
                 path = path.replace("root", "")
                 output.append(f"  {path}:")
-                output.append(f"    Generated: {sort_dict_items(change['old_value'])}")
-                output.append(f"    Reference: {sort_dict_items(change['new_value'])}")
+                output.append(f"    Generated: {change['old_value']}")
+                output.append(f"    Reference: {change['new_value']}")
     
     # Rest of the original diff text generation
     if 'dictionary_item_added' in diff:

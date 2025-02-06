@@ -470,7 +470,7 @@ def main():
     
     output_path = os.path.splitext(midi_path)[0] + '.json'
     with open(output_path, 'w') as f:
-        json.dump(output_json, f, indent=2)
+        json.dump(output_json, f)
     
     print(f"JSON file created: {output_path}")
 
