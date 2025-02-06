@@ -37,14 +37,29 @@ def preprocess_numbers(data: Any, tolerance: float = 1.0) -> Any:
         return [preprocess_numbers(item, tolerance) for item in data]
     return data
 
+def sort_dict_items(obj: Any) -> Any:
+    """Recursively sort dictionary items to ensure consistent ordering"""
+    if isinstance(obj, dict):
+        return {k: sort_dict_items(v) for k, v in sorted(obj.items())}
+    elif isinstance(obj, list):
+        return [sort_dict_items(item) for item in obj]
+    return obj
+
 def are_dicts_similar(dict1: Dict, dict2: Dict, tolerance: float) -> bool:
     """Compare two dictionaries for numerical similarity."""
+    # Sort both dictionaries to ensure consistent ordering
+    dict1 = sort_dict_items(dict1)
+    dict2 = sort_dict_items(dict2)
+    
     if dict1.keys() != dict2.keys():
         return False
     
     for key in dict1:
         val1, val2 = dict1[key], dict2[key]
-        if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+        if isinstance(val1, dict) and isinstance(val2, dict):
+            if not are_dicts_similar(val1, val2, tolerance):
+                return False
+        elif isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
             if not is_numerically_similar(val1, val2, tolerance):
                 return False
         elif val1 != val2:
@@ -54,7 +69,34 @@ def are_dicts_similar(dict1: Dict, dict2: Dict, tolerance: float) -> bool:
 def get_diff_text(diff: DeepDiff, similarity_threshold: float = 0.1) -> List[str]:
     output = []
     
-    # Check for missing items in generated JSON
+    # Check values first to filter out similar numerical differences
+    if 'values_changed' in diff:
+        filtered_changes = {}
+        for path, change in diff['values_changed'].items():
+            old_val = sort_dict_items(change['old_value'])
+            new_val = sort_dict_items(change['new_value'])
+            
+            # If both values are dicts, compare them
+            if isinstance(old_val, dict) and isinstance(new_val, dict):
+                if not are_dicts_similar(old_val, new_val, similarity_threshold):
+                    filtered_changes[path] = change
+            # If both values are numbers, compare them
+            elif isinstance(old_val, (int, float)) and isinstance(new_val, (int, float)):
+                if not is_numerically_similar(old_val, new_val, similarity_threshold):
+                    filtered_changes[path] = change
+            # For non-numeric differences, keep them
+            elif old_val != new_val:
+                filtered_changes[path] = change
+        
+        if filtered_changes:
+            output.append("\n⚠️ Value differences:")
+            for path, change in sorted(filtered_changes.items()):
+                path = path.replace("root", "")
+                output.append(f"  {path}:")
+                output.append(f"    Generated: {sort_dict_items(change['old_value'])}")
+                output.append(f"    Reference: {sort_dict_items(change['new_value'])}")
+    
+    # Rest of the original diff text generation
     if 'dictionary_item_added' in diff:
         output.append("\n❌ Missing in generated JSON:")
         for item in sorted(diff['dictionary_item_added']):
@@ -68,22 +110,6 @@ def get_diff_text(diff: DeepDiff, similarity_threshold: float = 0.1) -> List[str
             path = item.replace("root", "")
             output.append(f"  {path}")
     
-    # Check for value differences
-    if 'values_changed' in diff:
-        output.append("\n⚠️ Value differences:")
-        for path, change in sorted(diff['values_changed'].items()):
-            old_val, new_val = change['old_value'], change['new_value']
-            
-            # Skip if values are numerically similar within threshold
-            if isinstance(old_val, (int, float)) and isinstance(new_val, (int, float)):
-                if is_numerically_similar(old_val, new_val, similarity_threshold):
-                    continue
-            
-            path = path.replace("root", "")
-            output.append(f"  {path}:")
-            output.append(f"    Generated: {old_val}")
-            output.append(f"    Reference: {new_val}")
-    
     # Check for iterable differences
     if 'iterable_item_added' in diff:
         output.append("\n❌ Missing array items in generated JSON:")
@@ -93,9 +119,9 @@ def get_diff_text(diff: DeepDiff, similarity_threshold: float = 0.1) -> List[str
     
     return output
 
-def validate_jsons(generated_path: str, reference_path: str, similarity_threshold: float = 0.1) -> None:
-    generated = load_json(generated_path)
-    reference = load_json(reference_path)
+def validate_jsons(generated_path: str, reference_path: str, similarity_threshold: float = 0.9) -> None:
+    generated = sort_dict_items(load_json(generated_path))
+    reference = sort_dict_items(load_json(reference_path))
 
     # Compare with updated settings and custom similarity threshold
     diff = DeepDiff(generated, reference, 

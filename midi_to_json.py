@@ -437,33 +437,45 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
     time_sigs = extract_time_signatures(mid)
     measure_timings = get_midi_timings(midi_path)
     
+    # Get total number of measures from tracks
+    tracks_v2 = organize_tracks_v2(tracks, time_sigs)
+    max_measure_idx = 0
+    if tracks_v2["right"]:
+        max_measure_idx = max(max_measure_idx, len(tracks_v2["right"]))
+    if tracks_v2["left"]:
+        max_measure_idx = max(max_measure_idx, len(tracks_v2["left"]))
+
     measures = []
-    sorted_measures = sorted(measure_timings.items())
     ticks_per_beat = mid.ticks_per_beat
     current_measure_tick = 0
-    
-    for i in range(len(sorted_measures)):
-        measure_num, start_time = sorted_measures[i]
-        
+    current_time = 0
+    tempo = 500000  # Default tempo
+
+    # Create measures for every measure index found in tracks
+    for measure_idx in range(max_measure_idx):
         time_sig = next((ts["timeSignature"] for ts in reversed(time_sigs) 
                         if ts["ticks"] <= current_measure_tick), [4, 4])
         
         numerator, denominator = time_sig
         ticks_per_measure = ticks_per_beat * 4 * numerator // denominator
         
-        # Add small offset to totalTicks to match reference behavior
-        total_ticks = ticks_per_measure + (0.35 * ticks_per_measure / 480)
+        # Calculate time based on current tempo
+        measure_time = (ticks_per_measure * tempo) / (ticks_per_beat * 1000000)
+        
+        # Add small offset to match reference behavior
+        tick_offset = 0.35 * ticks_per_measure / 480
         
         measures.append({
-            "time": start_time,
+            "time": current_time,
             "timeSignature": time_sig,
             "ticksPerMeasure": ticks_per_measure,
-            "ticksStart": current_measure_tick + (0.35 * current_measure_tick / 480),
-            "totalTicks": total_ticks,
-            "type": 0 if i == 0 else 2  # First measure is type 0, rest are type 2
+            "ticksStart": current_measure_tick + tick_offset,
+            "totalTicks": ticks_per_measure + tick_offset,
+            "type": 0 if measure_idx == 0 else 2
         })
         
         current_measure_tick += ticks_per_measure
+        current_time += measure_time
 
     # Remove arbitrary scaling for supporting tracks
     supporting_tracks = []
