@@ -54,16 +54,18 @@ def extract_tempo_events(mid: mido.MidiFile) -> List[Dict[str, Any]]:
 
 def extract_time_signatures(mid: mido.MidiFile) -> List[Dict[str, Any]]:
     time_sigs = []
-    current_time = 0
+    current_ticks = 0
     
-    for msg in mid:
-        current_time += msg.time
-        if msg.type == 'time_signature':
-            time_sigs.append({
-                "ticks": int(current_time * mid.ticks_per_beat),
-                "timeSignature": [msg.numerator, msg.denominator],
-                "measures": len(time_sigs)
-            })
+    for track in mid.tracks:
+        track_ticks = 0
+        for msg in track:
+            track_ticks += msg.time
+            if msg.type == 'time_signature':
+                time_sigs.append({
+                    "ticks": track_ticks,
+                    "timeSignature": [msg.numerator, msg.denominator],
+                    "measures": len(time_sigs)
+                })
     
     if not time_sigs:
         time_sigs.append({
@@ -72,6 +74,8 @@ def extract_time_signatures(mid: mido.MidiFile) -> List[Dict[str, Any]]:
             "measures": 0
         })
     
+    # Sort by tick position
+    time_sigs.sort(key=lambda x: x["ticks"])
     return time_sigs
 
 def extract_key_signatures(mid: mido.MidiFile) -> List[Dict[str, Any]]:
@@ -306,50 +310,54 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
     if not time_sigs:
         return {"right": [], "left": []}
 
-    # Calculate total number of measures needed
-    total_measures = max(
-        max([note["measureInd"] for note in right_notes], default=0),
-        max([note["measureInd"] for note in left_notes], default=0)
-    ) + 1
+    # Calculate total ticks needed based on the last note
+    last_tick = 0
+    if right_notes:
+        last_tick = max(last_tick, max(n["ticksStart"] + n["durationTicks"] for n in right_notes))
+    if left_notes:
+        last_tick = max(last_tick, max(n["ticksStart"] + n["durationTicks"] for n in left_notes))
 
     TICKS_PER_BEAT = 480
+    current_measure_tick = 0
+    measure_idx = 0
     
-    # Process each measure
-    for measure_idx in range(total_measures):
-        start_tick = measure_idx * TICKS_PER_BEAT * 4  # 4 beats per measure
-        
-        # Find time signature for this measure
+    # Process measures until we've covered all notes
+    while current_measure_tick <= last_tick:
         time_sig = next((ts for ts in reversed(time_sigs) 
-                        if ts["ticks"] <= start_tick), time_sigs[0])
+                        if ts["ticks"] <= current_measure_tick), time_sigs[0])
         
         numerator, denominator = time_sig["timeSignature"]
         ticks_per_measure = TICKS_PER_BEAT * 4 * numerator // denominator
-        end_tick = start_tick + ticks_per_measure
+        end_tick = current_measure_tick + ticks_per_measure
         
         # Use tempo-aware timing
-        start_time = ticks_to_seconds(start_tick, tempos, TICKS_PER_BEAT)
+        start_time = ticks_to_seconds(current_measure_tick, tempos, TICKS_PER_BEAT)
         end_time = ticks_to_seconds(end_tick, tempos, TICKS_PER_BEAT)
         
-        measure_right_notes = [n for n in right_notes if n["measureInd"] == measure_idx]
-        measure_left_notes = [n for n in left_notes if n["measureInd"] == measure_idx]
+        # Get notes for this measure
+        measure_right_notes = [
+            n for n in right_notes 
+            if current_measure_tick <= n["ticksStart"] < end_tick
+        ]
+        measure_left_notes = [
+            n for n in left_notes 
+            if current_measure_tick <= n["ticksStart"] < end_tick
+        ]
         
-        # Add right hand measure if there are notes
         if measure_right_notes:
             measures_right.append({
                 "direction": "up",
                 "time": start_time,
-                "timeEnd": end_time,
                 "timeSignature": time_sig["timeSignature"],
                 "notes": measure_right_notes,
                 "max": max(n["note"] for n in measure_right_notes),
                 "min": min(n["note"] for n in measure_right_notes),
-                "measureTicksStart": start_tick,
+                "measureTicksStart": current_measure_tick,
                 "measureTicksEnd": end_tick,
                 "rests": calculate_rests(measure_right_notes, start_time, end_time),
                 "type": 0 if measure_idx == 0 else 2
             })
         
-        # Add left hand measure if there are notes
         if measure_left_notes:
             measures_left.append({
                 "direction": "down",
@@ -359,11 +367,14 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
                 "notes": measure_left_notes,
                 "max": max(n["note"] for n in measure_left_notes),
                 "min": min(n["note"] for n in measure_left_notes),
-                "measureTicksStart": start_tick,
+                "measureTicksStart": current_measure_tick,
                 "measureTicksEnd": end_tick,
-                "rests": [],
+                "rests": calculate_rests(measure_left_notes, start_time, end_time),
                 "type": 0 if measure_idx == 0 else 2
             })
+        
+        current_measure_tick = end_tick
+        measure_idx += 1
 
     return {
         "right": measures_right,
@@ -418,34 +429,40 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
     measures = []
     ticks_per_beat = mid.ticks_per_beat
     current_measure_tick = 0
-    current_time = 0
-    tempo = 500000  # Default tempo
-
-    # Create measures for every measure index found in tracks
-    for measure_idx in range(max_measure_idx):
+    
+    # Calculate total ticks in the MIDI file
+    total_ticks = 0
+    for track in mid.tracks:
+        track_ticks = 0
+        for msg in track:
+            track_ticks += msg.time
+        total_ticks = max(total_ticks, track_ticks)
+    
+    # Create measures until we reach the end of the MIDI
+    while current_measure_tick < total_ticks:
         time_sig = next((ts["timeSignature"] for ts in reversed(time_sigs) 
                         if ts["ticks"] <= current_measure_tick), [4, 4])
         
         numerator, denominator = time_sig
         ticks_per_measure = ticks_per_beat * 4 * numerator // denominator
         
-        # Calculate time based on current tempo
-        measure_time = (ticks_per_measure * tempo) / (ticks_per_beat * 1000000)
+        # Calculate measure time using tempo-aware timing
+        measure_start_time = ticks_to_seconds(current_measure_tick, tempos, ticks_per_beat)
+        measure_end_time = ticks_to_seconds(current_measure_tick + ticks_per_measure, tempos, ticks_per_beat)
         
         # Add small offset to match reference behavior
         tick_offset = 0.35 * ticks_per_measure / 480
         
         measures.append({
-            "time": current_time,
+            "time": measure_start_time,
             "timeSignature": time_sig,
             "ticksPerMeasure": ticks_per_measure,
             "ticksStart": current_measure_tick + tick_offset,
             "totalTicks": ticks_per_measure + tick_offset,
-            "type": 0 if measure_idx == 0 else 2
+            "type": 0 if len(measures) == 0 else 2
         })
         
         current_measure_tick += ticks_per_measure
-        current_time += measure_time
 
     # Remove arbitrary scaling for supporting tracks
     supporting_tracks = []
