@@ -104,11 +104,37 @@ def extract_key_signatures(mid: mido.MidiFile) -> List[Dict[str, Any]]:
     
     return key_sigs
 
+def ticks_to_seconds(ticks: int, tempos: List[Dict[str, Any]], ticks_per_beat: int) -> float:
+    """Convert tick position to seconds considering tempo changes"""
+    if not tempos:
+        # Default tempo of 120 BPM (500000 microseconds per beat)
+        return (ticks * 500000) / (ticks_per_beat * 1000000)
+    
+    current_time = 0.0
+    current_ticks = 0
+    current_tempo = 500000  # Default tempo
+    
+    for tempo in tempos:
+        if ticks < tempo["ticks"]:
+            # Calculate remaining time until target ticks
+            delta_ticks = ticks - current_ticks
+            return current_time + (delta_ticks * current_tempo) / (ticks_per_beat * 1000000)
+        
+        # Add time until this tempo change
+        delta_ticks = tempo["ticks"] - current_ticks
+        current_time += (delta_ticks * current_tempo) / (ticks_per_beat * 1000000)
+        current_ticks = tempo["ticks"]
+        current_tempo = int(60000000 / tempo["bpm"])
+    
+    # Calculate remaining time after last tempo change
+    delta_ticks = ticks - current_ticks
+    return current_time + (delta_ticks * current_tempo) / (ticks_per_beat * 1000000)
+
 def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
     mid = mido.MidiFile(midi_path)
     tracks: List[List[Note]] = [[] for _ in range(2)]
     notes: Dict[Tuple[int, int], Tuple[int, float, float]] = {}
-    current_tempo = 500000
+    tempos = extract_tempo_events(mid)
     max_time = 0.0
     
     # First pass: find piano channel/track
@@ -159,8 +185,7 @@ def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
         track_ticks = 0
         for msg in track:
             track_ticks += msg.time
-            msg_time = (msg.time * current_tempo) / (mid.ticks_per_beat * 1000000)
-            track_time += msg_time
+            track_time = ticks_to_seconds(track_ticks, tempos, mid.ticks_per_beat)
             max_time = max(max_time, track_time)
             
             if msg.type == 'set_tempo':
@@ -221,7 +246,7 @@ def get_note_length_type(duration_ticks: int) -> str:
     else:
         return "dottedsixteenth"
 
-def organize_tracks_v2(tracks: List[Track], time_sigs: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+def organize_tracks_v2(tracks: List[Track], time_sigs: List[Dict[str, Any]], tempos: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
     right_hand_notes = []
     left_hand_notes = []
     
@@ -254,7 +279,7 @@ def organize_tracks_v2(tracks: List[Track], time_sigs: List[Dict[str, Any]]) -> 
             else:
                 left_hand_notes.append(note_data)
     
-    measure_data = create_measure_data(time_sigs, right_hand_notes, left_hand_notes)
+    measure_data = create_measure_data(time_sigs, right_hand_notes, left_hand_notes, tempos)
     return {
         "right": measure_data["right"],
         "left": measure_data["left"]
@@ -273,7 +298,8 @@ def calculate_measure_time(measure_idx: int, ticks_per_measure: int, tempo: int,
 
 def create_measure_data(time_sigs: List[Dict[str, Any]], 
                        right_notes: List[Dict[str, Any]], 
-                       left_notes: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+                       left_notes: List[Dict[str, Any]],
+                       tempos: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
     measures_right = []
     measures_left = []
     
@@ -287,7 +313,6 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
     ) + 1
 
     TICKS_PER_BEAT = 480
-    current_tempo = 500000  # Default tempo (microseconds per beat)
     
     # Process each measure
     for measure_idx in range(total_measures):
@@ -301,9 +326,9 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
         ticks_per_measure = TICKS_PER_BEAT * 4 * numerator // denominator
         end_tick = start_tick + ticks_per_measure
         
-        # Calculate actual measure timing based on tempo
-        start_time = calculate_measure_time(measure_idx, ticks_per_measure, current_tempo, TICKS_PER_BEAT)
-        next_time = calculate_measure_time(measure_idx + 1, ticks_per_measure, current_tempo, TICKS_PER_BEAT)
+        # Use tempo-aware timing
+        start_time = ticks_to_seconds(start_tick, tempos, TICKS_PER_BEAT)
+        end_time = ticks_to_seconds(end_tick, tempos, TICKS_PER_BEAT)
         
         measure_right_notes = [n for n in right_notes if n["measureInd"] == measure_idx]
         measure_left_notes = [n for n in left_notes if n["measureInd"] == measure_idx]
@@ -313,14 +338,14 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
             measures_right.append({
                 "direction": "up",
                 "time": start_time,
-                "timeEnd": next_time,
+                "timeEnd": end_time,
                 "timeSignature": time_sig["timeSignature"],
                 "notes": measure_right_notes,
                 "max": max(n["note"] for n in measure_right_notes),
                 "min": min(n["note"] for n in measure_right_notes),
                 "measureTicksStart": start_tick,
                 "measureTicksEnd": end_tick,
-                "rests": calculate_rests(measure_right_notes, start_time, next_time),
+                "rests": calculate_rests(measure_right_notes, start_time, end_time),
                 "type": 0 if measure_idx == 0 else 2
             })
         
@@ -329,7 +354,7 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
             measures_left.append({
                 "direction": "down",
                 "time": start_time,
-                "timeEnd": next_time,
+                "timeEnd": end_time,
                 "timeSignature": time_sig["timeSignature"],
                 "notes": measure_left_notes,
                 "max": max(n["note"] for n in measure_left_notes),
@@ -369,6 +394,7 @@ def calculate_rests(notes: List[Dict[str, Any]], start_time: float, end_time: fl
 
 def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
     mid = mido.MidiFile(midi_path)
+    tempos = extract_tempo_events(mid)
     tracks, song_length = get_notes_from_midi(midi_path)
     
     # Extract metadata from filename and full path
@@ -382,7 +408,7 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
     time_sigs = extract_time_signatures(mid)
     
     # Get total number of measures from tracks
-    tracks_v2 = organize_tracks_v2(tracks, time_sigs)
+    tracks_v2 = organize_tracks_v2(tracks, time_sigs, tempos)
     max_measure_idx = 0
     if tracks_v2["right"]:
         max_measure_idx = max(max_measure_idx, len(tracks_v2["right"]))
@@ -449,7 +475,7 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
         "keySignatures": extract_key_signatures(mid),
         "timeSignatures": time_sigs,
         "measures": measures,
-        "tracksV2": organize_tracks_v2(tracks, time_sigs),
+        "tracksV2": organize_tracks_v2(tracks, time_sigs, tempos),
         "accompanyingInstruments": [-2, -1],
         "accompanyingChannels": [0, 0],
         "name": title,
