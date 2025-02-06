@@ -270,6 +270,11 @@ def get_note_name(midi_note: int) -> str:
     octave = (midi_note // 12) - 1
     return f"{note_name}{octave}"
 
+def calculate_measure_time(measure_idx: int, ticks_per_measure: int, tempo: int, ticks_per_beat: int) -> float:
+    """Calculate actual time in seconds for a measure based on tempo"""
+    total_ticks = measure_idx * ticks_per_measure
+    return (total_ticks * tempo) / (ticks_per_beat * 1000000)
+
 def create_measure_data(time_sigs: List[Dict[str, Any]], 
                        right_notes: List[Dict[str, Any]], 
                        left_notes: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
@@ -285,22 +290,30 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
         max([note["measureInd"] for note in left_notes], default=0)
     ) + 1
 
+    TICKS_PER_BEAT = 480
+    current_tempo = 500000  # Default tempo (microseconds per beat)
+    
     # Process each measure
     for measure_idx in range(total_measures):
-        start_tick = measure_idx * 1920  # Standard measure length
-        end_tick = (measure_idx + 1) * 1920
+        start_tick = measure_idx * TICKS_PER_BEAT * 4  # 4 beats per measure
         
         # Find time signature for this measure
         time_sig = next((ts for ts in reversed(time_sigs) 
                         if ts["ticks"] <= start_tick), time_sigs[0])
         
-        # Get notes for this measure
+        numerator, denominator = time_sig["timeSignature"]
+        ticks_per_measure = TICKS_PER_BEAT * 4 * numerator // denominator
+        end_tick = start_tick + ticks_per_measure
+        
+        # Calculate actual measure timing based on tempo
+        start_time = calculate_measure_time(measure_idx, ticks_per_measure, current_tempo, TICKS_PER_BEAT)
+        next_time = calculate_measure_time(measure_idx + 1, ticks_per_measure, current_tempo, TICKS_PER_BEAT)
+        
         measure_right_notes = [n for n in right_notes if n["measureInd"] == measure_idx]
         measure_left_notes = [n for n in left_notes if n["measureInd"] == measure_idx]
         
-        # Calculate measure timing
-        start_time = measure_idx * 2.106  # Standard measure duration
-        next_time = (measure_idx + 1) * 2.106
+        # Rest of the function remains the same...
+        # ...existing code...
         
         # Add right hand measure if there are notes
         if measure_right_notes:
