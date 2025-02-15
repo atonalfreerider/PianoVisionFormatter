@@ -390,7 +390,6 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
 
         # Now we can safely use measure_duration_ticks
         measure_start_ticks = current_ticks
-        measure_end_ticks = measure_start_ticks + measure_duration_ticks
         
         # Calculate exact measure timings using tempo
         measure_time = ticks_to_seconds(measure_start_ticks, tempos)
@@ -754,29 +753,53 @@ def format_output_filename(title: str, artist: str, xml_path: str) -> str:
     
     return f"{auth}_{formatted_title}.json"
 
+def process_directory(input_dir: str, output_dir: str):
+    """Process all MusicXML files in directory and subdirectories"""
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Find all .musicxml files
+    for root, _, files in os.walk(input_dir):
+        for file in files:
+            if file.endswith('.musicxml'):
+                xml_path = os.path.join(root, file)
+                try:
+                    output_json = parse_musicxml(xml_path)
+                    
+                    # Generate formatted output filename
+                    output_filename = format_output_filename(
+                        output_json['name'],
+                        output_json['artist'],
+                        xml_path
+                    )
+                    
+                    # Create output path in PianoVision directory
+                    output_path = os.path.join(output_dir, output_filename)
+                    
+                    with open(output_path, 'w') as f:
+                        json.dump(output_json, f)
+                    
+                    print(f"Converted: {xml_path} -> {output_path}")
+                except Exception as e:
+                    print(f"Error processing {xml_path}: {str(e)}")
+
 def main():
     import sys
     if len(sys.argv) != 2:
-        print("Usage: python musicxml_to_json.py <musicxml_file>")
+        print("Usage: python musicxml_to_json.py <input_directory>")
         sys.exit(1)
 
-    xml_path = sys.argv[1]
-    output_json = parse_musicxml(xml_path)
+    input_dir = sys.argv[1]
+    if not os.path.isdir(input_dir):
+        print(f"Error: {input_dir} is not a directory")
+        sys.exit(1)
     
-    # Generate formatted output filename
-    output_filename = format_output_filename(
-        output_json['name'],
-        output_json['artist'],
-        xml_path
-    )
+    # Create output directory in same location as script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    output_dir = os.path.join(script_dir, 'PianoVision')
     
-    # Create output path in same directory as input file
-    output_path = os.path.join(os.path.dirname(xml_path), output_filename)
-    
-    with open(output_path, 'w') as f:
-        json.dump(output_json, f)
-    
-    print(f"JSON file created: {output_path}")
+    process_directory(input_dir, output_dir)
+    print(f"\nAll conversions completed. Output files are in: {output_dir}")
 
 if __name__ == "__main__":
     main()
