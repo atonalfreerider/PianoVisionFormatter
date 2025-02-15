@@ -431,9 +431,9 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
                 duration = int(elem.find('duration').text)
                 duration_ticks = int(duration * division_scale)
                 
-                # Initialize voice position if not set
+                # Initialize voice position if not set (fixed: both hands start at 0)
                 if (staff, voice) not in voice_positions:
-                    voice_positions[(staff, voice)] = 0 if staff == 1 else int(measure_duration_ticks / 3)
+                    voice_positions[(staff, voice)] = 0
                 
                 # Calculate note position using voice_positions.
                 if elem.find('chord') is not None:
