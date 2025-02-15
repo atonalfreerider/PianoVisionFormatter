@@ -459,20 +459,66 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
         "accompanyingTracks": []
     }
 
+def format_output_filename(title: str, artist: str, midi_path: str) -> str:
+    """Format the output filename according to specifications"""
+    import re
+    
+    # Format artist (first 4 letters of last name)
+    if not artist or artist.isspace():
+        # Use parent folder only if no artist found
+        artist = os.path.basename(os.path.dirname(midi_path))
+    
+    # Get last word and clean it
+    last_name = artist.strip().split()[-1]
+    auth = re.sub(r'[^a-zA-Z]', '', last_name)[:4].lower()
+    
+    # Format title
+    if not title or title.isspace():
+        # Use original filename only if no title found
+        title = os.path.splitext(os.path.basename(midi_path))[0]
+    
+    # Remove non-alphanumeric (except spaces), then replace spaces with underscores
+    formatted_title = re.sub(r'[^a-zA-Z0-9\s]', '', title)
+    formatted_title = formatted_title.strip().replace(' ', '_')
+    
+    return f"{auth}_{formatted_title}.json"
+
 def main():
     import sys
-    if len(sys.argv) != 2:
-        print("Usage: python midi_to_json.py <midi_file>")
+    if len(sys.argv) != 3:
+        print("Usage: python midi_to_json.py <input_file> <output_dir>")
         sys.exit(1)
 
     midi_path = sys.argv[1]
-    output_json = create_piano_vision_json(midi_path)
+    output_dir = sys.argv[2]
+
+    if not os.path.isfile(midi_path):
+        print(f"Error: {midi_path} is not a file")
+        sys.exit(1)
+
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
     
-    output_path = os.path.splitext(midi_path)[0] + '.json'
-    with open(output_path, 'w') as f:
-        json.dump(output_json, f)
-    
-    print(f"JSON file created: {output_path}")
+    try:
+        output_json = create_piano_vision_json(midi_path)
+        
+        # Generate formatted output filename
+        output_filename = format_output_filename(
+            output_json['name'],
+            output_json['artist'],
+            midi_path
+        )
+        
+        # Create output path in output directory
+        output_path = os.path.join(output_dir, output_filename)
+        
+        with open(output_path, 'w') as f:
+            json.dump(output_json, f)
+        
+        print(f"Converted: {midi_path} -> {output_path}")
+    except Exception as e:
+        print(f"Error processing {midi_path}: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
