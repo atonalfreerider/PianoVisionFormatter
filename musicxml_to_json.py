@@ -730,6 +730,30 @@ def get_note_length_type(duration_ticks: int) -> str:
     else:
         return "dottedsixteenth"
 
+def format_output_filename(title: str, artist: str, xml_path: str) -> str:
+    """Format the output filename according to specifications"""
+    import re
+    
+    # Format artist (first 4 letters of last name)
+    if not artist or artist.isspace():
+        # Use parent folder only if no artist found
+        artist = os.path.basename(os.path.dirname(xml_path))
+    
+    # Get last word and clean it
+    last_name = artist.strip().split()[-1]
+    auth = re.sub(r'[^a-zA-Z]', '', last_name)[:4].lower()
+    
+    # Format title
+    if not title or title.isspace():
+        # Use original filename only if no title found
+        title = os.path.splitext(os.path.basename(xml_path))[0]
+    
+    # Remove non-alphanumeric (except spaces), then replace spaces with underscores
+    formatted_title = re.sub(r'[^a-zA-Z0-9\s]', '', title)
+    formatted_title = formatted_title.strip().replace(' ', '_')
+    
+    return f"{auth}_{formatted_title}.json"
+
 def main():
     import sys
     if len(sys.argv) != 2:
@@ -739,7 +763,16 @@ def main():
     xml_path = sys.argv[1]
     output_json = parse_musicxml(xml_path)
     
-    output_path = os.path.splitext(xml_path)[0] + '.json'
+    # Generate formatted output filename
+    output_filename = format_output_filename(
+        output_json['name'],
+        output_json['artist'],
+        xml_path
+    )
+    
+    # Create output path in same directory as input file
+    output_path = os.path.join(os.path.dirname(xml_path), output_filename)
+    
     with open(output_path, 'w') as f:
         json.dump(output_json, f)
     
