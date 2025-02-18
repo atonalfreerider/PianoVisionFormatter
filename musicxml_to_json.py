@@ -29,11 +29,10 @@ def note_to_midi(step: str, octave: int, alter: int = 0) -> int:
     """Convert note name and octave to MIDI note number"""
     return MIDI_NOTE_NAMES[step] + (octave + 1) * 12 + alter
 
-def extract_tempo_from_xml(root) -> List[Dict[str, Any]]:
+def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
     """Extract tempo markings from MusicXML with proper timing"""
     tempos = []
     total_ticks = 0
-    divisions = 480
     
     # First pass: Find all explicit tempo changes and calculate total ticks
     measures = root.findall('.//measure')
@@ -49,9 +48,9 @@ def extract_tempo_from_xml(root) -> List[Dict[str, Any]]:
             if time is not None:
                 beats = int(time.find('beats').text)
                 beat_type = int(time.find('beat-type').text)
-                measure_duration = int((beats * 4 * divisions) / beat_type)
+                measure_duration = int((beats * 4 * ticks_per_beat) / beat_type)
         if not measure_duration:
-            measure_duration = 4 * divisions
+            measure_duration = 4 * ticks_per_beat
         total_ticks += measure_duration
     
     # Second pass: Process tempo markings and ritardando
@@ -68,7 +67,7 @@ def extract_tempo_from_xml(root) -> List[Dict[str, Any]]:
             if sound is not None and 'tempo' in sound.attrib:
                 tempo = float(sound.attrib['tempo'])
                 tempo_ticks = current_ticks + offset
-                tempo_time = ticks_to_seconds(tempo_ticks, tempos, divisions)
+                tempo_time = ticks_to_seconds(tempo_ticks, tempos, ticks_per_beat)
                 
                 tempos.append({
                     "bpm": tempo,
@@ -95,9 +94,9 @@ def extract_tempo_from_xml(root) -> List[Dict[str, Any]]:
             if time is not None:
                 beats = int(time.find('beats').text)
                 beat_type = int(time.find('beat-type').text)
-                measure_duration = int((beats * 4 * divisions) / beat_type)
+                measure_duration = int((beats * 4 * ticks_per_beat) / beat_type)
         if not measure_duration:
-            measure_duration = 4 * divisions
+            measure_duration = 4 * ticks_per_beat
         
         current_ticks += measure_duration
     
@@ -119,7 +118,7 @@ def extract_tempo_from_xml(root) -> List[Dict[str, Any]]:
             progress = i / steps
             point_ticks = ritardando_start + (remaining_ticks * progress)
             point_tempo = start_tempo - (start_tempo - end_tempo) * progress
-            point_time = ticks_to_seconds(point_ticks, tempos, divisions)
+            point_time = ticks_to_seconds(point_ticks, tempos, ticks_per_beat)
             
             tempos.append({
                 "bpm": round(point_tempo),
@@ -325,25 +324,12 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
     # Identify piano part
     piano_part_id = identify_piano_part(root)
     
-    # Set correct resolution and initial values
-    divisions = 480  # Standard MIDI resolution
-    xml_divisions = None  # Will be set from XML
+    # Set fixed output resolution
+    output_resolution = 480  
+    # Remove previous global xml_divisions; we'll use per-measure divisions
     
-    # Get actual divisions from XML
-    for attributes in root.findall('.//attributes'):
-        div = attributes.find('divisions')
-        if div is not None:
-            xml_divisions = int(div.text)
-            break
-    
-    if xml_divisions is None:
-        xml_divisions = divisions  # Default if not found
-    
-    # Scale factor for converting XML divisions to output divisions (480)
-    division_scale = divisions / xml_divisions
-    
-    # Extract tempos first (pass xml_divisions since we need original timing)
-    tempos = extract_tempo_from_xml(root)
+    # Extract tempos first using the output_resolution
+    tempos = extract_tempo_from_xml(root, output_resolution)
     
     # Extract key signatures
     key_signatures = extract_key_signatures(root)
@@ -366,49 +352,51 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
     current_measure = 0
     
     for measure in root.findall(f'.//part[@id="{piano_part_id}"]/measure'):
-        # Get time signature and calculate measure length first
+        # Update current divisions if available in this measure (default to output_resolution if not)
+        current_divisions = output_resolution  
+        for attributes in measure.findall('attributes'):
+            div = attributes.find('divisions')
+            if div is not None:
+                current_divisions = int(div.text)
+                break
+
+        # Get time signature and calculate measure length
         measure_duration_ticks = 0
         for attributes in measure.findall('attributes'):
-            time = attributes.find('time')
-            if time is not None:
-                beats = int(time.find('beats').text)
-                beat_type = int(time.find('beat-type').text)
+            time_elem = attributes.find('time')
+            if time_elem is not None:
+                beats = int(time_elem.find('beats').text)
+                beat_type = int(time_elem.find('beat-type').text)
                 time_signatures.append({
                     "ticks": current_ticks,
-                    "timeSignature": [beats, beat_type],
+                    "timeSignature": [str(beats), str(beat_type)],
                     "measures": current_measure
                 })
-                # Calculate measure length based on time signature
-                measure_duration_ticks = int((beats * 4 * divisions) / beat_type)
+                # Calculate measure length using fixed output_resolution
+                measure_duration_ticks = int((beats * 4 * output_resolution) / beat_type)
         
         if not measure_duration_ticks:
             if time_signatures:
-                beats, beat_type = time_signatures[-1]["timeSignature"]
-                measure_duration_ticks = int((beats * 4 * divisions) / beat_type)
+                beats, beat_type = map(int, time_signatures[-1]["timeSignature"])
+                measure_duration_ticks = int((beats * 4 * output_resolution) / beat_type)
             else:
-                measure_duration_ticks = divisions * 4  # Default 4/4
+                measure_duration_ticks = output_resolution * 4  # Default 4/4
 
-        # Now we can safely use measure_duration_ticks
         measure_start_ticks = current_ticks
+        measure_time = ticks_to_seconds(measure_start_ticks, tempos, output_resolution)
+        next_measure_time = ticks_to_seconds(measure_start_ticks + measure_duration_ticks, tempos, output_resolution)
         
-        # Calculate exact measure timings using tempo
-        measure_time = ticks_to_seconds(measure_start_ticks, tempos)
-        next_measure_time = ticks_to_seconds(measure_start_ticks + measure_duration_ticks, tempos)
-        
-        # Store measure timing info
         measure_ticks.append({
             "time": measure_time,
-            "timeSignature": time_signatures[-1]["timeSignature"] if time_signatures else [4, 4],
+            "timeSignature": time_signatures[-1]["timeSignature"] if time_signatures else ['4', '4'],
             "ticksPerMeasure": measure_duration_ticks,
             "ticksStart": measure_start_ticks,
             "totalTicks": measure_duration_ticks,
-            "type": 0 if current_measure == 0 else 2
+            "type": 0.000 if current_measure == 0 else 2
         })
 
         # Use a dictionary to track separate voice positions for each staff.
         voice_positions = {}
-        
-        # Track notes for both staves in this measure
         measure_elements = []
         
         # First pass: collect all notes with voice-aware positions
@@ -422,22 +410,18 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
                     staff = get_note_staff(elem, measure)
                 except ValueError:
                     staff = 1
-                # Get voice from note; default to 1 if missing or non-numeric.
                 voice_elem = elem.find('voice')
                 try:
                     voice = int(voice_elem.text) if voice_elem is not None else 1
                 except ValueError:
                     voice = 1
                 duration = int(elem.find('duration').text)
-                duration_ticks = int(duration * division_scale)
+                # Scale duration from XML divisions to output_resolution
+                duration_ticks = int(duration * (output_resolution / current_divisions))
                 
-                # Initialize voice position if not set (fixed: both hands start at 0)
                 if (staff, voice) not in voice_positions:
                     voice_positions[(staff, voice)] = 0
-                
-                # Calculate note position using voice_positions.
                 if elem.find('chord') is not None:
-                    # For chords, reuse the previous note’s ticks.
                     note_start_ticks = measure_elements[-1]['ticks'] if measure_elements else measure_start_ticks
                 else:
                     note_start_ticks = measure_start_ticks + voice_positions[(staff, voice)]
@@ -563,7 +547,7 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
         ],
         "start_time": 0,
         "song_length": current_time,
-        "resolution": divisions,
+        "resolution": current_divisions,
         "tempos": tempos,
         "keySignatures": key_signatures,
         "timeSignatures": time_signatures,
