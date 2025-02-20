@@ -364,55 +364,83 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
     current_time = 0.0
     current_ticks = 0
     last_divisions = output_resolution
-    
+    first_full_measure_found = False
+    initial_time_sig = None
+    measure_start_ticks = 0  # Add this line to track measure start position
+
     for measure in root.findall(f'.//part[@id="{piano_part_id}"]/measure'):
         # Update divisions if specified in this measure
         for attributes in measure.findall('attributes'):
             div = attributes.find('divisions')
             if div is not None:
                 last_divisions = int(div.text)
-                
-        # Calculate measure timing
-        measure_duration_ticks = 0
-        for attributes in measure.findall('attributes'):
+            
+            # Check for time signature
             time_elem = attributes.find('time')
             if time_elem is not None:
                 beats = int(time_elem.find('beats').text)
                 beat_type = int(time_elem.find('beat-type').text)
+                
+                # Store first time signature encountered
+                if initial_time_sig is None:
+                    initial_time_sig = (beats, beat_type)
+                
                 time_signatures.append({
                     "ticks": current_ticks,
                     "timeSignature": [str(beats), str(beat_type)],
                     "measures": current_measure
                 })
-                measure_duration_ticks = int((beats * 4 * output_resolution) / beat_type)
         
-        if not measure_duration_ticks:
-            if time_signatures:
-                beats, beat_type = map(int, time_signatures[-1]["timeSignature"])
+        # Calculate measure duration based on time signature
+        if time_signatures:
+            beats, beat_type = map(int, time_signatures[-1]["timeSignature"])
+            measure_duration_ticks = int((beats * 4 * output_resolution) / beat_type)
+        else:
+            # Use initial time signature if found, otherwise default to 4/4
+            if initial_time_sig:
+                beats, beat_type = initial_time_sig
                 measure_duration_ticks = int((beats * 4 * output_resolution) / beat_type)
             else:
-                measure_duration_ticks = output_resolution * 4  # Default 4/4
-        
-        measure_start_ticks = current_ticks
-        measure_time = ticks_to_seconds(measure_start_ticks, tempos, output_resolution)
-        next_measure_time = ticks_to_seconds(measure_start_ticks + measure_duration_ticks, tempos, output_resolution)
-        
-        # Store measure info
+                measure_duration_ticks = output_resolution * 4
+
+        # Detect if this is a pickup measure
+        if current_measure == 0:
+            actual_duration = 0
+            for elem in measure:
+                if elem.tag == 'note':
+                    if elem.find('grace') is not None:
+                        continue
+                    duration = int(elem.find('duration').text)
+                    actual_duration += int(round(duration * (output_resolution / last_divisions)))
+            
+            if actual_duration < measure_duration_ticks:
+                # This is a pickup measure
+                measure_duration_ticks = actual_duration
+                measure_type = 0
+            else:
+                first_full_measure_found = True
+                measure_type = 0
+        else:
+            measure_type = 1 if not first_full_measure_found else 2
+            first_full_measure_found = True
+
+        # Store measure info with correct timing
         measure_ticks.append({
-            "time": measure_time,
+            "time": current_time,
             "timeSignature": time_signatures[-1]["timeSignature"] if time_signatures else ['4', '4'],
             "ticksPerMeasure": measure_duration_ticks,
-            "ticksStart": measure_start_ticks,
+            "ticksStart": current_ticks,
             "totalTicks": measure_duration_ticks,
-            "type": 0.000 if current_measure == 0 else 2
+            "type": measure_type
         })
-        
+
         # Process notes with corrected timing
         voice_positions = {}  # Track voice positions within measure
         measure_elements = []
         
         # First pass: collect notes
         local_position = 0  # Position within current measure
+        measure_start_ticks = current_ticks  # Update measure start position here
         
         for elem in measure:
             if elem.tag == 'backup':
@@ -530,7 +558,7 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
                 left_hand_notes.append(note)
         
         current_ticks += measure_duration_ticks
-        current_time = next_measure_time
+        current_time = ticks_to_seconds(current_ticks, tempos, output_resolution)
         current_measure += 1
 
     # Create tracks
