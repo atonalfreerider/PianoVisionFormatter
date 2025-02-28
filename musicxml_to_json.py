@@ -383,17 +383,28 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
     current_ticks = 0
     current_divisions = None
     
-    # First pass: build measure structure
+    # First pass: build measure structure and track time signatures
     piano_part = root.find(f'.//part[@id="{piano_part_id}"]')
     if piano_part is None:  # Fix DeprecationWarning
         raise ValueError(f"Piano part {piano_part_id} not found in the MusicXML file")
-        
+    
+    # Track the current time signature
+    current_time_signature = {
+        'beats': 4,
+        'beat_type': 4
+    }  # Default 4/4
+    
     # Create complete measure map with precise tick boundaries
     for measure in piano_part.findall('measure'):
         measure_info = {
             'start_ticks': current_ticks,
             'divisions': current_divisions,
+            # Always include current time signature for every measure
+            'beats': current_time_signature['beats'],
+            'beat_type': current_time_signature['beat_type']
         }
+        
+        time_sig_changed = False
         
         # Process attributes
         for attributes in measure.findall('attributes'):
@@ -404,17 +415,23 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
             
             time_elem = attributes.find('time')
             if time_elem is not None:
+                # Update current time signature when it changes
                 beats = int(time_elem.find('beats').text)
                 beat_type = int(time_elem.find('beat-type').text)
+                
+                current_time_signature = {
+                    'beats': beats,
+                    'beat_type': beat_type
+                }
+                
                 measure_info['beats'] = beats
                 measure_info['beat_type'] = beat_type
-                measure_info['duration_ticks'] = int((beats * 4 * output_resolution) / beat_type)
-        
-        # Default to 4/4 if no time signature
-        if 'duration_ticks' not in measure_info:
-            measure_info['beats'] = 4
-            measure_info['beat_type'] = 4
-            measure_info['duration_ticks'] = 4 * output_resolution
+                time_sig_changed = True
+                
+        # Calculate duration ticks based on time signature
+        # (whether it changed in this measure or is carried forward)
+        measure_info['duration_ticks'] = int((current_time_signature['beats'] * 4 * output_resolution) / 
+                                            current_time_signature['beat_type'])
         
         # Handle pickup measure
         if len(measure_map) == 0:
@@ -437,19 +454,26 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
         measure_map.append(measure_info)
         current_ticks += measure_info['duration_ticks']
     
-    # Record time signatures
+    # Record time signatures - only when they actually change
     time_signatures = []
+    last_beats = None
+    last_beat_type = None
+    
     for i, measure in enumerate(measure_map):
         if 'beats' in measure and 'beat_type' in measure:
-            # Format the measures value as float with decimal places if it's 0
-            measure_index_str = "0.000" if i == 0 else str(i)
-            time_signatures.append({
-                "ticks": measure['start_ticks'],
-                "timeSignature": [str(measure['beats']), str(measure['beat_type'])],
-                "measures": measure_index_str
-            })
+            # Only add if time signature is different from previous one
+            if last_beats != measure['beats'] or last_beat_type != measure['beat_type']:
+                # Format the measures value as float with decimal places if it's 0
+                measure_index_str = "0.000" if i == 0 else str(i)
+                time_signatures.append({
+                    "ticks": measure['start_ticks'],
+                    "timeSignature": [str(measure['beats']), str(measure['beat_type'])],
+                    "measures": measure_index_str
+                })
+                last_beats = measure['beats']
+                last_beat_type = measure['beat_type']
     
-    # Generate measure_ticks list
+    # Generate measure_ticks list - ensure time signatures are consistent
     measure_ticks = []
     for i, measure in enumerate(measure_map):
         measure_start_ticks = measure['start_ticks']
@@ -457,13 +481,13 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
         
         measure_ticks.append({
             "time": ticks_to_seconds(measure_start_ticks, tempos, output_resolution),
-            "timeSignature": [str(measure.get('beats', 4)), str(measure.get('beat_type', 4))],
+            "timeSignature": [str(measure['beats']), str(measure['beat_type'])],
             "ticksPerMeasure": measure_duration,
             "ticksStart": measure_start_ticks,
             "totalTicks": measure_duration,
             # Format type as a float string with decimal places if it's measure 0, otherwise as integer
             "type": "0.000" if i == 0 and measure.get('is_pickup') else (
-                   "0.000" if i == 0 else "2")
+                "0.000" if i == 0 else "2")
         })
     
     # Initialize note collection
