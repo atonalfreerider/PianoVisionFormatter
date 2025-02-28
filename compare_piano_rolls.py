@@ -203,23 +203,53 @@ class PianoRollComparator(tk.Tk):
         ax.legend(fontsize=9)
 
         # Add measure lines and tempo changes
-        self._add_measures_and_tempos(ax)
+        self._add_measures_and_tempos(ax, max_time)
 
-    def _add_measures_and_tempos(self, ax):
-        """Add measure lines and tempo markings"""
+    def _add_measures_and_tempos(self, ax, max_time):
+        """Add measure lines and tempo markings for both reference and generated files"""
         x_min, x_max = ax.get_xlim()
         
-        # Add measure lines
+        # Constants for positioning
+        ref_measure_offset = x_min - 6  # Left side position for reference measures
+        gen_measure_offset = x_min - 3  # Left side position for generated measures
+        
+        ref_tempo_offset = x_max + 1    # Right side position for reference tempos
+        gen_tempo_offset = x_max + 4    # Right side position for generated tempos
+        
+        # Reference file - measures (purple)
+        for i, measure in enumerate(self.reference_data['measures']):
+            time = measure['time']
+            # Horizontal line across the piano roll
+            ax.plot([x_min, x_max], [time, time], 'purple', linestyle='--', alpha=0.2)
+            # Reference measure marker
+            ax.text(ref_measure_offset, time, f"R{i+1}", fontsize=8, 
+                   verticalalignment='bottom', color='purple', alpha=0.8)
+
+        # Generated file - measures (blue)
         for i, measure in enumerate(self.generated_data['measures']):
             time = measure['time']
-            ax.plot([x_min, x_max], [time, time], 'k--', alpha=0.3)
-            ax.text(x_min - 1, time, f"M{i+1}", fontsize=8, verticalalignment='bottom')
+            # Horizontal line across the piano roll
+            ax.plot([x_min, x_max], [time, time], 'blue', linestyle='--', alpha=0.2)
+            # Generated measure marker
+            ax.text(gen_measure_offset, time, f"G{i+1}", fontsize=8, 
+                   verticalalignment='bottom', color='blue', alpha=0.8)
 
-        # Add tempo changes
+        # Reference file - tempo changes (purple)
+        for tempo in self.reference_data['tempos']:
+            time = tempo['time']
+            ax.plot([x_max - 1, x_max], [time, time], 'purple', linewidth=2, alpha=0.8)
+            ax.text(ref_tempo_offset, time, f"R: {tempo['bpm']} BPM", 
+                   fontsize=8, color='purple', alpha=0.8)
+
+        # Generated file - tempo changes (blue)
         for tempo in self.generated_data['tempos']:
             time = tempo['time']
-            ax.plot([x_max, x_max + 2], [time, time], 'g-', linewidth=2)
-            ax.text(x_max + 0.5, time, f"{tempo['bpm']} BPM", fontsize=8)
+            ax.plot([x_max - 1, x_max], [time, time], 'blue', linewidth=2, alpha=0.8)
+            ax.text(gen_tempo_offset, time, f"G: {tempo['bpm']} BPM", 
+                   fontsize=8, color='blue', alpha=0.8)
+        
+        # Adjust the subplot to make room for the markers
+        self.fig.subplots_adjust(left=0.15, right=0.85, top=0.98, bottom=0.05)
 
 def main():
     import sys
