@@ -30,118 +30,140 @@ def note_to_midi(step: str, octave: int, alter: int = 0) -> int:
     return MIDI_NOTE_NAMES[step] + (octave + 1) * 12 + alter
 
 def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
-    """Extract tempo markings from MusicXML with proper timing"""
-    tempos = []
-    total_ticks = 0
-    
-    # First pass: Find all explicit tempo changes and calculate total ticks
-    measures = root.findall('.//measure')
-    current_tempo = None
-    ritardando_start = None
-    start_tempo = None
-    
-    # Calculate total ticks first
-    for measure in measures:
-        measure_duration = 0
-        for attributes in measure.findall('attributes'):
-            time = attributes.find('time')
-            if time is not None:
-                beats = int(time.find('beats').text)
-                beat_type = int(time.find('beat-type').text)
-                measure_duration = int((beats * 4 * ticks_per_beat) / beat_type)
-        if not measure_duration:
-            measure_duration = 4 * ticks_per_beat
-        total_ticks += measure_duration
-    
-    # Second pass: Process tempo markings and ritardando
+    """Extract tempo markings from MusicXML with absolute precision for timing"""
+    # First create a complete map of measures with divisions and durations
+    measure_map = []
+    current_divisions = None
     current_ticks = 0
-    for measure in measures:
-        for direction in measure.findall('direction'):
-            offset = 0
-            offset_elem = direction.find('offset')
-            if offset_elem is not None:
-                offset = int(offset_elem.text)
+    current_tempo = 120.0  # Default tempo
+    
+    # First pass: Build measure map with precise timing info
+    for part in root.findall('.//part'):
+        for measure in part.findall('measure'):
+            measure_number = int(measure.get('number', '1'))
             
-            # Check for tempo marking
-            sound = direction.find('.//sound')
-            if sound is not None and 'tempo' in sound.attrib:
-                tempo = float(sound.attrib['tempo'])
-                tempo_ticks = current_ticks + offset
-                tempo_time = ticks_to_seconds(tempo_ticks, tempos, ticks_per_beat)
-                
-                tempos.append({
-                    "bpm": tempo,
-                    "ticks": tempo_ticks,
-                    "time": tempo_time
+            # Extend measure_map if needed
+            while len(measure_map) < measure_number:
+                measure_map.append({
+                    'start_ticks': current_ticks,
+                    'divisions': current_divisions,
+                    'duration_ticks': 4 * ticks_per_beat,  # Default 4/4 time
+                    'tempo': current_tempo
                 })
-                current_tempo = tempo
-                if ritardando_start is None:
-                    start_tempo = tempo
+                current_ticks += measure_map[-1]['duration_ticks']
             
-            # Check for ritardando
-            words = direction.find('direction-type/words')
-            if words is not None:
-                text = words.text.lower()
-                if 'rit' in text or 'rall' in text:
-                    ritardando_start = current_ticks + offset
-                    if start_tempo is None:
-                        start_tempo = current_tempo or 120
-        
-        # Get measure duration
-        measure_duration = 0
-        for attributes in measure.findall('attributes'):
-            time = attributes.find('time')
-            if time is not None:
-                beats = int(time.find('beats').text)
-                beat_type = int(time.find('beat-type').text)
-                measure_duration = int((beats * 4 * ticks_per_beat) / beat_type)
-        if not measure_duration:
-            measure_duration = 4 * ticks_per_beat
-        
-        current_ticks += measure_duration
-    
-    # Add initial tempo if none found
-    if not tempos:
-        tempos.append({
-            "bpm": current_tempo or 120,
-            "ticks": 0,
-            "time": 0
-        })
-    
-    # Handle ritardando if present
-    if ritardando_start is not None:
-        remaining_ticks = total_ticks - ritardando_start
-        end_tempo = start_tempo * 0.7  # End at 70% of initial tempo
-        steps = 10  # Number of intermediate tempo points
-        
-        for i in range(steps):
-            progress = i / steps
-            point_ticks = ritardando_start + (remaining_ticks * progress)
-            point_tempo = start_tempo - (start_tempo - end_tempo) * progress
-            point_time = ticks_to_seconds(point_ticks, tempos, ticks_per_beat)
+            # Update measure info
+            measure_info = measure_map[measure_number - 1]
             
-            tempos.append({
-                "bpm": round(point_tempo),
-                "ticks": int(point_ticks),
-                "time": point_time
+            # Process attributes
+            for attributes in measure.findall('attributes'):
+                div = attributes.find('divisions')
+                if div is not None:
+                    current_divisions = int(div.text)
+                    measure_info['divisions'] = current_divisions
+                
+                time = attributes.find('time')
+                if time is not None:
+                    beats = int(time.find('beats').text)
+                    beat_type = int(time.find('beat-type').text)
+                    measure_info['duration_ticks'] = int((beats * 4 * ticks_per_beat) / beat_type)
+    
+    # Second pass: collect actual tempo changes with precise positions
+    actual_tempo_changes = []
+    for part in root.findall('.//part'):
+        for measure in part.findall('measure'):
+            measure_number = int(measure.get('number', '1'))
+            if measure_number > len(measure_map):
+                continue
+            
+            measure_info = measure_map[measure_number - 1]
+            divisions = measure_info.get('divisions')
+            if divisions is None:
+                continue
+            
+            # Find tempo markings
+            for direction in measure.findall('direction'):
+                sound = direction.find('.//sound')
+                if sound is not None and 'tempo' in sound.attrib:
+                    # Calculate exact position
+                    offset = 0
+                    offset_elem = direction.find('offset')
+                    if offset_elem is not None:
+                        offset = int(float(offset_elem.text) * ticks_per_beat / divisions)
+                    
+                    tempo_ticks = measure_info['start_ticks'] + offset
+                    tempo = float(sound.attrib['tempo'])
+                    
+                    actual_tempo_changes.append({
+                        "bpm": tempo,
+                        "ticks": tempo_ticks,
+                        "is_actual_change": True  # Mark this as an actual tempo change
+                    })
+                    
+                    # Update current tempo
+                    current_tempo = tempo
+    
+    # Combine actual tempo changes with measure boundaries to create complete tempo map
+    all_tempo_entries = []
+    
+    # Start with initial tempo
+    all_tempo_entries.append({
+        "bpm": 120.0,  # Default starting tempo
+        "ticks": 0,
+        "is_actual_change": True if not actual_tempo_changes else False
+    })
+    
+    # Add all actual tempo changes
+    all_tempo_entries.extend(actual_tempo_changes)
+    
+    # Add entries at each measure boundary if no tempo change exists there
+    for measure in measure_map:
+        measure_start = measure['start_ticks']
+        # Check if there's already a tempo at this exact position
+        if not any(tempo["ticks"] == measure_start for tempo in all_tempo_entries):
+            # Find the current tempo at this measure
+            current_tempo = 120.0  # Default
+            for tempo in sorted(all_tempo_entries, key=lambda x: x["ticks"]):
+                if tempo["ticks"] > measure_start:
+                    break
+                current_tempo = tempo["bpm"]
+            
+            # Add tempo entry at measure boundary
+            all_tempo_entries.append({
+                "bpm": current_tempo,
+                "ticks": measure_start,
+                "is_actual_change": False  # Mark this as a continuation tempo
             })
     
-    # Sort tempos by tick position
-    tempos.sort(key=lambda x: x["ticks"])
+    # Sort all entries by tick position
+    all_tempo_entries.sort(key=lambda x: x["ticks"])
     
-    # Remove any duplicates or too-close tempo points
-    unique_tempos = []
-    last_tempo = None
+    # Calculate absolute time values
+    result = []
+    current_time = 0.0
+    current_ticks = 0
+    current_tempo = all_tempo_entries[0]["bpm"]
     
-    for tempo in tempos:
-        if not last_tempo or (
-            (abs(tempo["bpm"] - last_tempo["bpm"]) >= 1 or  # Different tempo
-             tempo["ticks"] - last_tempo["ticks"] >= 480)    # Or at least one beat apart
-        ):
-            unique_tempos.append(tempo)
-            last_tempo = tempo
+    for tempo in all_tempo_entries:
+        # Calculate time elapsed since last tempo entry
+        tick_diff = tempo["ticks"] - current_ticks
+        if tick_diff > 0:
+            # Using precise formula: ticks / ticks_per_beat * (60 / bpm)
+            seconds = (tick_diff / ticks_per_beat) * (60.0 / current_tempo)
+            current_time += seconds
+        
+        # Add to final tempo map (omitting the flag)
+        result.append({
+            "bpm": tempo["bpm"],
+            "ticks": tempo["ticks"],
+            "time": current_time
+        })
+        
+        # Update current position
+        current_ticks = tempo["ticks"]
+        current_tempo = tempo["bpm"]
     
-    return unique_tempos
+    return result
 
 def extract_key_signatures(root) -> List[Dict[str, Any]]:
     """Extract key signatures from MusicXML"""
@@ -168,39 +190,41 @@ def extract_key_signatures(root) -> List[Dict[str, Any]]:
     return key_signatures
 
 def ticks_to_seconds(ticks: int, tempos: List[Dict[str, Any]], ticks_per_beat: int = 480) -> float:
-    """Convert tick position to seconds considering tempo changes"""
+    """Convert tick position to seconds using MuseScore-compatible tempo interpretation"""
     if not tempos:
-        # Default to 120 BPM if no tempos defined
-        return (ticks * 60.0) / (120 * ticks_per_beat)
+        return (ticks / ticks_per_beat) * (60.0 / 120.0)  # Default 120 BPM
     
-    # Handle negative or zero ticks
     if ticks <= 0:
         return 0.0
+    
+    # Sort tempos to ensure correct processing
+    sorted_tempos = sorted(tempos, key=lambda x: x["ticks"])
     
     current_time = 0.0
     current_ticks = 0
     
-    # Sort tempos by tick position to ensure correct processing
-    sorted_tempos = sorted(tempos, key=lambda x: x["ticks"])
-    
-    # Process each tempo section
     for i, tempo in enumerate(sorted_tempos):
-        # Get next tempo's tick position or use target ticks if this is the last tempo
-        next_tick_pos = sorted_tempos[i + 1]["ticks"] if i + 1 < len(sorted_tempos) else ticks
+        if tempo["ticks"] >= ticks:
+            # We've found the tempo section containing our target
+            break
+            
+        # Calculate time to next tempo or target position
+        next_tempo_ticks = ticks if i == len(sorted_tempos) - 1 or sorted_tempos[i+1]["ticks"] > ticks else sorted_tempos[i+1]["ticks"]
+        ticks_delta = next_tempo_ticks - current_ticks
         
-        # Calculate how many ticks to process in this tempo section
-        section_ticks = min(next_tick_pos - current_ticks, ticks - current_ticks)
+        # Use the precise formula: ticks_delta / ticks_per_beat * (60 / tempo_bpm)
+        seconds_delta = (ticks_delta / ticks_per_beat) * (60.0 / tempo["bpm"])
+        current_time += seconds_delta
+        current_ticks = next_tempo_ticks
         
-        if section_ticks > 0:
-            # Convert ticks to time for this section
-            current_time += (section_ticks * 60.0) / (tempo["bpm"] * ticks_per_beat)
-        
-        # Update current position
-        current_ticks += section_ticks
-        
-        # Stop if we've reached or exceeded the target ticks
         if current_ticks >= ticks:
             break
+    
+    # Calculate any remaining time if we haven't reached the target
+    if current_ticks < ticks:
+        remaining_ticks = ticks - current_ticks
+        current_tempo = sorted_tempos[-1]["bpm"]  # Use last tempo
+        current_time += (remaining_ticks / ticks_per_beat) * (60.0 / current_tempo)
     
     return current_time
 
@@ -333,250 +357,239 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
     # Identify piano part
     piano_part_id = identify_piano_part(root)
     
-    # Set fixed output resolution
-    output_resolution = 480  
-    # Remove previous global xml_divisions; we'll use per-measure divisions
+    # Use a standard output resolution that minimizes rounding errors
+    output_resolution = 480  # MIDI standard resolution
     
-    # Extract tempos first using the output_resolution
+    # Extract tempos first for consistent timing
     tempos = extract_tempo_from_xml(root, output_resolution)
     
     # Extract key signatures
     key_signatures = extract_key_signatures(root)
 
-    # Initialize timing variables
-    current_time = 0.0
+    # Build complete measure map for precise positioning
+    measure_map = []
     current_ticks = 0
-    measure_ticks = []
-    time_signatures = []
+    current_divisions = None
     
-    # Initialize tracks for both hands
-    right_hand_notes: List[Note] = []
-    left_hand_notes: List[Note] = []
-
-    # Initialize group tracking
-    right_hand_group = 0
-    left_hand_group = -1  # Left hand always uses -1
-
-    # Process measures only for piano part
-    current_measure = 0
-    
-    # Initialize accumulated time and ticks
-    current_time = 0.0
-    current_ticks = 0
-    last_divisions = output_resolution
-    first_full_measure_found = False
-    initial_time_sig = None
-    measure_start_ticks = 0  # Add this line to track measure start position
-
-    for measure in root.findall(f'.//part[@id="{piano_part_id}"]/measure'):
-        # Update divisions if specified in this measure
+    # First pass: build measure structure
+    piano_part = root.find(f'.//part[@id="{piano_part_id}"]')
+    if piano_part is None:  # Fix DeprecationWarning
+        raise ValueError(f"Piano part {piano_part_id} not found in the MusicXML file")
+        
+    # Create complete measure map with precise tick boundaries
+    for measure in piano_part.findall('measure'):
+        measure_info = {
+            'start_ticks': current_ticks,
+            'divisions': current_divisions,
+        }
+        
+        # Process attributes
         for attributes in measure.findall('attributes'):
             div = attributes.find('divisions')
             if div is not None:
-                last_divisions = int(div.text)
+                current_divisions = int(div.text)
+                measure_info['divisions'] = current_divisions
             
-            # Check for time signature
             time_elem = attributes.find('time')
             if time_elem is not None:
                 beats = int(time_elem.find('beats').text)
                 beat_type = int(time_elem.find('beat-type').text)
-                
-                # Store first time signature encountered
-                if initial_time_sig is None:
-                    initial_time_sig = (beats, beat_type)
-                
-                time_signatures.append({
-                    "ticks": current_ticks,
-                    "timeSignature": [str(beats), str(beat_type)],
-                    "measures": current_measure
-                })
+                measure_info['beats'] = beats
+                measure_info['beat_type'] = beat_type
+                measure_info['duration_ticks'] = int((beats * 4 * output_resolution) / beat_type)
         
-        # Calculate measure duration based on time signature
-        if time_signatures:
-            beats, beat_type = map(int, time_signatures[-1]["timeSignature"])
-            measure_duration_ticks = int((beats * 4 * output_resolution) / beat_type)
-        else:
-            # Use initial time signature if found, otherwise default to 4/4
-            if initial_time_sig:
-                beats, beat_type = initial_time_sig
-                measure_duration_ticks = int((beats * 4 * output_resolution) / beat_type)
-            else:
-                measure_duration_ticks = output_resolution * 4
-
-        # Detect if this is a pickup measure
-        if current_measure == 0:
-            actual_duration = 0
-            for elem in measure:
-                if elem.tag == 'note':
-                    if elem.find('grace') is not None:
-                        continue
-                    duration = int(elem.find('duration').text)
-                    actual_duration += int(round(duration * (output_resolution / last_divisions)))
+        # Default to 4/4 if no time signature
+        if 'duration_ticks' not in measure_info:
+            measure_info['beats'] = 4
+            measure_info['beat_type'] = 4
+            measure_info['duration_ticks'] = 4 * output_resolution
+        
+        # Handle pickup measure
+        if len(measure_map) == 0:
+            # Check actual content duration
+            note_duration_sum = 0
+            for note in measure.findall('note'):
+                if note.find('grace') is not None:
+                    continue
+                if note.find('chord') is not None:
+                    continue  # Don't count chord notes twice
+                duration = int(note.find('duration').text)
+                if measure_info['divisions']:
+                    note_duration_sum += int(round(duration * output_resolution / measure_info['divisions']))
             
-            if actual_duration < measure_duration_ticks:
-                # This is a pickup measure
-                measure_duration_ticks = actual_duration
-                measure_type = 0
-            else:
-                first_full_measure_found = True
-                measure_type = 0
-        else:
-            measure_type = 1 if not first_full_measure_found else 2
-            first_full_measure_found = True
-
-        # Store measure info with correct timing
+            if 0 < note_duration_sum < measure_info['duration_ticks']:
+                # This is likely a pickup measure
+                measure_info['duration_ticks'] = note_duration_sum
+                measure_info['is_pickup'] = True
+        
+        measure_map.append(measure_info)
+        current_ticks += measure_info['duration_ticks']
+    
+    # Record time signatures
+    time_signatures = []
+    for i, measure in enumerate(measure_map):
+        if 'beats' in measure and 'beat_type' in measure:
+            time_signatures.append({
+                "ticks": measure['start_ticks'],
+                "timeSignature": [str(measure['beats']), str(measure['beat_type'])],
+                "measures": i
+            })
+    
+    # Generate measure_ticks list
+    measure_ticks = []
+    for i, measure in enumerate(measure_map):
+        measure_start_ticks = measure['start_ticks']
+        measure_duration = measure['duration_ticks']
+        
         measure_ticks.append({
-            "time": current_time,
-            "timeSignature": time_signatures[-1]["timeSignature"] if time_signatures else ['4', '4'],
-            "ticksPerMeasure": measure_duration_ticks,
-            "ticksStart": current_ticks,
-            "totalTicks": measure_duration_ticks,
-            "type": measure_type
+            "time": ticks_to_seconds(measure_start_ticks, tempos, output_resolution),
+            "timeSignature": [str(measure.get('beats', 4)), str(measure.get('beat_type', 4))],
+            "ticksPerMeasure": measure_duration,
+            "ticksStart": measure_start_ticks,
+            "totalTicks": measure_duration,
+            "type": 0 if i == 0 and measure.get('is_pickup') else (1 if i == 0 else 2)
         })
-
-        # Process notes with corrected timing
-        voice_positions = {}  # Track voice positions within measure
-        measure_elements = []
+    
+    # Initialize note collection
+    right_hand_notes = []
+    left_hand_notes = []
+    right_hand_group = 0
+    left_hand_group = -1
+    
+    # Process all notes with precise timing
+    for measure_idx, (measure, measure_info) in enumerate(zip(piano_part.findall('measure'), measure_map)):
+        divisions = measure_info.get('divisions')
+        if divisions is None:
+            continue
         
-        # First pass: collect notes
-        local_position = 0  # Position within current measure
-        measure_start_ticks = current_ticks  # Update measure start position here
+        measure_start_ticks = measure_info['start_ticks']
+        measure_duration = measure_info['duration_ticks']
         
+        # Track voice positions within measure
+        voice_positions = {}
+        local_position = 0
+        
+        # Process measure elements for timing
         for elem in measure:
             if elem.tag == 'backup':
                 backup_duration = int(elem.find('duration').text)
-                backup_ticks = int(round(backup_duration * (output_resolution / last_divisions)))
+                backup_ticks = int(round(backup_duration * output_resolution / divisions))
                 local_position = max(0, local_position - backup_ticks)
                 
             elif elem.tag == 'forward':
                 forward_duration = int(elem.find('duration').text)
-                forward_ticks = int(round(forward_duration * (output_resolution / last_divisions)))
-                local_position += forward_ticks
+                forward_ticks = int(round(forward_duration * output_resolution / divisions))
+                local_position = min(measure_duration, local_position + forward_ticks)
                 
             elif elem.tag == 'note':
+                # Skip grace notes
                 if elem.find('grace') is not None:
                     continue
                 
+                # Get note properties
                 staff = get_note_staff(elem, measure)
                 voice_elem = elem.find('voice')
                 voice = int(voice_elem.text) if voice_elem is not None else 1
                 voice_key = (staff, voice)
                 
-                # Get duration and scale to output resolution
+                # Initialize voice position if needed
+                if voice_key not in voice_positions:
+                    voice_positions[voice_key] = local_position
+                
+                # Get duration
                 duration = int(elem.find('duration').text)
-                duration_ticks = int(round(duration * (output_resolution / last_divisions)))
+                duration_ticks = int(round(duration * output_resolution / divisions))
                 
-                # Calculate note position
-                if elem.find('chord') is not None and measure_elements:
-                    note_start_ticks = measure_elements[-1]['ticks']
-                else:
-                    if voice_key not in voice_positions:
-                        voice_positions[voice_key] = local_position
-                    note_start_ticks = measure_start_ticks + voice_positions[voice_key]
-                    voice_positions[voice_key] = voice_positions[voice_key] + duration_ticks
-                    local_position = voice_positions[voice_key]
-                
-                measure_elements.append({
-                    'elem': elem,
-                    'staff': staff,
-                    'voice': voice,
-                    'ticks': note_start_ticks,
-                    'duration': duration_ticks,
-                    'is_chord': elem.find('chord') is not None
-                })
-        
-        # Rest of the measure processing remains the same...
-        # Second pass: Create Note objects with corrected timing
-        current_group_notes = []
-        notes_in_current_chord = []
-        last_note_end = {1: 0, 2: 0}
-        seen = set()  # to deduplicate key: (staff, note tick, midi)
-        
-        for data in sorted(measure_elements, key=lambda x: x['ticks']):
-            elem = data['elem']
-            staff = data['staff']
-            note_start_ticks = data['ticks']
-            duration_ticks = data['duration']
-            is_chord = data['is_chord']
-            
-            if not is_chord and notes_in_current_chord:
-                current_group_notes.extend(notes_in_current_chord)
-                notes_in_current_chord = []
-            
-            if elem.find('rest') is None:
-                pitch_elem = elem.find('pitch')
-                step = pitch_elem.find('step').text
-                octave = int(pitch_elem.find('octave').text)
-                alter_elem = pitch_elem.find('alter')
-                alter = int(alter_elem.text) if alter_elem is not None else 0
-                
-                velocity = 0.63
-                dynamics = elem.find('.//dynamics/*')
-                if dynamics is not None:
-                    dynamics_map = {
-                        'ppp': 0.1, 'pp': 0.2, 'p': 0.3, 'mp': 0.4,
-                        'mf': 0.5, 'f': 0.6, 'ff': 0.7, 'fff': 0.8
-                    }
-                    velocity = dynamics_map.get(dynamics.tag, 0.63)
-                
-                midi_note = note_to_midi(step, octave, alter)
-                note_start_time = ticks_to_seconds(note_start_ticks, tempos)
-                note_end_time = ticks_to_seconds(note_start_ticks + duration_ticks, tempos)
-                
-                key = (staff, note_start_ticks, midi_note)
-                if key in seen:
-                    continue
-                seen.add(key)
-                
-                note_data = {
-                    'midi': midi_note,
-                    'time': note_start_time,
-                    'velocity': velocity,
-                    'duration': note_end_time - note_start_time,
-                    'ticks': note_start_ticks,
-                    'duration_ticks': duration_ticks,
-                    'staff': staff,
-                    'group': left_hand_group if staff == 2 else right_hand_group
-                }
-                
+                # Calculate start position
+                is_chord = elem.find('chord') is not None
                 if is_chord:
-                    notes_in_current_chord.append(note_data)
+                    # Use position of previous note in chord
+                    note_start_ticks = measure_start_ticks + voice_positions[voice_key]
                 else:
-                    current_group_notes.append(note_data)
-                    if staff == 1 and note_start_time - last_note_end[staff] > 0.1:
-                        right_hand_group += 1
-                    last_note_end[staff] = note_end_time
-        
-        if notes_in_current_chord:
-            current_group_notes.extend(notes_in_current_chord)
-        
-        for note_data in current_group_notes:
-            note = Note(**note_data)
-            if note.staff == 1:
-                right_hand_notes.append(note)
-            else:
-                left_hand_notes.append(note)
-        
-        current_ticks += measure_duration_ticks
-        current_time = ticks_to_seconds(current_ticks, tempos, output_resolution)
-        current_measure += 1
-
+                    # Regular note starts at current voice position
+                    note_start_ticks = measure_start_ticks + voice_positions[voice_key]
+                    # Advance voice position
+                    voice_positions[voice_key] += duration_ticks
+                    # Advance local position for non-chord notes
+                    if elem.find('chord') is None:  # Fix DeprecationWarning
+                        local_position = min(measure_duration, local_position + duration_ticks)
+                
+                # Only process pitch notes (skip rests)
+                if elem.find('rest') is None:
+                    # Get pitch info
+                    pitch_elem = elem.find('pitch')
+                    step = pitch_elem.find('step').text
+                    octave = int(pitch_elem.find('octave').text)
+                    alter_elem = pitch_elem.find('alter')
+                    alter = int(alter_elem.text) if alter_elem is not None else 0
+                    
+                    # Get dynamics
+                    velocity = 0.63  # Default
+                    dynamics = elem.find('.//dynamics/*')
+                    if dynamics is not None:
+                        dynamics_map = {
+                            'ppp': 0.1, 'pp': 0.2, 'p': 0.3, 'mp': 0.4,
+                            'mf': 0.5, 'f': 0.6, 'ff': 0.7, 'fff': 0.8
+                        }
+                        velocity = dynamics_map.get(dynamics.tag, 0.63)
+                    
+                    # Calculate precise timing
+                    midi_note = note_to_midi(step, octave, alter)
+                    note_start_time = ticks_to_seconds(note_start_ticks, tempos, output_resolution)
+                    note_end_time = ticks_to_seconds(note_start_ticks + duration_ticks, tempos, output_resolution)
+                    
+                    # Create note with accurate timing
+                    note = Note(
+                        midi=midi_note,
+                        time=note_start_time,
+                        velocity=velocity,
+                        duration=note_end_time - note_start_time,
+                        ticks=note_start_ticks,
+                        duration_ticks=duration_ticks,
+                        staff=staff,
+                        group=left_hand_group if staff == 2 else right_hand_group
+                    )
+                    
+                    # Update group for right hand based on timing gaps
+                    if staff == 1 and right_hand_notes:
+                        last_note_end = right_hand_notes[-1].time + right_hand_notes[-1].duration
+                        if note_start_time - last_note_end > 0.2:  # Significant gap
+                            right_hand_group += 1
+                    
+                    # Add to appropriate hand
+                    if staff == 1:
+                        right_hand_notes.append(note)
+                    else:
+                        left_hand_notes.append(note)
+    
+    # Sort notes by time within each hand
+    right_hand_notes.sort(key=lambda x: x.time)
+    left_hand_notes.sort(key=lambda x: x.time)
+    
     # Create tracks
-    right_track = Track(notes=sorted(right_hand_notes, key=lambda x: x.time), myInstrument=-5, theirInstrument=0)
-    left_track = Track(notes=sorted(left_hand_notes, key=lambda x: x.time), myInstrument=-5, theirInstrument=0)
+    right_track = Track(notes=right_hand_notes, myInstrument=-5, theirInstrument=0)
+    left_track = Track(notes=left_hand_notes, myInstrument=-5, theirInstrument=0)
     
     # Organize tracks into measures
     tracks_v2 = organize_tracks_v2([right_track, left_track], measure_ticks)
     
-    # Default tempo if none found
-    if not tempos:
-        tempos.append({
-            "bpm": 120,
-            "ticks": 0,
-            "time": 0
-        })
+    # Calculate song length - max of last note end or last measure end
+    song_length = 0
+    if right_hand_notes or left_hand_notes:
+        all_notes = right_hand_notes + left_hand_notes
+        song_length = max([note.time + note.duration for note in all_notes]) if all_notes else 0
     
-    # Create final JSON structure
+    # Use last measure end time if longer
+    if measure_ticks:
+        last_measure = measure_ticks[-1]
+        last_measure_end = ticks_to_seconds(
+            last_measure["ticksStart"] + last_measure["totalTicks"], 
+            tempos, 
+            output_resolution
+        )
+        song_length = max(song_length, last_measure_end)
+    
+    # Create final output
     return {
         "supportingTracks": [
             {
@@ -595,8 +608,8 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
             for track in [right_track, left_track]
         ],
         "start_time": 0,
-        "song_length": current_time,
-        "resolution": last_divisions,  # Use last_divisions here
+        "song_length": song_length,
+        "resolution": output_resolution,
         "tempos": tempos,
         "keySignatures": key_signatures,
         "timeSignatures": time_signatures,
