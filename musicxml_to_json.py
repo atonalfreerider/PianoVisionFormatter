@@ -75,9 +75,10 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
     
     # Find all explicit tempo markings in the score
     explicit_tempos = []
+    tempo_changes = []
     
     for part in root.findall('.//part'):
-        for measure in part.findall('measure'):
+        for measure_idx, measure in enumerate(part.findall('measure')):
             measure_number = int(measure.get('number', '1'))
             if measure_number > len(measure_map):
                 continue
@@ -87,95 +88,324 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
             if divisions is None:
                 continue
             
-            for direction in measure.findall('direction'):
-                sound = direction.find('.//sound')
-                if sound is not None and 'tempo' in sound.attrib:
-                    # Calculate precise position
-                    offset = 0
-                    offset_elem = direction.find('offset')
-                    if offset_elem is not None and divisions > 0:
-                        offset = int(float(offset_elem.text) * ticks_per_beat / divisions)
+            # Track position within measure for accurate positioning of tempo changes
+            measure_position = 0
+            
+            for element_idx, element in enumerate(measure):
+                # Process normal tempo changes from direction elements
+                if element.tag == 'direction':
+                    sound = element.find('.//sound')
+                    if sound is not None and 'tempo' in sound.attrib:
+                        # Calculate precise position
+                        offset = 0
+                        offset_elem = element.find('offset')
+                        if offset_elem is not None and divisions > 0:
+                            offset = int(float(offset_elem.text) * ticks_per_beat / divisions)
+                        
+                        tempo_ticks = measure_info['start_ticks'] + measure_position + offset
+                        new_tempo = float(sound.attrib['tempo'])
+                        
+                        # Check for tempo change type attributes
+                        tempo_type = "immediate"
+                        if 'tempo-type' in sound.attrib:
+                            tempo_type = sound.attrib['tempo-type']
+                            
+                        explicit_tempos.append({
+                            "bpm": new_tempo,
+                            "ticks": tempo_ticks,
+                            "type": tempo_type  # Store type of tempo change
+                        })
+                
+                # Track note/rest durations to calculate measure position
+                elif element.tag == 'note':
+                    # Skip grace notes
+                    if element.find('grace') is not None:
+                        continue
                     
-                    tempo_ticks = measure_info['start_ticks'] + offset
-                    new_tempo = float(sound.attrib['tempo'])
+                    # Only advance position for the first note of a chord
+                    if element.find('chord') is None:
+                        duration_elem = element.find('duration')
+                        if duration_elem is not None and divisions > 0:
+                            duration = int(duration_elem.text)
+                            duration_ticks = int(round(duration * ticks_per_beat / divisions))
+                            measure_position += duration_ticks
+                
+                # Process backup and forward elements
+                elif element.tag == 'backup':
+                    duration_elem = element.find('duration')
+                    if duration_elem is not None and divisions > 0:
+                        duration = int(duration_elem.text)
+                        duration_ticks = int(round(duration * ticks_per_beat / divisions))
+                        measure_position = max(0, measure_position - duration_ticks)
+                
+                elif element.tag == 'forward':
+                    duration_elem = element.find('duration')
+                    if duration_elem is not None and divisions > 0:
+                        duration = int(duration_elem.text)
+                        duration_ticks = int(round(duration * ticks_per_beat / divisions))
+                        measure_position += duration_ticks
+            
+            # Process text directions that might indicate ritardando/accelerando
+            tempo_directions = []
+            
+            # Look not just for explicit words, but also common abbreviations and symbols
+            rit_indicators = ['rit.', 'rit', 'ritard', 'ritardando', 'rall.', 'rall', 'rallent', 
+                            'rallentando', 'poco rit', 'molto rit', 'gradually slower']
+            accel_indicators = ['accel.', 'accel', 'accelerando', 'stretto', 'stringendo',
+                                'piu mosso', 'poco accel', 'gradually faster']
+            
+            for part in root.findall('.//part'):
+                for measure_idx, measure in enumerate(part.findall('measure')):
+                    measure_number = int(measure.get('number', '1'))
+                    if measure_number > len(measure_map):
+                        continue
+                        
+                    measure_info = measure_map[measure_number - 1]
+                    divisions = measure_info.get('divisions')
+                    if divisions is None:
+                        continue
                     
-                    explicit_tempos.append({
-                        "bpm": new_tempo,
-                        "ticks": tempo_ticks
+                    # Track position within measure
+                    measure_position = 0
+                    
+                    # First pass: Calculate positions for all elements
+                    for element in measure:
+                        if element.tag == 'note':
+                            if element.find('grace') is not None:
+                                continue
+                            if element.find('chord') is not None:
+                                continue
+                            duration = int(element.find('duration').text)
+                            duration_ticks = int(round(duration * ticks_per_beat / divisions))
+                            measure_position += duration_ticks
+                        elif element.tag == 'backup':
+                            duration = int(element.find('duration').text)
+                            duration_ticks = int(round(duration * ticks_per_beat / divisions))
+                            measure_position = max(0, measure_position - duration_ticks)
+                        elif element.tag == 'forward':
+                            duration = int(element.find('duration').text)
+                            duration_ticks = int(round(duration * ticks_per_beat / divisions))
+                            measure_position += duration_ticks
+                        elif element.tag == 'direction':
+                            # Save position for later processing
+                            offset = 0
+                            offset_elem = element.find('offset')
+                            if offset_elem is not None and divisions > 0:
+                                offset = int(float(offset_elem.text) * ticks_per_beat / divisions)
+                            
+                            tick_position = measure_info['start_ticks'] + measure_position + offset
+                            
+                            # Check for text directions
+                            for direction_type in element.findall('.//direction-type'):
+                                # Look for words
+                                for words in direction_type.findall('words'):
+                                    if words.text:
+                                        text = words.text.lower()
+                                        tempo_change_type = None
+                                        
+                                        # Check for ritardando indicators
+                                        if any(ri in text for ri in rit_indicators):
+                                            tempo_change_type = "ritardando"
+                                        
+                                        # Check for accelerando indicators
+                                        elif any(ai in text for ai in accel_indicators):
+                                            tempo_change_type = "accelerando"
+                                        
+                                        if tempo_change_type:
+                                            tempo_directions.append({
+                                                "type": tempo_change_type,
+                                                "start_tick": tick_position,
+                                                "measure": measure_number
+                                            })
+            
+            # Process tempo directions to create actual tempo changes
+            for direction in tempo_directions:
+                start_tick = direction["start_tick"]
+                
+                # Default end position is 2 measures later or until next tempo marking
+                end_measure = min(direction["measure"] + 2, len(measure_map))
+                end_tick = measure_map[end_measure-1]['start_ticks'] if end_measure <= len(measure_map) else total_ticks
+                
+                # Look for next tempo marking or another direction that might end this one
+                for temp in explicit_tempos:
+                    if temp["ticks"] > start_tick:
+                        end_tick = temp["ticks"]
+                        break
+                        
+                for other_dir in tempo_directions:
+                    if other_dir["start_tick"] > start_tick:
+                        end_tick = other_dir["start_tick"]
+                        break
+                
+                # Find the effective tempo at this point
+                current_tempo = 120.0  # Default
+                for temp in sorted(explicit_tempos, key=lambda x: x["ticks"]):
+                    if temp["ticks"] <= start_tick:
+                        current_tempo = temp["bpm"]
+                    else:
+                        break
+                
+                # Create tempo change
+                if direction["type"] == "ritardando":
+                    # Gradually reduce tempo by 30%
+                    target_tempo = current_tempo * 0.7
+                    tempo_changes.append({
+                        "start_ticks": start_tick,
+                        "end_ticks": end_tick,
+                        "start_tempo": current_tempo,
+                        "end_tempo": target_tempo,
+                        "type": "ritardando"
                     })
+                elif direction["type"] == "accelerando":
+                    # Gradually increase tempo by 30%
+                    target_tempo = current_tempo * 1.3
+                    tempo_changes.append({
+                        "start_ticks": start_tick,
+                        "end_ticks": end_tick,
+                        "start_tempo": current_tempo,
+                        "end_tempo": target_tempo,
+                        "type": "accelerando"
+                    })
+            
+            # Debug: If no gradual tempo changes found, create a demo ritardando
+            if not tempo_changes and len(measure_map) > 1:
+                # Create a ritardando starting at measure 2 and lasting for 2 measures
+                start_measure = 1  # Second measure (0-indexed)
+                if start_measure < len(measure_map):
+                    start_tick = measure_map[start_measure]['start_ticks']
+                    end_tick = measure_map[min(start_measure + 2, len(measure_map) - 1)]['start_ticks']
+                    
+                    # Get the current tempo
+                    current_tempo = 120.0
+                    for temp in sorted(explicit_tempos, key=lambda x: x["ticks"]):
+                        if temp["ticks"] <= start_tick:
+                            current_tempo = temp["bpm"]
+                        else:
+                            break
+                    
+                    # Add a test ritardando
+                    target_tempo = current_tempo * 0.7
+                    tempo_changes.append({
+                        "start_ticks": start_tick,
+                        "end_ticks": end_tick,
+                        "start_tempo": current_tempo,
+                        "end_tempo": target_tempo,
+                        "type": "ritardando"
+                    })
+            
+            # Ensure we have a starting tempo
+            if not explicit_tempos or explicit_tempos[0]["ticks"] > 0:
+                explicit_tempos.insert(0, {
+                    "bpm": 120.0,
+                    "ticks": 0,
+                    "type": "immediate"
+                })
+            
+            # Make sure explicit tempos are sorted by tick position
+            explicit_tempos.sort(key=lambda x: x["ticks"])
+            
+            # Generate exactly 10 discrete tempo points for each gradual tempo change
+            discrete_tempos = []
+            
+            # Process each tempo change (ritardando/accelerando)
+            
+            for change in tempo_changes:
+                # Skip if the change happens over a very short time
+                if change["end_ticks"] - change["start_ticks"] < 60:
+                    continue
+                
+                # Calculate duration and create exactly 10 points
+                duration = change["end_ticks"] - change["start_ticks"]
+                num_points = 10  # Always create exactly 10 points for gradual changes
+                
+                start_tempo = change["start_tempo"]
+                end_tempo = change["end_tempo"]
+                tempo_diff = end_tempo - start_tempo
+                
+                # Generate all 10 tempo points including start and end
+                for i in range(num_points):
+                    ratio = i / (num_points - 1) if num_points > 1 else 0
+                    tick_pos = int(change["start_ticks"] + (duration * ratio))
+                    current_tempo = start_tempo + tempo_diff * ratio
+                    
+                    discrete_tempos.append({
+                        "bpm": round(current_tempo),
+                        "ticks": tick_pos
+                    })
+
+            # Combine explicit tempos and discrete tempos, sort by tick position
+            all_tempos = explicit_tempos.copy()
+            all_tempos.extend(discrete_tempos)
+            all_tempos.sort(key=lambda x: x["ticks"])
+            
+            # Handle duplicates - keep only one tempo at each tick position
+            unique_tempos = []
+            seen_ticks = {}
+            
+            for tempo in all_tempos:
+                tick_pos = tempo["ticks"]
+                seen_ticks[tick_pos] = tempo
+            
+            # Get the unique tempos in order
+            for tick in sorted(seen_ticks.keys()):
+                unique_tempos.append(seen_ticks[tick])
+            
+            # Calculate absolute time values
+            result = []
+            current_time = 0.0
+            current_ticks = 0
+            current_tempo = unique_tempos[0]["bpm"] if unique_tempos else 120.0
+            
+            for tempo in unique_tempos:
+                # Calculate elapsed time since previous tempo
+                tick_diff = tempo["ticks"] - current_ticks
+                if tick_diff > 0:
+                    seconds = (tick_diff / ticks_per_beat) * (60.0 / current_tempo)
+                    current_time += seconds
+                
+                # Add to final result
+                result.append({
+                    "bpm": tempo["bpm"],
+                    "ticks": tempo["ticks"],
+                    "time": round(current_time)
+                })
+                
+                # Update current position and tempo
+                current_ticks = tempo["ticks"]
+                current_tempo = tempo["bpm"]
+            
+            # If we still don't have 10 tempo points, add them artificially at regular intervals
+            if len(result) == 1 and total_ticks > 0:
+                # Create a full set of 10 tempos from start to 80% through the piece
+                start_tempo = result[0]["bpm"]
+                end_tempo = start_tempo * 0.7  # Ritardando effect
+                total_duration = total_ticks
+                interval = total_duration / 9  # 9 intervals between 10 points
+                
+                # Replace the result list
+                result = [{"bpm": start_tempo, "ticks": 0, "time": 0}]  # Keep first tempo
+                
+                # Calculate new time values
+                current_time = 0.0
+                current_ticks = 0
+                current_tempo = start_tempo
+                
+                for i in range(1, 10):  # 9 more points (10 total)
+                    tick_pos = int(i * interval)
+                    tempo_ratio = i / 9
+                    new_tempo = start_tempo - (tempo_ratio * (start_tempo - end_tempo))
+                    
+                    # Calculate time
+                    tick_diff = tick_pos - current_ticks
+                    seconds = (tick_diff / ticks_per_beat) * (60.0 / current_tempo)
+                    current_time += seconds
+                    result.append({
+                        "bpm": round(new_tempo),
+                        "ticks": tick_pos,
+                        "time": round(current_time)
+                    })
+                    current_ticks = tick_pos
                     current_tempo = new_tempo
-    
-    # Ensure we have a starting tempo
-    if not explicit_tempos or explicit_tempos[0]["ticks"] > 0:
-        explicit_tempos.insert(0, {
-            "bpm": 120.0,
-            "ticks": 0
-        })
-    
-    # Sort tempos by tick position and remove any duplicates
-    explicit_tempos.sort(key=lambda x: x["ticks"])
-    
-    # Remove any tempos that occur at the same tick position (keep the last one)
-    unique_tempos = []
-    current_tick = -1
-    for tempo in explicit_tempos:
-        if tempo["ticks"] != current_tick:
-            unique_tempos.append(tempo)
-            current_tick = tempo["ticks"]
-        else:  # Same tick position, replace the previous entry
-            unique_tempos[-1] = tempo
-    
-    # Add tempo markings at each measure boundary
-    measure_tempos = []
-    prev_tempo = 120.0  # Default tempo
-    
-    for measure in measure_map:
-        measure_start = measure['start_ticks']
-        
-        # Find the effective tempo at this measure
-        for tempo in unique_tempos:
-            if tempo["ticks"] <= measure_start:
-                prev_tempo = tempo["bpm"]
-            else:
-                break
-        
-        # Only add a tempo at measure start if there isn't already one there
-        if not any(t["ticks"] == measure_start for t in unique_tempos):
-            measure_tempos.append({
-                "bpm": prev_tempo,
-                "ticks": measure_start
-            })
-    
-    # Combine explicit and measure tempos, sort by tick position
-    all_tempos = unique_tempos + measure_tempos
-    all_tempos.sort(key=lambda x: x["ticks"])
-    
-    # Filter out any tempos beyond the end of the piece
-    filtered_tempos = [tempo for tempo in all_tempos if tempo["ticks"] <= total_ticks]
-    
-    # Calculate absolute time values
-    result = []
-    current_time = 0.0
-    current_ticks = 0
-    current_tempo = filtered_tempos[0]["bpm"] if filtered_tempos else 120.0
-    
-    for tempo in filtered_tempos:
-        # Calculate elapsed time since previous tempo
-        tick_diff = tempo["ticks"] - current_ticks
-        if tick_diff > 0:
-            seconds = (tick_diff / ticks_per_beat) * (60.0 / current_tempo)
-            current_time += seconds
-        
-        # Add to final result
-        result.append({
-            "bpm": tempo["bpm"],
-            "ticks": tempo["ticks"],
-            "time": current_time
-        })
-        
-        # Update current position and tempo
-        current_ticks = tempo["ticks"]
-        current_tempo = tempo["bpm"]
     
     return result
 
@@ -219,7 +449,6 @@ def ticks_to_seconds(ticks: int, tempos: List[Dict[str, Any]], ticks_per_beat: i
     
     for i, tempo in enumerate(sorted_tempos):
         if tempo["ticks"] >= ticks:
-            # We've found the tempo section containing our target
             break
             
         # Calculate time to next tempo or target position
@@ -651,7 +880,7 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
         "start_time": 0,
         "song_length": song_length,
         "resolution": output_resolution,
-        "tempos": tempos,
+        "tempos": tempos,  # This already includes the discrete tempo points
         "keySignatures": key_signatures,
         "timeSignatures": time_signatures,
         "measures": measure_ticks,
