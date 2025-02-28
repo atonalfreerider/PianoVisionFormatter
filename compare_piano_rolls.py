@@ -238,14 +238,14 @@ class PianoRollComparator(tk.Tk):
         for tempo in self.reference_data['tempos']:
             time = tempo['time']
             ax.plot([x_max - 1, x_max], [time, time], 'purple', linewidth=2, alpha=0.8)
-            ax.text(ref_tempo_offset, time, f"R: {tempo['bpm']} BPM", 
+            ax.text(ref_tempo_offset, time, f"R: {int(tempo['bpm'])} BPM", 
                    fontsize=8, color='purple', alpha=0.8, horizontalalignment='left')
 
         # Generated file - tempo changes (blue)
         for tempo in self.generated_data['tempos']:
             time = tempo['time']
             ax.plot([x_max - 1, x_max], [time, time], 'blue', linewidth=2, alpha=0.8)
-            ax.text(gen_tempo_offset, time, f"G: {tempo['bpm']} BPM", 
+            ax.text(gen_tempo_offset, time, f"G: {int(tempo['bpm'])} BPM", 
                    fontsize=8, color='blue', alpha=0.8, horizontalalignment='left')
         
         # Adjust the subplot to make room for the markers - increased margins
