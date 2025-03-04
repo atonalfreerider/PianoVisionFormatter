@@ -248,8 +248,12 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
                 end_tick = other_dir["start_tick"]
                 break
         
-        # Find the effective tempo at this point
-        current_tempo = 120.0  # Default
+        # Find the effective tempo at this point - don't use a default
+        if not explicit_tempos:
+            raise ValueError("No tempo markings found when processing tempo direction.")
+            
+        # Find the current tempo from the explicit tempos list
+        current_tempo = explicit_tempos[0]["bpm"]  # Start with first tempo
         for temp in sorted(explicit_tempos, key=lambda x: x["ticks"]):
             if temp["ticks"] <= start_tick:
                 current_tempo = temp["bpm"]
@@ -326,23 +330,16 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
                     "type": "gradual"
                 })
     
-    # Only add a default tempo if we have no explicit tempos
-    if not explicit_tempos:
-        explicit_tempos.append({
-            "bpm": 120,
-            "ticks": 0,
-            "type": "immediate"
-        })
-    # Only add default starting tempo if first explicit tempo is after tick 0
-    elif explicit_tempos[0]["ticks"] > 0:
-        explicit_tempos.insert(0, {
-            "bpm": 120,
-            "ticks": 0,
-            "type": "immediate"
-        })
-    
     # Make sure explicit tempos are sorted by tick position
     explicit_tempos.sort(key=lambda x: x["ticks"])
+    
+    # Check if we have any explicit tempos - throw error if not
+    if not explicit_tempos:
+        raise ValueError("No tempo markings found in MusicXML. A valid tempo marking is required.")
+    
+    # Check if the first tempo starts after tick 0 - throw error if it does
+    if explicit_tempos[0]["ticks"] > 0:
+        raise ValueError(f"First tempo marking starts at tick {explicit_tempos[0]['ticks']} instead of tick 0. A tempo marking at the beginning is required.")
     
     # Replace our old approach with the reference approach:
     # Instead of generating discrete tempos from tempo_changes, we'll use the tempo_changes directly
@@ -379,13 +376,6 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
             "ticks": tempo["ticks"]
         })
     
-    # If empty (which shouldn't happen due to default), add default tempo
-    if not result_tempos:
-        result_tempos.append({
-            "bpm": 120,
-            "ticks": 0
-        })
-    
     # Calculate absolute time values
     result = []
     current_time = 0.0
@@ -403,7 +393,7 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
         result.append({
             "bpm": tempo["bpm"],  # Already converted to int above
             "ticks": tempo["ticks"],
-            "time": round(current_time, 0) if current_time > 10 else round(current_time, 3)  # Round to match reference
+            "time": round(current_time, 3)  # Always use 3 decimal places for consistent precision
         })
         
         # Update current position and tempo
@@ -439,7 +429,7 @@ def extract_key_signatures(root) -> List[Dict[str, Any]]:
 def ticks_to_seconds(ticks: int, tempos: List[Dict[str, Any]], ticks_per_beat: int = 480) -> float:
     """Convert tick position to seconds using MuseScore-compatible tempo interpretation"""
     if not tempos:
-        return (ticks / ticks_per_beat) * (60.0 / 120.0)  # Default 120 BPM
+        raise ValueError("No tempo markings available. Cannot convert ticks to seconds.")
     
     if ticks <= 0:
         return 0.0
@@ -454,7 +444,7 @@ def ticks_to_seconds(ticks: int, tempos: List[Dict[str, Any]], ticks_per_beat: i
     
     current_time = 0.0
     current_ticks = 0
-    current_tempo = sorted_tempos[0]["bpm"]  # Always use the first tempo
+    current_tempo = sorted_tempos[0]["bpm"]  # Use the first tempo, which should be at tick 0
     
     for i, tempo in enumerate(sorted_tempos):
         if tempo["ticks"] >= ticks:
@@ -619,13 +609,8 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
     # Extract tempos first for consistent timing
     tempos = extract_tempo_from_xml(root, output_resolution)
     
-    # Ensure we have at least one tempo marking
-    if not tempos:
-        tempos = [{
-            "bpm": 120.0,
-            "ticks": 0,
-            "time": 0.0
-        }]
+    # No need to check for empty tempos - the extract function will now throw an error
+    # No need to add a default tempo - the extract function will verify one exists at tick 0
     
     # Extract key signatures
     key_signatures = extract_key_signatures(root)
@@ -862,7 +847,7 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
     left_track = Track(notes=left_hand_notes, myInstrument=-5, theirInstrument=0)
     
     # Organize tracks into measures
-    tracks_v2 = organize_tracks_v2([right_track, left_track], measure_ticks)
+    tracks_v2 = organize_tracks_v2([right_track, left_track], measure_ticks, tempos, output_resolution)
     
     # Calculate song length - max of last note end or last measure end
     song_length = 0
@@ -962,7 +947,7 @@ def calculate_rests(start_time: float, end_time: float, notes: List[Dict[str, An
     
     return rests
 
-def organize_tracks_v2(tracks: List[Track], sorted_measures: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+def organize_tracks_v2(tracks: List[Track], sorted_measures: List[Dict[str, Any]], tempos: List[Dict[str, Any]], ticks_per_beat: int = 480) -> Dict[str, List[Dict[str, Any]]]:
     """Organize notes into measures for each hand"""
     # Ensure measure consistency
     measure_count = len(sorted_measures)
@@ -974,8 +959,14 @@ def organize_tracks_v2(tracks: List[Track], sorted_measures: List[Dict[str, Any]
         for measure_idx in range(measure_count):
             measure = sorted_measures[measure_idx]
             next_measure = sorted_measures[measure_idx + 1] if measure_idx + 1 < measure_count else None
-            time_end = (next_measure["time"] if next_measure
-                      else measure["time"] + (measure["totalTicks"] * 60.0) / (120 * 480))
+            
+            # Calculate timeEnd using the tempo at this measure's end
+            if next_measure:
+                time_end = next_measure["time"]
+            else:
+                # For the last measure, calculate based on actual tempo
+                measure_end_ticks = measure["ticksStart"] + measure["totalTicks"]
+                time_end = ticks_to_seconds(measure_end_ticks, tempos, ticks_per_beat)
             
             # Ensure required fields exist
             ticks_per_measure = measure.get("totalTicks", measure.get("ticksPerMeasure", 1920))  # Default to 4/4 time
