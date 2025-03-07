@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from tempo_extractor import extract_tempo_from_xml, ticks_to_seconds, verify_tempo_markings
 from metadata_extractor import extract_metadata_from_xml, format_output_filename
+from midi_to_json import extract_tempo_events
 
 @dataclass
 class Note:
@@ -120,6 +121,19 @@ def get_note_staff(note_elem, measure) -> int:
 
     return 2 if is_after_backup else 1  # Default to staff 1 if unknown
 
+def find_matching_midi(xml_path: str) -> Optional[str]:
+    """Find a MIDI file with matching name in the same directory as the XML file"""
+    xml_dir = os.path.dirname(xml_path)
+    xml_basename = os.path.splitext(os.path.basename(xml_path))[0]
+    
+    # Check for .mid and .midi extensions
+    for ext in ['.mid', '.midi']:
+        midi_path = os.path.join(xml_dir, xml_basename + ext)
+        if os.path.isfile(midi_path):
+            return midi_path
+    
+    return None
+
 def parse_musicxml(xml_path: str) -> Dict[str, Any]:
     tree = ET.parse(xml_path)
     root = tree.getroot()
@@ -133,8 +147,17 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
     # Use a standard output resolution that minimizes rounding errors
     output_resolution = 480  # MIDI standard resolution
     
-    # Extract tempos using the improved tempo extractor
-    tempos = extract_tempo_from_xml(root, output_resolution)
+    # Check for matching MIDI file to extract tempos
+    matching_midi = find_matching_midi(xml_path)
+    if matching_midi:
+        print(f"Found matching MIDI file: {matching_midi}")
+        print(f"Using tempo from MIDI file instead of MusicXML")
+        import mido
+        midi_file = mido.MidiFile(matching_midi)
+        tempos = extract_tempo_events(midi_file)
+    else:
+        # Extract tempos using the improved tempo extractor from MusicXML
+        tempos = extract_tempo_from_xml(root, output_resolution)
     
     # Verify tempo markings for debugging
     verify_tempo_markings(tempos)

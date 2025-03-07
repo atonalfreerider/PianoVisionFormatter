@@ -3,6 +3,7 @@
 Converts piano MusicXML or MIDI files to PianoVision json format
 
 BUG: MusicXML tempo interpretation is not working. The tick conversion is very wrong.
+BUG: The notes are also sometimes inaccurate
 
 Reference:
 
@@ -10,7 +11,10 @@ https://github.com/musescore/MuseScore/blob/master/src/importexport/midi/interna
 https://github.com/musescore/MuseScore/blob/master/src/engraving/dom/tempo.cpp  
 https://github.com/musescore/MuseScore/blob/master/src/engraving/dom/gradualtempochange.cpp  
 
-Temporary fix is to rely on midi with author/composer and piece name from xml
+Tempo extraction:
+- If a MIDI file with the same name exists in the same folder as the MusicXML file, tempo will be extracted from the MIDI file instead
+- Otherwise, will attempt to extract tempo from MusicXML
+- For best results, use MIDI files for accurate tempo information
 
 ## Usage
 
