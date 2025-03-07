@@ -4,6 +4,7 @@ import os
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from tempo_extractor import extract_tempo_from_xml, ticks_to_seconds, verify_tempo_markings
+from metadata_extractor import extract_metadata_from_xml, format_output_filename
 
 @dataclass
 class Note:
@@ -53,60 +54,6 @@ def extract_key_signatures(root) -> List[Dict[str, Any]]:
         })
         
     return key_signatures
-
-def extract_metadata(root, xml_path: str) -> tuple[str, str]:
-    """Extract title and subtitle from MusicXML"""
-    title = None
-    subtitle = None
-    
-    # Try to get title and subtitle from credit elements
-    for credit in root.findall('.//credit'):
-        credit_type = credit.find('credit-type')
-        if credit_type is not None:
-            if credit_type.text == 'title':
-                credit_words = credit.find('credit-words')
-                if credit_words is not None:
-                    title = credit_words.text
-            elif credit_type.text == 'subtitle':
-                credit_words = credit.find('credit-words')
-                if credit_words is not None:
-                    subtitle = credit_words.text
-    
-    # Fallback to work-title if no credit title found
-    if not title:
-        work = root.find('.//work-title')
-        if work is not None:
-            title = work.text
-    
-    # Final fallback to filename
-    if not title:
-        title = os.path.splitext(os.path.basename(xml_path))[0].replace('_', ' ')
-    
-    # Combine title and subtitle if both exist
-    if subtitle:
-        title = f"{title} - {subtitle}"
-
-    # Try to get composer from credit elements
-    artist = None
-    for credit in root.findall('.//credit'):
-        credit_type = credit.find('credit-type')
-        if credit_type is not None and credit_type.text == 'composer':
-            credit_words = credit.find('credit-words')
-            if credit_words is not None:
-                artist = credit_words.text
-                break
-    
-    # Fallback to creator field if no credit composer found
-    if not artist:
-        creator = root.find('.//creator[@type="composer"]')
-        if creator is not None:
-            artist = creator.text
-    
-    # Final fallback to parent folder name
-    if not artist:
-        artist = os.path.basename(os.path.dirname(xml_path))
-    
-    return title, artist
 
 def identify_piano_part(root) -> str:
     """Identify the first piano part ID in the score"""
@@ -177,8 +124,8 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
     tree = ET.parse(xml_path)
     root = tree.getroot()
     
-    # Get title and artist
-    title, artist = extract_metadata(root, xml_path)
+    # Get title and artist using the metadata extractor
+    title, artist = extract_metadata_from_xml(xml_path)
     
     # Identify piano part
     piano_part_id = identify_piano_part(root)
@@ -186,14 +133,11 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
     # Use a standard output resolution that minimizes rounding errors
     output_resolution = 480  # MIDI standard resolution
     
-    # Extract tempos first for consistent timing
+    # Extract tempos using the improved tempo extractor
     tempos = extract_tempo_from_xml(root, output_resolution)
     
     # Verify tempo markings for debugging
     verify_tempo_markings(tempos)
-    
-    # No need to check for empty tempos - the extract function will now throw an error
-    # No need to add a default tempo - the extract function will verify one exists at tick 0
     
     # Extract key signatures
     key_signatures = extract_key_signatures(root)
@@ -674,30 +618,6 @@ def get_note_length_type(duration_ticks: int) -> str:
     else:
         return "dottedsixteenth"
 
-def format_output_filename(title: str, artist: str, xml_path: str) -> str:
-    """Format the output filename according to specifications"""
-    import re
-    
-    # Format artist (first 4 letters of last name)
-    if not artist or artist.isspace():
-        # Use parent folder only if no artist found
-        artist = os.path.basename(os.path.dirname(xml_path))
-    
-    # Get last word and clean it
-    last_name = artist.strip().split()[-1]
-    auth = re.sub(r'[^a-zA-Z]', '', last_name)[:4].lower()
-    
-    # Format title
-    if not title or title.isspace():
-        # Use original filename only if no title found
-        title = os.path.splitext(os.path.basename(xml_path))[0]
-    
-    # Remove non-alphanumeric (except spaces), then replace spaces with underscores
-    formatted_title = re.sub(r'[^a-zA-Z0-9\s]', '', title)
-    formatted_title = formatted_title.strip().replace(' ', '_')
-    
-    return f"{auth}_{formatted_title}.json"
-
 def main():
     import sys
     if len(sys.argv) != 3:
@@ -717,7 +637,7 @@ def main():
     try:
         output_json = parse_musicxml(xml_path)
         
-        # Generate formatted output filename
+        # Generate formatted output filename using the shared utility
         output_filename = format_output_filename(
             output_json['name'],
             output_json['artist'],

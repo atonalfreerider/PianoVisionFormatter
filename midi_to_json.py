@@ -3,6 +3,7 @@ import json
 import os
 from typing import List, Dict, Any, Tuple
 from dataclasses import dataclass
+from metadata_extractor import extract_metadata_from_xml, format_output_filename, find_matching_musicxml
 
 @dataclass
 class Note:
@@ -20,49 +21,63 @@ class Track:
     theirInstrument: int
 
 def extract_tempo_events(mid: mido.MidiFile) -> List[Dict[str, Any]]:
+    """Extract tempo events from MIDI with improved reliability"""
     tempo_events = []
-    current_tempo = 500000  # Default tempo
-    TICKS_PER_BEAT = 480
+    current_tempo = 500000  # Default tempo (120 BPM)
+    last_tick = 0
+    last_time = 0.0
     
+    # First, collect all tempo events from all tracks
     for track in mid.tracks:
-        track_time = 0.0
-        track_ticks = 0
+        abs_tick = 0
         for msg in track:
-            track_ticks += msg.time
-            # Convert message time to seconds based on current tempo
-            msg_time = (msg.time * current_tempo) / (TICKS_PER_BEAT * 1000000)
-            track_time += msg_time
+            abs_tick += msg.time
             
             if msg.type == 'set_tempo':
-                current_tempo = msg.tempo
                 tempo_events.append({
-                    "bpm": 60000000 / msg.tempo,
-                    "ticks": track_ticks,
-                    "time": track_time
+                    'tick': abs_tick,
+                    'tempo': msg.tempo
                 })
     
-    if not tempo_events:
-        tempo_events.append({
-            "bpm": 120,
-            "ticks": 0,
-            "time": 0
+    # Sort tempo events by tick position
+    tempo_events.sort(key=lambda x: x['tick'])
+    
+    # Ensure we have a tempo at tick 0
+    if not tempo_events or tempo_events[0]['tick'] > 0:
+        tempo_events.insert(0, {
+            'tick': 0,
+            'tempo': 500000  # 120 BPM
         })
     
-    # Sort tempo events by time
-    tempo_events.sort(key=lambda x: x["time"])
-    return tempo_events
+    # Convert to the format we need
+    formatted_tempos = []
+    for i, event in enumerate(tempo_events):
+        if i > 0:
+            # Calculate time based on previous tempo
+            prev = tempo_events[i-1]
+            delta_ticks = event['tick'] - prev['tick']
+            delta_time = (delta_ticks * prev['tempo']) / (mid.ticks_per_beat * 1000000)
+            last_time += delta_time
+        
+        formatted_tempos.append({
+            "bpm": 60000000 / event['tempo'],
+            "ticks": event['tick'],
+            "time": last_time
+        })
+    
+    return formatted_tempos
 
 def extract_time_signatures(mid: mido.MidiFile) -> List[Dict[str, Any]]:
+    """Extract time signatures from MIDI"""
     time_sigs = []
-    current_ticks = 0
     
     for track in mid.tracks:
-        track_ticks = 0
+        abs_tick = 0
         for msg in track:
-            track_ticks += msg.time
+            abs_tick += msg.time
             if msg.type == 'time_signature':
                 time_sigs.append({
-                    "ticks": track_ticks,
+                    "ticks": abs_tick,
                     "timeSignature": [msg.numerator, msg.denominator],
                     "measures": len(time_sigs)
                 })
@@ -79,6 +94,7 @@ def extract_time_signatures(mid: mido.MidiFile) -> List[Dict[str, Any]]:
     return time_sigs
 
 def extract_key_signatures(mid: mido.MidiFile) -> List[Dict[str, Any]]:
+    """Extract key signatures from MIDI"""
     key_sigs = []
     current_time = 0
     
@@ -135,26 +151,41 @@ def ticks_to_seconds(ticks: int, tempos: List[Dict[str, Any]], ticks_per_beat: i
     return current_time + (delta_ticks * current_tempo) / (ticks_per_beat * 1000000)
 
 def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
+    """Extract notes from MIDI with improved staff assignment"""
     mid = mido.MidiFile(midi_path)
     tracks: List[List[Note]] = [[] for _ in range(2)]  # Right hand (1), Left hand (2)
     notes: Dict[Tuple[int, int], Tuple[int, float, float]] = {}
     tempos = extract_tempo_events(mid)
     max_time = 0.0
     
-    # First pass: identify piano tracks by looking for "piano" in track names
-    piano_tracks = set()
-    for track_idx, track in enumerate(mid.tracks):
-        for msg in track:
-            if msg.type == 'track_name' and 'piano' in msg.name.lower():
-                piano_tracks.add(track_idx)
-                break
+    # Improved piano track detection with channel-based allocation
+    piano_tracks = []
+    track_channels = {}
     
-    # If no explicit piano tracks found, fallback to program change detection
+    # First pass: identify piano tracks by looking for "piano" in track names or program changes
+    for track_idx, track in enumerate(mid.tracks):
+        found_piano = False
+        used_channels = set()
+        
+        for msg in track:
+            if hasattr(msg, 'channel'):
+                used_channels.add(msg.channel)
+                
+            if msg.type == 'track_name' and 'piano' in msg.name.lower():
+                found_piano = True
+            elif msg.type == 'program_change' and 0 <= msg.program <= 7:  # Piano family
+                found_piano = True
+                
+        if found_piano:
+            piano_tracks.append(track_idx)
+            track_channels[track_idx] = used_channels
+    
+    # If no piano tracks found, use first two tracks if available, or all tracks
     if not piano_tracks:
-        for track_idx, track in enumerate(mid.tracks):
-            for msg in track:
-                if msg.type == 'program_change' and msg.program == 0:  # Program 0 is piano
-                    piano_tracks.add(track_idx)
+        if len(mid.tracks) >= 2:
+            piano_tracks = [0, 1]
+        else:
+            piano_tracks = list(range(len(mid.tracks)))
     
     # Process piano tracks and collect notes
     for track_idx, track in enumerate(mid.tracks):
@@ -162,27 +193,27 @@ def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
             continue
 
         track_ticks = 0
-        current_channel = None
-        
         for msg in track:
             track_ticks += msg.time
             track_time = ticks_to_seconds(track_ticks, tempos, mid.ticks_per_beat)
             max_time = max(max_time, track_time)
             
-            if hasattr(msg, 'channel'):
-                current_channel = msg.channel
-            
             if msg.type == 'note_on' and msg.velocity > 0:
-                if current_channel is not None:
-                    notes[(current_channel, msg.note)] = (track_ticks, track_time, msg.velocity / 127.0)
+                notes[(msg.channel, msg.note)] = (track_ticks, track_time, msg.velocity / 127.0)
             elif (msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0)):
-                if current_channel is not None and (current_channel, msg.note) in notes:
-                    start_tick, start_time, velocity = notes[(current_channel, msg.note)]
+                if (msg.channel, msg.note) in notes:
+                    start_tick, start_time, velocity = notes[(msg.channel, msg.note)]
                     duration_seconds = track_time - start_time
                     duration_ticks = track_ticks - start_tick
                     
-                    # Use track 1 for left hand, track 0 for right hand
-                    hand_idx = 1 if track_idx == 1 else 0
+                    # Determine hand based on note pitch or track
+                    if len(piano_tracks) >= 2:
+                        # If we have at least 2 piano tracks, use track index
+                        hand_idx = 0 if piano_tracks.index(track_idx) == 0 else 1
+                    else:
+                        # Otherwise determine based on note pitch (middle C = 60)
+                        hand_idx = 0 if msg.note >= 60 else 1
+                    
                     tracks[hand_idx].append(Note(
                         midi=msg.note,
                         time=start_time,
@@ -191,14 +222,14 @@ def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
                         ticks=start_tick,
                         duration_ticks=duration_ticks
                     ))
-                    del notes[(current_channel, msg.note)]
+                    del notes[(msg.channel, msg.note)]
 
     # Create final tracks
     final_tracks = []
-    for hand_idx, notes in enumerate(tracks):
-        if notes:
+    for hand_idx, hand_notes in enumerate(tracks):
+        if hand_notes:
             final_tracks.append(Track(
-                notes=sorted(notes, key=lambda x: x.time),
+                notes=sorted(hand_notes, key=lambda x: x.time),
                 myInstrument=-5,  # Piano
                 theirInstrument=0
             ))
@@ -215,6 +246,7 @@ def get_note_length_type(duration_ticks: int) -> str:
         return "dottedsixteenth"
 
 def organize_tracks_v2(tracks: List[Track], time_sigs: List[Dict[str, Any]], tempos: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    """Organize tracks into measures for tracksV2 format"""
     right_hand_notes = []
     left_hand_notes = []
     
@@ -254,6 +286,7 @@ def organize_tracks_v2(tracks: List[Track], time_sigs: List[Dict[str, Any]], tem
     }
 
 def get_note_name(midi_note: int) -> str:
+    """Get note name from MIDI note number"""
     notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     note_name = notes[midi_note % 12]
     octave = (midi_note // 12) - 1
@@ -263,6 +296,7 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
                        right_notes: List[Dict[str, Any]], 
                        left_notes: List[Dict[str, Any]],
                        tempos: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    """Create measure data for both hands"""
     measures_right = []
     measures_left = []
     
@@ -341,6 +375,7 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
     }
 
 def calculate_rests(notes: List[Dict[str, Any]], start_time: float, end_time: float) -> List[Dict[str, Any]]:
+    """Calculate rest positions between notes in a measure"""
     rests = []
     current_time = start_time
     
@@ -367,24 +402,26 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
     tempos = extract_tempo_events(mid)
     tracks, song_length = get_notes_from_midi(midi_path)
     
-    # Extract metadata from filename and full path
-    filename = os.path.basename(midi_path)
-    title = os.path.splitext(filename)[0].replace('_', ' ')
+    # Look for matching MusicXML file for metadata
+    matching_xml = find_matching_musicxml(midi_path)
     
-    # Get the full path to extract correct artist name
-    parent_dir = os.path.dirname(midi_path)
-    artist = os.path.basename(parent_dir)
+    if matching_xml:
+        # Use metadata from MusicXML if available
+        title, artist = extract_metadata_from_xml(matching_xml)
+        print(f"Using metadata from matching MusicXML file: {matching_xml}")
+    else:
+        # Extract metadata from filename and directory
+        filename = os.path.basename(midi_path)
+        title = os.path.splitext(filename)[0].replace('_', ' ')
+        artist = os.path.basename(os.path.dirname(midi_path))
 
     time_sigs = extract_time_signatures(mid)
+    key_sigs = extract_key_signatures(mid)
     
     # Get total number of measures from tracks
     tracks_v2 = organize_tracks_v2(tracks, time_sigs, tempos)
-    max_measure_idx = 0
-    if tracks_v2["right"]:
-        max_measure_idx = max(max_measure_idx, len(tracks_v2["right"]))
-    if tracks_v2["left"]:
-        max_measure_idx = max(max_measure_idx, len(tracks_v2["left"]))
-
+    
+    # Create measure list
     measures = []
     ticks_per_beat = mid.ticks_per_beat
     current_measure_tick = 0
@@ -423,12 +460,11 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
         
         current_measure_tick += ticks_per_measure
 
-    # Remove arbitrary scaling for supporting tracks
+    # Create supporting tracks
     supporting_tracks = []
     for track in tracks:
         supporting_track_notes = []
         for note in track.notes:
-            # Note time and duration are already in seconds from get_notes_from_midi
             supporting_track_notes.append({
                 "midi": note.midi,
                 "time": note.time,
@@ -447,41 +483,17 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
         "start_time": 0,
         "song_length": song_length,
         "resolution": mid.ticks_per_beat,
-        "tempos": extract_tempo_events(mid),
-        "keySignatures": extract_key_signatures(mid),
+        "tempos": tempos,
+        "keySignatures": key_sigs,
         "timeSignatures": time_sigs,
         "measures": measures,
-        "tracksV2": organize_tracks_v2(tracks, time_sigs, tempos),
+        "tracksV2": tracks_v2,
         "accompanyingInstruments": [-2, -1],
         "accompanyingChannels": [0, 0],
         "name": title,
         "artist": artist,
         "accompanyingTracks": []
     }
-
-def format_output_filename(title: str, artist: str, midi_path: str) -> str:
-    """Format the output filename according to specifications"""
-    import re
-    
-    # Format artist (first 4 letters of last name)
-    if not artist or artist.isspace():
-        # Use parent folder only if no artist found
-        artist = os.path.basename(os.path.dirname(midi_path))
-    
-    # Get last word and clean it
-    last_name = artist.strip().split()[-1]
-    auth = re.sub(r'[^a-zA-Z]', '', last_name)[:4].lower()
-    
-    # Format title
-    if not title or title.isspace():
-        # Use original filename only if no title found
-        title = os.path.splitext(os.path.basename(midi_path))[0]
-    
-    # Remove non-alphanumeric (except spaces), then replace spaces with underscores
-    formatted_title = re.sub(r'[^a-zA-Z0-9\s]', '', title)
-    formatted_title = formatted_title.strip().replace(' ', '_')
-    
-    return f"{auth}_{formatted_title}.json"
 
 def main():
     import sys
