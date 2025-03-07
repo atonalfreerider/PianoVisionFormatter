@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ET
 import json
 import os
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from tempo_extractor import extract_tempo_from_xml, ticks_to_seconds, verify_tempo_markings
 
@@ -307,11 +307,14 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
                 "0.000" if i == 0 else "2")
         })
     
-    # Initialize note collection
+    # Initialize note collection with tie tracking
     right_hand_notes = []
     left_hand_notes = []
     right_hand_group = 0
     left_hand_group = -1
+    
+    # Track tied notes to combine them
+    tied_notes = {}  # key = (staff, voice, pitch), value = last note that has tie
     
     # Process all notes with precise timing
     for measure_idx, (measure, measure_info) in enumerate(zip(piano_part.findall('measure'), measure_map)):
@@ -357,6 +360,10 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
                 duration = int(elem.find('duration').text)
                 duration_ticks = int(round(duration * output_resolution / divisions))
                 
+                # Check for tie elements
+                tie_start = elem.find('.//tie[@type="start"]') is not None
+                tie_stop = elem.find('.//tie[@type="stop"]') is not None
+                
                 # Calculate start position
                 is_chord = elem.find('chord') is not None
                 if is_chord:
@@ -395,29 +402,52 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
                     note_start_time = ticks_to_seconds(note_start_ticks, tempos, output_resolution)
                     note_end_time = ticks_to_seconds(note_start_ticks + duration_ticks, tempos, output_resolution)
                     
-                    # Create note with accurate timing
-                    note = Note(
-                        midi=midi_note,
-                        time=note_start_time,
-                        velocity=velocity,
-                        duration=note_end_time - note_start_time,
-                        ticks=note_start_ticks,
-                        duration_ticks=duration_ticks,
-                        staff=staff,
-                        group=left_hand_group if staff == 2 else right_hand_group
-                    )
+                    # Create unique key for this note for tie tracking
+                    tie_key = (staff, voice, midi_note)
                     
-                    # Update group for right hand based on timing gaps
-                    if staff == 1 and right_hand_notes:
-                        last_note_end = right_hand_notes[-1].time + right_hand_notes[-1].duration
-                        if note_start_time - last_note_end > 0.2:  # Significant gap
-                            right_hand_group += 1
-                    
-                    # Add to appropriate hand
-                    if staff == 1:
-                        right_hand_notes.append(note)
+                    # Handle tie situations
+                    if tie_stop and tie_key in tied_notes:
+                        # This note is tied to a previous one - extend the previous note instead of adding a new one
+                        prev_note = tied_notes[tie_key]
+                        
+                        # Update the duration of the previous note
+                        prev_note.duration = note_end_time - prev_note.time
+                        prev_note.duration_ticks += duration_ticks
+                        
+                        # Keep this tied note in our tracking if it starts a new tie
+                        if tie_start:
+                            tied_notes[tie_key] = prev_note
+                        else:
+                            # Remove from tracking if this is the end of the tie chain
+                            tied_notes.pop(tie_key, None)
                     else:
-                        left_hand_notes.append(note)
+                        # Create note with accurate timing
+                        note = Note(
+                            midi=midi_note,
+                            time=note_start_time,
+                            velocity=velocity,
+                            duration=note_end_time - note_start_time,
+                            ticks=note_start_ticks,
+                            duration_ticks=duration_ticks,
+                            staff=staff,
+                            group=left_hand_group if staff == 2 else right_hand_group
+                        )
+                        
+                        # Update group for right hand based on timing gaps
+                        if staff == 1 and right_hand_notes:
+                            last_note_end = right_hand_notes[-1].time + right_hand_notes[-1].duration
+                            if note_start_time - last_note_end > 0.2:  # Significant gap
+                                right_hand_group += 1
+                        
+                        # Add to appropriate hand
+                        if staff == 1:
+                            right_hand_notes.append(note)
+                        else:
+                            left_hand_notes.append(note)
+                        
+                        # If this note starts a tie, track it
+                        if tie_start:
+                            tied_notes[tie_key] = note
     
     # Sort notes by time within each hand
     right_hand_notes.sort(key=lambda x: x.time)
