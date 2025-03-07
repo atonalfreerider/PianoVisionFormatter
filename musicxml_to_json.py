@@ -78,6 +78,11 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
     tempo_directions = []  # Initialize the tempo_directions list here
     tempo_changes = []     # Initialize the tempo_changes list
     
+    # Add history tracking for tempo context
+    tempo_history = []  # For tracking tempo changes for "a tempo" reference
+    first_tempo = None  # For "tempo primo" reference
+    last_stable_tempo = None  # For "a tempo" reference
+    
     # Create a more comprehensive list of tempo-related terms
     rit_indicators = [
         'rit.', 'rit', 'ritard', 'ritardando', 'ritard.', 'ritardante', 
@@ -97,6 +102,20 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
         'piu vivo', 'vivo'
     ]
     
+    # Improve a_tempo detection - MuseScore often just has "a" in text marking
+    a_tempo_indicators = [
+        'a tempo', 'a tmp', 'a tem', 'a t', 'a', 
+        'tempo i', 'tempo uno', 'in tempo', 'im tempo',
+        'tempo', 'tmp', 'tem'
+    ]
+    
+    # Improve tempo_primo detection
+    tempo_primo_indicators = [
+        'tempo primo', 'tempo i', 'tempo 1', 'tempo 1mo', 'tempo uno',
+        'tempo originale', 'original tempo', 'first tempo', 'tempo prim.',
+        't. primo', 't. 1', 't.p.', 'tmp. i', 'tempo p.'
+    ]
+    
     tempo_markings = {
         'adagio': 66, 'andante': 76, 'moderato': 108, 'allegro': 120, 'vivace': 140,
         'presto': 168, 'grave': 45, 'largo': 50, 'larghetto': 60, 'adagietto': 70,
@@ -107,6 +126,39 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
         'assai': 0,  # modifies other terms
     }
     
+    # Modified tempo extraction approach:
+    # First, check through all score parts to find any clear tempo markings at the beginning
+    # This helps us establish a true "first tempo" for tempo primo reference
+    initial_explicit_tempo = None
+    
+    # Look for the very first tempo marking in the score
+    for part in root.findall('.//part'):
+        first_measure = part.find('measure')
+        if first_measure is not None:
+            # Check for sound elements with tempo attribute
+            for direction in first_measure.findall('.//direction'):
+                sound = direction.find('.//sound')
+                if sound is not None and 'tempo' in sound.attrib:
+                    tempo_value = float(sound.attrib['tempo'])
+                    # Only accept non-120 values or verify 120 is intentional
+                    is_real_tempo = False
+                    
+                    # Check if this tempo has text confirmation
+                    for words in direction.findall('.//words'):
+                        if words.text and any(tempo_word in words.text.lower() for tempo_word in tempo_markings):
+                            is_real_tempo = True
+                            break
+                    
+                    # If it's not 120 or it's confirmed by text, accept it
+                    if tempo_value != 120 or is_real_tempo:
+                        initial_explicit_tempo = tempo_value
+                        break
+            
+            # If found, break out of parts loop
+            if initial_explicit_tempo is not None:
+                break
+    
+    # Now proceed with normal tempo processing
     for part in root.findall('.//part'):
         for measure_idx, measure in enumerate(part.findall('measure')):
             measure_number = int(measure.get('number', '1'))
@@ -126,6 +178,37 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
                 if element.tag == 'direction':
                     # Look for explicit tempo markings in sound elements
                     sound = element.find('.//sound')
+                    
+                    # Check for text-based tempo markings first (they provide context)
+                    tempo_text_found = False
+                    a_tempo_found = False
+                    tempo_primo_found = False
+                    tempo_text_value = None
+                    
+                    for direction_type in element.findall('.//direction-type'):
+                        for words in direction_type.findall('words'):
+                            if words.text:
+                                text = words.text.lower()
+                                
+                                # Check for a tempo or tempo primo first
+                                if any(a_tempo in text for a_tempo in a_tempo_indicators):
+                                    a_tempo_found = True
+                                    tempo_text_found = True  # Flag that we found meaningful text
+                                    break
+                                
+                                if any(primo in text for primo in tempo_primo_indicators):
+                                    tempo_primo_found = True
+                                    tempo_text_found = True  # Flag that we found meaningful text
+                                    break
+                                
+                                # Check for standard tempo markings
+                                for tempo_mark, base_tempo in tempo_markings.items():
+                                    if base_tempo > 0 and tempo_mark in text:
+                                        tempo_text_found = True
+                                        # We found an actual tempo text marking
+                                        break
+                    
+                    # Process sound element for tempo
                     if sound is not None and 'tempo' in sound.attrib:
                         # Calculate precise position
                         offset = 0
@@ -136,22 +219,110 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
                         tempo_ticks = measure_info['start_ticks'] + measure_position + offset
                         new_tempo = float(sound.attrib['tempo'])
                         
+                        # Handle suspicious 120 BPM values - only accept if:
+                        # 1. There's confirming text or
+                        # 2. It's the first tempo in the piece
+                        suspicious_value = (new_tempo == 120 and not tempo_text_found and 
+                                           first_tempo is not None)
+                        
+                        # Handle "a tempo" - use last stable tempo
+                        if a_tempo_found and last_stable_tempo is not None:
+                            new_tempo = last_stable_tempo["bpm"]
+                            print(f"Applied 'a tempo' = {new_tempo} BPM at tick {tempo_ticks}")
+                        
+                        # Handle "tempo primo" - ALWAYS use first tempo regardless of provided BPM value
+                        elif tempo_primo_found and first_tempo is not None:
+                            new_tempo = first_tempo["bpm"]
+                            print(f"Applied 'tempo primo' = {new_tempo} BPM at tick {tempo_ticks}")
+                        
+                        # Instead of using suspicious 120 values, try to find a better value
+                        elif suspicious_value:
+                            # If initial explicit tempo was found, use that
+                            if initial_explicit_tempo is not None and initial_explicit_tempo != 120:
+                                new_tempo = initial_explicit_tempo
+                                print(f"Using initial tempo {new_tempo} instead of suspicious 120 BPM at tick {tempo_ticks}")
+                            
+                            # Otherwise, warn but still use the value
+                            else:
+                                print(f"WARNING: Potentially incorrect default 120 BPM at tick {tempo_ticks}")
+                        
                         # Check for tempo change type attributes
                         tempo_type = "immediate"
                         if 'tempo-type' in sound.attrib:
                             tempo_type = sound.attrib['tempo-type']
-                            
+                        
+                        # Store first tempo for "tempo primo" reference
+                        if first_tempo is None:
+                            first_tempo = {"bpm": new_tempo, "ticks": tempo_ticks, "type": tempo_type}
+                        
+                        # Store this tempo in history if it's not a gradual change
+                        if tempo_type == "immediate":
+                            tempo_history.append({"bpm": new_tempo, "ticks": tempo_ticks})
+                            last_stable_tempo = {"bpm": new_tempo, "ticks": tempo_ticks}
+                        
+                        # Add specific source information
+                        source = "explicit"
+                        if a_tempo_found:
+                            source = "a_tempo"
+                        elif tempo_primo_found:
+                            source = "tempo_primo"
+                        elif tempo_text_found:
+                            source = "text_marking"
+                        
                         explicit_tempos.append({
                             "bpm": new_tempo,
                             "ticks": tempo_ticks,
-                            "type": tempo_type
+                            "type": tempo_type,
+                            "source": source
                         })
                     
-                    # Check for text-based tempo markings (Adagio, Allegro, etc.)
+                    # Handle textual tempo markings if no sound element is present
+                    elif tempo_text_found:
+                        # Calculate position
+                        offset = 0
+                        offset_elem = element.find('offset')
+                        if offset_elem is not None and divisions > 0:
+                            offset = int(float(offset_elem.text) * ticks_per_beat / divisions)
+                        
+                        tempo_ticks = measure_info['start_ticks'] + measure_position + offset
+                        
+                        # Handle "a tempo" - revert to last stable tempo
+                        if a_tempo_found:
+                            if last_stable_tempo is not None:
+                                explicit_tempos.append({
+                                    "bpm": last_stable_tempo["bpm"],
+                                    "ticks": tempo_ticks,
+                                    "type": "immediate",
+                                    "source": "a_tempo"
+                                })
+                                print(f"Applied 'a tempo' = {last_stable_tempo['bpm']} at tick {tempo_ticks}")
+                            else:
+                                print("WARNING: 'a tempo' found but no previous tempo to reference")
+                            continue
+                        
+                        # Handle "tempo primo" - revert to first tempo, IGNORE any BPM value in XML
+                        if tempo_primo_found:
+                            if first_tempo is not None:
+                                explicit_tempos.append({
+                                    "bpm": first_tempo["bpm"],
+                                    "ticks": tempo_ticks,
+                                    "type": "immediate",
+                                    "source": "tempo_primo"
+                                })
+                                print(f"Applied 'tempo primo' = {first_tempo['bpm']} at tick {tempo_ticks}")
+                            else:
+                                print("WARNING: 'tempo primo' found but no first tempo to reference")
+                            continue
+                    
+                    # Continue with normal text processing for other tempos
                     for direction_type in element.findall('.//direction-type'):
                         for words in direction_type.findall('words'):
                             if words.text:
                                 text = words.text.lower()
+                                
+                                # Skip if we already processed this as a tempo marking
+                                if any(a_tempo in text for a_tempo in a_tempo_indicators) or any(primo in text for primo in tempo_primo_indicators):
+                                    continue
                                 
                                 # Calculate position
                                 offset = 0
@@ -175,12 +346,24 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
                                 
                                 for tempo_mark, base_tempo in tempo_markings.items():
                                     if base_tempo > 0 and tempo_mark in text:
+                                        new_tempo = base_tempo * modifier
+                                        
+                                        # Update last stable tempo when adding a new fixed tempo
+                                        last_stable_tempo = {"bpm": new_tempo, "ticks": tempo_ticks}
+                                        tempo_history.append(last_stable_tempo.copy())
+                                        
+                                        # If this is the first tempo, record it for tempo primo
+                                        if first_tempo is None:
+                                            first_tempo = {"bpm": new_tempo, "ticks": tempo_ticks, "type": "immediate"}
+                                        
                                         explicit_tempos.append({
-                                            "bpm": base_tempo * modifier,
+                                            "bpm": new_tempo,
                                             "ticks": tempo_ticks,
-                                            "type": "immediate"
+                                            "type": "immediate",
+                                            "source": "text_marking"
                                         })
                                         found_tempo = True
+                                        print(f"Found text tempo marking '{tempo_mark}' = {new_tempo} BPM at tick {tempo_ticks}")
                                         break
                                 
                                 # If no standard marking found, check for ritardando/accelerando
@@ -335,9 +518,24 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
     
     # Check if we have any explicit tempos - throw error if not
     if not explicit_tempos:
-        raise ValueError("No tempo markings found in MusicXML. A valid tempo marking is required.")
+        # Look for any "a tempo" or "tempo primo" indicators that might help diagnose the problem
+        missing_tempo_info = ""
+        for direction in tempo_directions:
+            missing_tempo_info += f"Found {direction['type']} at tick {direction['start_tick']}\n"
+        
+        raise ValueError(f"No tempo markings found in MusicXML. A valid tempo marking is required.\n{missing_tempo_info}")
     
-    # Check if the first tempo starts after tick 0 - throw error if it does
+    # Fix: If the first tempo is 120 BPM but there are other non-120 tempos, consider using the first non-120 tempo
+    # This helps avoid the common issue of MuseScore inserting a default 120 BPM at the beginning
+    if explicit_tempos[0]["bpm"] == 120 and len(explicit_tempos) > 1:
+        # Look for first non-120 tempo
+        for i in range(1, len(explicit_tempos)):
+            if explicit_tempos[i]["bpm"] != 120:
+                print(f"WARNING: First tempo is suspicious 120 BPM but found {explicit_tempos[i]['bpm']} BPM later")
+                # We don't automatically replace it, but issue a warning
+                break
+    
+    # Check if the first tempo starts after tick 0 - throw error if it does  
     if explicit_tempos[0]["ticks"] > 0:
         raise ValueError(f"First tempo marking starts at tick {explicit_tempos[0]['ticks']} instead of tick 0. A tempo marking at the beginning is required.")
     
@@ -608,6 +806,9 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
     
     # Extract tempos first for consistent timing
     tempos = extract_tempo_from_xml(root, output_resolution)
+    
+    # Verify tempo markings for debugging
+    verify_tempo_markings(tempos)
     
     # No need to check for empty tempos - the extract function will now throw an error
     # No need to add a default tempo - the extract function will verify one exists at tick 0
@@ -1086,6 +1287,27 @@ def format_output_filename(title: str, artist: str, xml_path: str) -> str:
     formatted_title = formatted_title.strip().replace(' ', '_')
     
     return f"{auth}_{formatted_title}.json"
+
+def verify_tempo_markings(tempos: List[Dict[str, Any]]) -> None:
+    """Verify if tempo markings are valid and print diagnostics"""
+    if not tempos:
+        raise ValueError("No tempo markings available. Cannot validate tempos.")
+    
+    # Check for a_tempo and tempo_primo markings
+    a_tempo_count = sum(1 for t in tempos if t.get("source") == "a_tempo")
+    tempo_primo_count = sum(1 for t in tempos if t.get("source") == "tempo_primo")
+    
+    print(f"Found {len(tempos)} tempo markings:")
+    print(f"  - 'a tempo' markings: {a_tempo_count}")
+    print(f"  - 'tempo primo' markings: {tempo_primo_count}")
+    
+    # Check for suspicious 120 BPM values
+    suspicious_120 = [i for i, t in enumerate(tempos) if t.get("bpm") == 120]
+    if suspicious_120:
+        print(f"  - Found {len(suspicious_120)} tempo(s) with 120 BPM at indices: {suspicious_120}")
+    
+    # Check the first tempo and report it
+    print(f"  - First tempo: {tempos[0].get('bpm')} BPM")
 
 def main():
     import sys
