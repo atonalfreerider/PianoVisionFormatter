@@ -1,0 +1,339 @@
+import json
+import sys
+import os
+import matplotlib.pyplot as plt
+import numpy as np
+from typing import Dict, List, Any, Tuple
+
+def load_json(file_path: str) -> Dict[str, Any]:
+    """Load JSON file and return as dictionary"""
+    with open(file_path, 'r') as f:
+        return json.load(f)
+
+def tempo_at_time(tempos: List[Dict[str, Any]], target_time: float) -> float:
+    """Return the BPM at a specific time point"""
+    # Sort tempos by time
+    sorted_tempos = sorted(tempos, key=lambda x: float(x["time"]))
+    
+    # If no tempos, raise error instead of returning default
+    if not sorted_tempos:
+        raise ValueError("No tempo markings available.")
+    
+    # If target time is before first tempo, return first tempo
+    # (don't use a default - instead, the first tempo should be at time 0)
+    if target_time < float(sorted_tempos[0]["time"]):
+        return float(sorted_tempos[0]["bpm"])
+    
+    # Find the last tempo that's less than or equal to our target time
+    for i in range(len(sorted_tempos) - 1):
+        if float(sorted_tempos[i]["time"]) <= target_time < float(sorted_tempos[i+1]["time"]):
+            return float(sorted_tempos[i]["bpm"])
+    
+    # If we're past all tempo markings, return the last tempo
+    return float(sorted_tempos[-1]["bpm"])
+
+def interpolate_tempo_at_tick(tempos: List[Dict[str, Any]], target_tick: int) -> float:
+    """Return the interpolated BPM at a specific tick position"""
+    # Sort tempos by ticks
+    sorted_tempos = sorted(tempos, key=lambda x: int(x["ticks"]))
+    
+    # If no tempos, raise error instead of returning default
+    if not sorted_tempos:
+        raise ValueError("No tempo markings available.")
+    
+    # If target tick is before first tempo, return first tempo
+    # (don't use a default - instead, the first tempo should be at tick 0)
+    if target_tick < int(sorted_tempos[0]["ticks"]):
+        return float(sorted_tempos[0]["bpm"])
+    
+    # Find the last tempo that's less than or equal to our target tick
+    for i in range(len(sorted_tempos) - 1):
+        current = int(sorted_tempos[i]["ticks"])
+        next_tick = int(sorted_tempos[i+1]["ticks"])
+        
+        if current <= target_tick < next_tick:
+            # Simple linear interpolation between tempo points
+            current_bpm = float(sorted_tempos[i]["bpm"])
+            next_bpm = float(sorted_tempos[i+1]["bpm"])
+            
+            # Calculate position ratio between tempo points
+            ratio = (target_tick - current) / (next_tick - current) if (next_tick - current) > 0 else 0
+            
+            # Interpolate BPM
+            return current_bpm + ratio * (next_bpm - current_bpm)
+    
+    # If we're past all tempo markings, return the last tempo
+    return float(sorted_tempos[-1]["bpm"])
+
+def collect_time_points(ref_tempos: List[Dict[str, Any]], gen_tempos: List[Dict[str, Any]]) -> List[float]:
+    """Collect all unique time points from both tempo lists for comparison"""
+    time_points = set()
+    
+    # Add all time points from both tempo lists
+    for tempo in ref_tempos:
+        time_points.add(float(tempo["time"]))
+    for tempo in gen_tempos:
+        time_points.add(float(tempo["time"]))
+        
+    # Sort time points
+    return sorted(time_points)
+
+def compare_tempos(generated_path: str, reference_path: str) -> List[Dict[str, Any]]:
+    """Compare tempos between generated and reference files at all reference time points"""
+    # Load files
+    generated = load_json(generated_path)
+    reference = load_json(reference_path)
+    
+    # Extract tempo lists
+    gen_tempos = generated.get("tempos", [])
+    ref_tempos = reference.get("tempos", [])
+    
+    # Use reference time points for comparison
+    ref_time_points = [float(tempo["time"]) for tempo in ref_tempos]
+    ref_time_points = sorted(list(set(ref_time_points)))  # Remove duplicates and sort
+    
+    # Compare tempos at each reference time point
+    results = []
+    for time_point in ref_time_points:
+        gen_bpm = tempo_at_time(gen_tempos, time_point)
+        ref_bpm = tempo_at_time(ref_tempos, time_point)
+        
+        # Record comparison result
+        results.append({
+            "time": time_point,
+            "generated_bpm": gen_bpm,
+            "reference_bpm": ref_bpm,
+            "diff": abs(gen_bpm - ref_bpm),
+            "match": abs(gen_bpm - ref_bpm) <= 5  # Allow 5 BPM difference as acceptable
+        })
+    
+    return results
+
+def plot_tempo_comparison(generated_path: str, reference_path: str, output_path: str = None) -> None:
+    """Create a plot comparing tempos between generated and reference files"""
+    # Load files
+    generated = load_json(generated_path)
+    reference = load_json(reference_path)
+    
+    # Extract tempo lists
+    gen_tempos = generated.get("tempos", [])
+    ref_tempos = reference.get("tempos", [])
+    
+    # Get all time points for a smooth graph
+    time_points = collect_time_points(ref_tempos, gen_tempos)
+    
+    # Create interpolated tempo values for both files
+    gen_times = [float(t["time"]) for t in gen_tempos]
+    gen_bpms = [float(t["bpm"]) for t in gen_tempos]
+    
+    ref_times = [float(t["time"]) for t in ref_tempos]
+    ref_bpms = [float(t["bpm"]) for t in ref_tempos]
+    
+    # Create plot
+    plt.figure(figsize=(14, 8))
+    
+    # Plot tempo lines
+    plt.plot(gen_times, gen_bpms, 'b-', label='Generated', marker='o', linewidth=1, markersize=3)
+    plt.plot(ref_times, ref_bpms, 'r-', label='Reference', marker='x', linewidth=1, markersize=3)
+    
+    # Add labels for significant differences
+    for g_time, g_bpm in zip(gen_times, gen_bpms):
+        r_bpm = tempo_at_time(ref_tempos, g_time)
+        if abs(g_bpm - r_bpm) > 10:
+            plt.annotate(f"{int(g_bpm)} vs {int(r_bpm)}", 
+                        xy=(g_time, g_bpm), 
+                        xytext=(0, 10),
+                        textcoords='offset points',
+                        fontsize=8,
+                        arrowprops=dict(arrowstyle='->', color='gray'))
+    
+    # Add grid and labels
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.title(f'Tempo Comparison\n{os.path.basename(generated_path)} vs {os.path.basename(reference_path)}')
+    plt.xlabel('Time (seconds)')
+    plt.ylabel('Tempo (BPM)')
+    plt.legend()
+    
+    # Set reasonable y-axis limits
+    all_bpms = gen_bpms + ref_bpms
+    plt.ylim(max(15, min(all_bpms) - 10), max(all_bpms) + 10)
+    
+    # Save or show the plot
+    if output_path:
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"Tempo comparison plot saved to: {output_path}")
+    else:
+        plt.show()
+
+def analyze_tempo_differences(results: List[Dict[str, Any]], threshold: float = 5.0) -> Tuple[float, List[Dict[str, Any]]]:
+    """Analyze tempo comparison results and return overall match score and problematic points"""
+    if not results:
+        return 0.0, []
+    
+    # Count matches
+    matches = sum(1 for r in results if r["match"])
+    match_percentage = (matches / len(results)) * 100
+    
+    # Find problematic points (with differences above threshold)
+    problems = [r for r in results if r["diff"] > threshold]
+    problems.sort(key=lambda x: x["diff"], reverse=True)
+    
+    return match_percentage, problems
+
+def compare_tempo_entries(gen_tempos: List[Dict[str, Any]], ref_tempos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Compare tempos directly entry by entry, based on list positions"""
+    results = []
+    
+    # Sort both tempo lists by time
+    gen_tempos_sorted = sorted(gen_tempos, key=lambda x: float(x["time"]))
+    ref_tempos_sorted = sorted(ref_tempos, key=lambda x: float(x["time"]))
+    
+    # Compare entries at the same index
+    max_entries = max(len(gen_tempos_sorted), len(ref_tempos_sorted))
+    
+    for i in range(max_entries):
+        if i < len(gen_tempos_sorted) and i < len(ref_tempos_sorted):
+            # Both lists have entries at this index
+            gen_time = float(gen_tempos_sorted[i]["time"])
+            ref_time = float(ref_tempos_sorted[i]["time"])
+            gen_bpm = float(gen_tempos_sorted[i]["bpm"])
+            ref_bpm = float(ref_tempos_sorted[i]["bpm"])
+            
+            time_diff = abs(gen_time - ref_time)
+            bpm_diff = abs(gen_bpm - ref_bpm)
+            
+            results.append({
+                "index": i,
+                "gen_time": gen_time,
+                "ref_time": ref_time, 
+                "gen_bpm": gen_bpm,
+                "ref_bpm": ref_bpm,
+                "time_diff": time_diff,
+                "bpm_diff": bpm_diff,
+                "status": "match" if bpm_diff <= 5 and time_diff <= 0.1 else 
+                         "time_mismatch" if bpm_diff <= 5 else
+                         "bpm_mismatch" if time_diff <= 0.1 else "both_mismatch"
+            })
+        elif i < len(gen_tempos_sorted):
+            # Only generated list has entry at this index
+            results.append({
+                "index": i,
+                "gen_time": float(gen_tempos_sorted[i]["time"]),
+                "gen_bpm": float(gen_tempos_sorted[i]["bpm"]),
+                "ref_time": None,
+                "ref_bpm": None,
+                "time_diff": None,
+                "bpm_diff": None,
+                "status": "extra_in_generated"
+            })
+        else:
+            # Only reference list has entry at this index
+            results.append({
+                "index": i,
+                "gen_time": None,
+                "gen_bpm": None,
+                "ref_time": float(ref_tempos_sorted[i]["time"]),
+                "ref_bpm": float(ref_tempos_sorted[i]["bpm"]),
+                "time_diff": None,
+                "bpm_diff": None,
+                "status": "missing_in_generated"
+            })
+                
+    return results
+
+def format_entry_comparison(entry_results: List[Dict[str, Any]]) -> str:
+    """Format entry-by-entry comparison results for pretty printing"""
+    output = "\nTempo Entry-by-Entry Comparison:\n"
+    output += "-" * 100 + "\n"
+    output += f"{'Index':<6} {'Status':<15} {'Gen Time':<10} {'Gen BPM':<10} {'Ref Time':<10} {'Ref BPM':<10} {'Time Diff':<10} {'BPM Diff':<10}\n"
+    output += "-" * 100 + "\n"
+    
+    for entry in entry_results:
+        index = entry["index"]
+        status = entry["status"]
+        gen_time = f"{entry['gen_time']:.2f}" if entry.get('gen_time') is not None else "N/A"
+        gen_bpm = f"{entry['gen_bpm']:.1f}" if entry.get('gen_bpm') is not None else "N/A"
+        ref_time = f"{entry['ref_time']:.2f}" if entry.get('ref_time') is not None else "N/A"
+        ref_bpm = f"{entry['ref_bpm']:.1f}" if entry.get('ref_bpm') is not None else "N/A"
+        
+        if status not in ["extra_in_generated", "missing_in_generated"]:
+            time_diff = f"{entry['time_diff']:.3f}"
+            bpm_diff = f"{entry['bpm_diff']:.1f}"
+        else:
+            time_diff = "N/A"
+            bpm_diff = "N/A"
+            
+        output += f"{index:<6} {status:<15} {gen_time:<10} {gen_bpm:<10} {ref_time:<10} {ref_bpm:<10} {time_diff:<10} {bpm_diff:<10}\n"
+        
+    return output
+
+def main():
+    if len(sys.argv) < 3:
+        print("Usage: python tempo_validator.py <generated_json> <reference_json> [--plot] [--details]")
+        sys.exit(1)
+    
+    generated_path = sys.argv[1]
+    reference_path = sys.argv[2]
+    
+    # Check if files exist
+    if not os.path.exists(generated_path):
+        print(f"Error: {generated_path} does not exist")
+        sys.exit(1)
+    if not os.path.exists(reference_path):
+        print(f"Error: {reference_path} does not exist")
+        sys.exit(1)
+    
+    # Load files
+    generated = load_json(generated_path)
+    reference = load_json(reference_path)
+    
+    # Extract tempo lists
+    gen_tempos = generated.get("tempos", [])
+    ref_tempos = reference.get("tempos", [])
+    
+    # Compare tempos
+    results = compare_tempos(generated_path, reference_path)
+    match_score, problems = analyze_tempo_differences(results)
+    
+    # Print results
+    print(f"Tempo Analysis Results:")
+    print(f"  - Match Score: {match_score:.1f}%")
+    print(f"  - Total Time Points: {len(results)}")
+    print(f"  - Matching Points: {sum(1 for r in results if r['match'])}")
+    print(f"  - Problem Points: {len(problems)}")
+    
+    # Print top problems
+    if problems:
+        print("\nTop Problems:")
+        for i, prob in enumerate(problems[:10]):  # Show top 10 problems
+            print(f"  {i+1}. Time: {prob['time']}s - Generated: {prob['generated_bpm']}bpm, Reference: {prob['reference_bpm']}bpm (Diff: {prob['diff']:.1f})")
+    
+    # Perform and show entry-by-entry comparison if requested
+    if "--details" in sys.argv:
+        entry_results = compare_tempo_entries(gen_tempos, ref_tempos)
+        print(format_entry_comparison(entry_results))
+        
+        # Print summary
+        match_count = sum(1 for r in entry_results if r["status"] == "match")
+        bpm_mismatch_count = sum(1 for r in entry_results if r["status"] == "bpm_mismatch")
+        time_mismatch_count = sum(1 for r in entry_results if r["status"] == "time_mismatch")
+        both_mismatch_count = sum(1 for r in entry_results if r["status"] == "both_mismatch")
+        extra_count = sum(1 for r in entry_results if r["status"] == "extra_in_generated")
+        missing_count = sum(1 for r in entry_results if r["status"] == "missing_in_generated")
+        
+        print("\nEntry Comparison Summary:")
+        print(f"  - Exact Matches: {match_count}")
+        print(f"  - BPM Mismatches: {bpm_mismatch_count}")
+        print(f"  - Time Mismatches: {time_mismatch_count}")
+        print(f"  - Both Mismatches: {both_mismatch_count}")
+        print(f"  - Extra in Generated: {extra_count}")
+        print(f"  - Missing from Generated: {missing_count}")
+        print(f"  - Total Entries: {len(entry_results)}")
+    
+    # Create plot if requested
+    if "--plot" in sys.argv:
+        output_path = os.path.splitext(generated_path)[0] + '_tempo_comparison.png'
+        plot_tempo_comparison(generated_path, reference_path, output_path)
+
+if __name__ == "__main__":
+    main()

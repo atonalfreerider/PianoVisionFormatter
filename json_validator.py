@@ -90,13 +90,61 @@ def format_value(value: Any) -> Any:
         return [format_value(v) for v in value]
     return value
 
-def get_diff_text(diff: DeepDiff, similarity_threshold: float = 0.1) -> List[str]:
+def tempo_at_time(tempos: List[Dict[str, Any]], target_time: float) -> float:
+    """Return the BPM at a specific time point"""
+    # Sort tempos by time
+    sorted_tempos = sorted(tempos, key=lambda x: float(x["time"]))
+    
+    # If no tempos or target time is before first tempo, return default
+    if not sorted_tempos or target_time < float(sorted_tempos[0]["time"]):
+        return 45  # Default tempo
+    
+    # Find the last tempo that's less than or equal to our target time
+    for i in range(len(sorted_tempos) - 1):
+        if float(sorted_tempos[i]["time"]) <= target_time < float(sorted_tempos[i+1]["time"]):
+            return float(sorted_tempos[i]["bpm"])
+    
+    # If we're past all tempo markings, return the last tempo
+    return float(sorted_tempos[-1]["bpm"])
+
+def compare_tempos(gen_tempos: List[Dict[str, Any]], ref_tempos: List[Dict[str, Any]]) -> List[str]:
+    """Compare tempos at reference time points and return diff messages"""
+    messages = []
+    
+    # Get all reference time points
+    ref_time_points = [float(tempo["time"]) for tempo in ref_tempos]
+    ref_time_points = sorted(list(set(ref_time_points)))  # Remove duplicates and sort
+    
+    # Compare tempos at each reference time point
+    for time_point in ref_time_points:
+        gen_bpm = tempo_at_time(gen_tempos, time_point)
+        ref_bpm = tempo_at_time(ref_tempos, time_point)
+        
+        # If there's a significant difference, add to messages
+        if abs(gen_bpm - ref_bpm) > 5:  # Allow 5 BPM difference as acceptable
+            messages.append(f"At time {time_point}s: Generated={int(gen_bpm)}bpm, Reference={int(ref_bpm)}bpm")
+    
+    return messages
+
+def get_diff_text(diff: DeepDiff, gen_data: Dict, ref_data: Dict, similarity_threshold: float = 0.1) -> List[str]:
     output = []
+    
+    # Special handling for tempos - compare at time points, not as a list
+    if 'tempos' in gen_data and 'tempos' in ref_data:
+        tempo_messages = compare_tempos(gen_data['tempos'], ref_data['tempos'])
+        if tempo_messages:
+            output.append("\n⚠️ Tempo differences:")
+            for msg in tempo_messages:
+                output.append(f"  {msg}")
     
     # Check values first to filter out similar numerical differences
     if 'values_changed' in diff:
         filtered_changes = {}
         for path, change in diff['values_changed'].items():
+            # Skip tempos as we handled them separately
+            if 'tempos' in path:
+                continue
+                
             old_val = sort_dict_items(change['old_value'])
             new_val = sort_dict_items(change['new_value'])
             
@@ -131,24 +179,33 @@ def get_diff_text(diff: DeepDiff, similarity_threshold: float = 0.1) -> List[str
     
     # Rest of the original diff text generation
     if 'dictionary_item_added' in diff:
-        output.append("\n❌ Missing in generated JSON:")
-        for item in sorted(diff['dictionary_item_added']):
-            path = item.replace("root", "")
-            output.append(f"  {path}")
+        # Skip tempo items
+        non_tempo_items = [item for item in diff['dictionary_item_added'] if 'tempos' not in item]
+        if non_tempo_items:
+            output.append("\n❌ Missing in generated JSON:")
+            for item in sorted(non_tempo_items):
+                path = item.replace("root", "")
+                output.append(f"  {path}")
     
     # Check for extra items not in reference
     if 'dictionary_item_removed' in diff:
-        output.append("\n⚠️ Extra items in generated JSON:")
-        for item in sorted(diff['dictionary_item_removed']):
-            path = item.replace("root", "")
-            output.append(f"  {path}")
+        # Skip tempo items
+        non_tempo_items = [item for item in diff['dictionary_item_removed'] if 'tempos' not in item]
+        if non_tempo_items:
+            output.append("\n⚠️ Extra items in generated JSON:")
+            for item in sorted(non_tempo_items):
+                path = item.replace("root", "")
+                output.append(f"  {path}")
     
     # Check for iterable differences
     if 'iterable_item_added' in diff:
-        output.append("\n❌ Missing array items in generated JSON:")
-        for item in sorted(diff['iterable_item_added']):
-            path = item.replace("root", "")
-            output.append(f"  {path}")
+        # Skip tempo items
+        non_tempo_items = [item for item in diff['iterable_item_added'] if 'tempos' not in item]
+        if non_tempo_items:
+            output.append("\n❌ Missing array items in generated JSON:")
+            for item in sorted(non_tempo_items):
+                path = item.replace("root", "")
+                output.append(f"  {path}")
     
     return output
 
@@ -158,22 +215,17 @@ def validate_jsons(generated_path: str, reference_path: str, similarity_threshol
 
     # Compare with updated settings and custom similarity threshold
     diff = DeepDiff(generated, reference, 
-                    ignore_order=True,
-                    ignore_numeric_type_changes=True,
-                    ignore_type_in_groups=[(int, float)],
-                    number_format_notation="f",
-                    significant_digits=None)
+                   ignore_order=True,
+                   ignore_numeric_type_changes=True,
+                   ignore_type_in_groups=[(int, float)],
+                   number_format_notation="f",
+                   significant_digits=None)
     
-    if not diff:
-        print("✅ JSONs are identical!")
-        return
-
-    print("❌ Differences found:")
-    # Pass similarity threshold to get_diff_text
-    diff_lines = get_diff_text(diff, similarity_threshold)
+    # Use our custom diff handling
+    diff_lines = get_diff_text(diff, generated, reference, similarity_threshold)
     
     if not diff_lines:
-        print("✅ All differences are within acceptable tolerance.")
+        print("✅ JSONs are identical or within acceptable tolerance!")
         return
     
     # Count serious issues

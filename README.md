@@ -2,6 +2,16 @@
 
 Converts piano MusicXML or MIDI files to PianoVision json format
 
+BUG: MusicXML tempo interpretation is not working. The tick conversion is very wrong.
+
+Reference:
+
+https://github.com/musescore/MuseScore/blob/master/src/importexport/midi/internal/midiexport/exportmidi.cpp  
+https://github.com/musescore/MuseScore/blob/master/src/engraving/dom/tempo.cpp  
+https://github.com/musescore/MuseScore/blob/master/src/engraving/dom/gradualtempochange.cpp  
+
+Temporary fix is to rely on midi with author/composer and piece name from xml
+
 ## Usage
 
 Process all MusicXML files in a directory (and subdirectories):
