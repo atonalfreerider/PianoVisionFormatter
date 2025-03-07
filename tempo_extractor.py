@@ -189,8 +189,37 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
             if divisions is None:
                 continue
             
+            measure_start_ticks = measure_info['start_ticks']
+            measure_end_ticks = measure_start_ticks + measure_info['duration_ticks']
+            
             # Track position within measure for accurate positioning of tempo changes
             measure_position = 0
+            
+            # Pre-scan measure to identify where tempo markings should be aligned
+            # This helps capture precise positioning based on note events
+            note_positions = []
+            current_pos = 0
+            for elem in measure:
+                if elem.tag == 'note' and elem.find('chord') is None:
+                    # Skip grace notes
+                    if elem.find('grace') is not None:
+                        continue
+                    
+                    duration_elem = elem.find('duration')
+                    if duration_elem is not None and divisions > 0:
+                        duration = int(duration_elem.text)
+                        note_positions.append(current_pos)
+                        current_pos += int(round(duration * ticks_per_beat / divisions))
+                elif elem.tag == 'backup':
+                    duration_elem = elem.find('duration')
+                    if duration_elem is not None and divisions > 0:
+                        duration = int(duration_elem.text)
+                        current_pos = max(0, current_pos - int(round(duration * ticks_per_beat / divisions)))
+                elif elem.tag == 'forward':
+                    duration_elem = elem.find('duration')
+                    if duration_elem is not None and divisions > 0:
+                        duration = int(duration_elem.text)
+                        current_pos += int(round(duration * ticks_per_beat / divisions))
             
             for element_idx, element in enumerate(measure):
                 # Process normal tempo changes from direction elements
@@ -227,15 +256,49 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
                                         # We found an actual tempo text marking
                                         break
                     
+                    # Calculate precise position with improved accuracy
+                    offset = 0
+                    offset_elem = element.find('offset')
+                    if offset_elem is not None and divisions > 0:
+                        offset = int(float(offset_elem.text) * ticks_per_beat / divisions)
+                    
+                    # Improved positioning logic:
+                    # 1. First check if element is at measure start (most common)
+                    # 2. Otherwise calculate based on current position and offset
+                    # 3. Validate position is within measure boundary
+                    
+                    # Check if this is the first element at measure start
+                    is_measure_start = (element_idx == 0 or 
+                                        all(e.tag != 'note' for e in measure[:element_idx]))
+                    
+                    if is_measure_start:
+                        # Position at exact measure start for clear tempo markings 
+                        if tempo_text_found or (sound is not None and 'tempo' in sound.attrib):
+                            tempo_ticks = measure_start_ticks
+                        else:
+                            # Other directions at measure start but with possible offset
+                            tempo_ticks = measure_start_ticks + offset
+                    else:
+                        # Not at measure start, calculate position based on current notes
+                        tempo_ticks = measure_start_ticks + measure_position + offset
+                    
+                    # Ensure tempo is within measure boundaries
+                    if tempo_ticks < measure_start_ticks:
+                        print(f"Warning: Tempo at tick {tempo_ticks} before measure {measure_number} start ({measure_start_ticks})")
+                        tempo_ticks = measure_start_ticks
+                    
+                    if tempo_ticks >= measure_end_ticks:
+                        print(f"Warning: Tempo at tick {tempo_ticks} beyond measure {measure_number} end ({measure_end_ticks})")
+                        # Place at note position or measure start if no notes yet
+                        if note_positions:
+                            # Find closest note position
+                            closest_pos = min(note_positions, key=lambda x: abs(x - (tempo_ticks - measure_start_ticks)))
+                            tempo_ticks = measure_start_ticks + closest_pos
+                        else:
+                            tempo_ticks = measure_start_ticks
+                    
                     # Process sound element for tempo
                     if sound is not None and 'tempo' in sound.attrib:
-                        # Calculate precise position
-                        offset = 0
-                        offset_elem = element.find('offset')
-                        if offset_elem is not None and divisions > 0:
-                            offset = int(float(offset_elem.text) * ticks_per_beat / divisions)
-                        
-                        tempo_ticks = measure_info['start_ticks'] + measure_position + offset
                         new_tempo = float(sound.attrib['tempo'])
                         
                         # Handle suspicious 120 BPM values - only accept if:
@@ -292,9 +355,9 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
                             "bpm": new_tempo,
                             "ticks": tempo_ticks,
                             "type": tempo_type,
-                            "source": source
+                            "source": source,
+                            "measure": measure_number  # Add measure info for debugging
                         })
-                    
                     # Handle textual tempo markings if no sound element is present
                     elif tempo_text_found:
                         # Calculate position
@@ -462,78 +525,94 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
             else:
                 break
         
-        # Create tempo change
-        if direction["type"] == "ritardando":
-            # Match reference implementation exactly:
-            # - Use 160 tick intervals
-            # - Decreases by ~3-4 BPM per step
-            
+        # Create tempo change using exactly 10 steps for ritardando/accelerando
+        if direction["type"] == "ritardando" or direction["type"] == "accelerando":
             # Round starting tempo to nearest integer
             current_tempo = round(current_tempo)
             
-            # Determine BPM decrease per step based on intensity
-            bpm_step = 4  # Default decrease per step
-            if 'molto' in direction['text'] or 'assai' in direction['text']:
-                bpm_step = 5  # Stronger decrease
-            elif 'poco' in direction['text']:
-                bpm_step = 3  # Milder decrease
+            # Calculate total duration in ticks and determine step size
+            duration_ticks = end_tick - start_tick
             
-            # Use fixed 160 tick intervals (1/3 beat at 480 ticks/beat)
-            tick_interval = 160
+            # Always use exactly 10 steps for gradual changes
+            num_steps = 10
             
-            # Calculate how many steps to create 
-            # (ensure we don't exceed the end tick or go below minimum tempo)
-            start_tick_rounded = ((start_tick + 159) // 160) * 160  # Round to nearest 160 multiple
-            num_steps = min(8, (end_tick - start_tick_rounded) // tick_interval)
+            # Calculate tick interval (evenly divide the duration)
+            tick_interval = duration_ticks // num_steps
+            if tick_interval < 10:  # Minimum interval to avoid too many changes
+                tick_interval = 10
+                num_steps = duration_ticks // tick_interval
+                if num_steps < 1:
+                    num_steps = 1
+            
+            # Determine BPM change per step based on fixed 3 BPM per step
+            bpm_change = 3 if direction["type"] == "accelerando" else -3
             
             # Generate the tempo points
             for i in range(num_steps):
-                tick_pos = start_tick_rounded + (tick_interval * i)
-                step_tempo = int(current_tempo - (bpm_step * i))
-                if step_tempo < 40:  # Don't go below reasonable tempo
-                    step_tempo = 40
+                tick_pos = start_tick + (tick_interval * i)
+                # Calculate tempo for this step (round to integer)
+                step_tempo = int(round(current_tempo + (bpm_change * i)))
+                
+                # Ensure tempo is within reasonable bounds
+                if direction["type"] == "ritardando":
+                    step_tempo = max(15, step_tempo)  # Minimum ritardando tempo
+                else:
+                    step_tempo = min(180, step_tempo)  # Maximum accelerando tempo
                 
                 tempo_changes.append({
                     "bpm": step_tempo,
                     "ticks": tick_pos,
                     "type": "gradual" 
                 })
-                
-        elif direction["type"] == "accelerando":
-            # Match reference implementation exactly:
-            # - Use 160 tick intervals
-            # - Increases by ~3-4 BPM per step
-            
-            # Round starting tempo to nearest integer
-            current_tempo = round(current_tempo)
-            
-            # Determine BPM increase per step based on intensity
-            bpm_step = 4  # Default increase per step
-            if 'molto' in direction['text'] or 'assai' in direction['text']:
-                bpm_step = 5  # Stronger increase
-            elif 'poco' in direction['text']:
-                bpm_step = 3  # Milder increase
-            
-            # Use fixed 160 tick intervals (1/3 beat at 480 ticks/beat)
-            tick_interval = 160
-            
-            # Calculate how many steps to create
-            start_tick_rounded = ((start_tick + 159) // 160) * 160  # Round to nearest 160 multiple
-            num_steps = min(8, (end_tick - start_tick_rounded) // tick_interval)
-            
-            # Generate the tempo points
-            for i in range(num_steps):
-                tick_pos = start_tick_rounded + (tick_interval * i)
-                step_tempo = int(current_tempo + (bpm_step * i))
-                
-                tempo_changes.append({
-                    "bpm": step_tempo,
-                    "ticks": tick_pos,
-                    "type": "gradual"
-                })
     
     # Make sure explicit tempos are sorted by tick position
     explicit_tempos.sort(key=lambda x: x["ticks"])
+    
+    # Fix tempo positions that span measure boundaries
+    fixed_tempos = []
+    
+    # First step: Check and log any tempo markings that don't align with measure boundaries
+    for tempo in explicit_tempos:
+        tempo_ticks = tempo["ticks"]
+        tempo_measure = -1
+        
+        # Find which measure this tempo should be in
+        for measure_idx, measure in enumerate(measure_map):
+            start_ticks = measure['start_ticks']
+            end_ticks = start_ticks + measure['duration_ticks']
+            
+            if start_ticks <= tempo_ticks < end_ticks:
+                tempo_measure = measure_idx + 1
+                break
+        
+        # If found measure doesn't match the recorded measure, adjust it
+        if "measure" in tempo and tempo_measure > 0 and tempo_measure != tempo["measure"]:
+            # Position was calculated incorrectly - adjust to correct measure
+            print(f"Fixing tempo position: {tempo_ticks} should be in measure {tempo_measure}, not {tempo['measure']}")
+            
+            # Get the correct measure's start tick
+            correct_measure = measure_map[tempo_measure - 1]
+            correct_start = correct_measure['start_ticks']
+            
+            # If tempo is "a tempo" or "tempo primo", place it at the start of the measure
+            if tempo.get("source") in ["a_tempo", "tempo_primo", "text_marking"]:
+                tempo_ticks = correct_start
+            else:
+                # Otherwise, maintain the same relative position within the measure
+                measure_offset = tempo_ticks - measure_map[tempo["measure"] - 1]['start_ticks'] 
+                tempo_ticks = correct_start + measure_offset
+                
+                # Ensure it's within measure boundaries
+                if tempo_ticks >= correct_start + correct_measure['duration_ticks']:
+                    tempo_ticks = correct_start
+            
+            # Update the tick position
+            tempo["ticks"] = tempo_ticks
+        
+        fixed_tempos.append(tempo)
+    
+    # Replace with fixed tempos and ensure they're in order
+    explicit_tempos = sorted(fixed_tempos, key=lambda x: x["ticks"])
     
     # Check if we have any explicit tempos - throw error if not
     if not explicit_tempos:
@@ -544,22 +623,7 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
         
         raise ValueError(f"No tempo markings found in MusicXML. A valid tempo marking is required.\n{missing_tempo_info}")
     
-    # Fix: If the first tempo is 120 BPM but there are other non-120 tempos, consider using the first non-120 tempo
-    # This helps avoid the common issue of MuseScore inserting a default 120 BPM at the beginning
-    if explicit_tempos[0]["bpm"] == 120 and len(explicit_tempos) > 1:
-        # Look for first non-120 tempo
-        for i in range(1, len(explicit_tempos)):
-            if explicit_tempos[i]["bpm"] != 120:
-                print(f"WARNING: First tempo is suspicious 120 BPM but found {explicit_tempos[i]['bpm']} BPM later")
-                # We don't automatically replace it, but issue a warning
-                break
-    
-    # Check if the first tempo starts after tick 0 - throw error if it does  
-    if explicit_tempos[0]["ticks"] > 0:
-        raise ValueError(f"First tempo marking starts at tick {explicit_tempos[0]['ticks']} instead of tick 0. A tempo marking at the beginning is required.")
-    
-    # Replace our old approach with the reference approach:
-    # Instead of generating discrete tempos from tempo_changes, we'll use the tempo_changes directly
+    # Combine explicit tempos and tempo changes, then sort them
     all_tempos = explicit_tempos.copy()
     for change in tempo_changes:
         all_tempos.append({
@@ -571,7 +635,6 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
     all_tempos.sort(key=lambda x: x["ticks"])
     
     # Handle duplicates - keep only one tempo at each tick position, favor explicit over gradual
-    unique_tempos = []
     seen_ticks = {}
     
     for tempo in all_tempos:
@@ -593,7 +656,7 @@ def extract_tempo_from_xml(root, ticks_per_beat: int) -> List[Dict[str, Any]]:
             "ticks": tempo["ticks"]
         })
     
-    # Calculate absolute time values
+    # Calculate absolute time values with precisely 3 decimal places
     result = []
     current_time = 0.0
     current_ticks = 0
