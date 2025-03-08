@@ -1,19 +1,23 @@
 #!/bin/bash
 
 usage() {
-    echo "Usage: $0 [-m|-x] <input_directory>"
+    echo "Usage: $0 [-m] [-x] [-o] [-s] <input_directory>"
     echo "  -m : Process MIDI files instead of MuseScore files"
     echo "  -x : Process MusicXML files instead of MuseScore files"
-    echo "  Default: Process MuseScore (.mscz) files"
+    echo "  -o : Enable orchestra mode (include secondary piano/orchestra when space allows)"
+    echo "  -s : Enable simplified mode (overwrite with simplified piano parts when available)"
+    echo "  Default: Process MuseScore (.mscz) files" 
     exit 1
 }
 
 # Default to musescore
 FILE_TYPE="mscz"
 CONVERTER="musescore_to_json.py"
+ORCHESTRA_MODE=false
+SIMPLIFIED_MODE=false
 
 # Parse options
-while getopts "mx" opt; do
+while getopts "mxos" opt; do
     case $opt in
         m)
             FILE_TYPE="mid"
@@ -22,6 +26,12 @@ while getopts "mx" opt; do
         x)
             FILE_TYPE="musicxml"
             CONVERTER="musicxml_to_json.py"
+            ;;
+        o)
+            ORCHESTRA_MODE=true
+            ;;
+        s)
+            SIMPLIFIED_MODE=true
             ;;
         *)
             usage
@@ -64,16 +74,25 @@ if [ "$FILE_TYPE" = "mid" ]; then
     find "$input_dir" -type f -name "*.mid" -print0 | while IFS= read -r -d '' file; do
         if has_matching_companion "$file"; then
             echo "Processing: $file (has matching MuseScore file)"
-            python3 "${script_dir}/$CONVERTER" "$file" "$output_dir"
+            python3 "${script_dir}/$CONVERTER" "$file" "$output_dir" $ORCHESTRA_MODE $SIMPLIFIED_MODE
         else
             echo "Skipping: $file (no matching MuseScore file found)"
         fi
     done
 else
     # Process MuseScore or MusicXML files directly
-    find "$input_dir" -type f -name "*.$FILE_TYPE" -print0 | while IFS= read -r -d '' file; do
-        echo "Processing: $file"
-        python3 "${script_dir}/$CONVERTER" "$file" "$output_dir"
+    extensions=("$FILE_TYPE")
+    # Add .mscz extension if processing MusicXML but no specific extension given
+    if [ "$FILE_TYPE" = "musicxml" ]; then 
+        extensions=("xml" "musicxml")
+    fi
+    
+    for ext in "${extensions[@]}"; do
+        find "$input_dir" -type f -name "*.$ext" -print0 | while IFS= read -r -d '' file; do
+            echo "Processing: $file"
+            # Also pass orchestra and simplified mode flags to other converters
+            python3 "${script_dir}/$CONVERTER" "$file" "$output_dir" $ORCHESTRA_MODE $SIMPLIFIED_MODE
+        done
     done
 fi
 

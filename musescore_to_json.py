@@ -420,7 +420,7 @@ def parse_musescore(mscx_content: str, mscz_path: str) -> Dict[str, Any]:
     root = ET.fromstring(mscx_content)
     
     # Extract metadata
-    title, artist = extract_metadata_from_musescore(root)
+    title, artist, _ = extract_metadata_from_musescore(root)
     division_elem = root.find(".//Division")
     resolution = int(division_elem.text) if division_elem is not None else 480
     
@@ -745,18 +745,27 @@ def parse_musescore(mscx_content: str, mscz_path: str) -> Dict[str, Any]:
 def main():
     import sys
     
-    # Handle command line arguments
-    if len(sys.argv) < 2 or len(sys.argv) > 3:
-        print("Usage: python musescore_to_json.py <input_file> [output_dir]")
+    # Handle command line arguments with optional output dir and feature flags
+    if len(sys.argv) < 2:
+        print("Usage: python musescore_to_json.py <input_file> [output_dir] [orchestra_mode] [simplified_mode]")
         sys.exit(1)
 
     mscz_path = sys.argv[1]
-
+    
     # If no output directory is specified, use the same directory as the input file
-    if len(sys.argv) == 3:
+    if len(sys.argv) >= 3:
         output_dir = sys.argv[2]
     else:
         output_dir = os.path.dirname(mscz_path)
+        
+    # Get optional flags with defaults
+    orchestra_mode = False
+    simplified_mode = False
+    
+    if len(sys.argv) > 3:
+        orchestra_mode = sys.argv[3].lower() == "true"
+    if len(sys.argv) > 4:
+        simplified_mode = sys.argv[4].lower() == "true"
 
     if not os.path.isfile(mscz_path):
         print(f"Error: {mscz_path} is not a file")

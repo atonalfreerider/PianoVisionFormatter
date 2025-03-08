@@ -6,6 +6,10 @@ from pv_util import standardize_title, standardize_artist, format_output_filenam
 from midi_to_json import extract_tempo_events
 from notes import Note, Track
 from track_organizer import organize_tracks_v2
+from orchestra_utils import (
+    is_valid_orchestra_instrument, 
+    merge_orchestral_parts
+)
 
 MIDI_NOTE_NAMES = {
     'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11
@@ -295,9 +299,133 @@ def verify_tempo_markings(tempos: List[Dict[str, Any]]):
         if delta > 0.001:  # More than 1ms difference
             print(f"WARNING: Tempo time calculation error at tempo {i + 1}: {delta:.6f}s")
 
-def parse_musicxml(xml_path: str) -> Dict[str, Any]:
+def extract_part_notes(root, part_id: str, start_measure: int = 0) -> List[Note]:
+    """Extract notes from a specific part with correct measure start"""
+    notes = []
+    part = root.find(f'.//part[@id="{part_id}"]')
+    if part is None:
+        return notes
+        
+    # Track the earliest possible start
+    current_measure = 0
+    current_ticks = 0
+    # ...continue with note extraction logic...
+
+def merge_notes_with_orchestra(primary_notes: List[Note], 
+                             secondary_notes: List[Note]) -> List[Note]:
+    """Merge orchestra notes into primary piano notes on a measure by measure basis"""
+    # Group notes by measure
+    measure_boundaries = {}  # measure_idx -> (start_time, end_time)
+    
+    # Find measure boundaries from primary notes
+    for note in primary_notes:
+        measure_idx = note.ticks // 1920  # Assuming 4/4 time and 480 ticks per beat
+        if measure_idx not in measure_boundaries:
+            measure_boundaries[measure_idx] = [float('inf'), float('-inf')]
+        bounds = measure_boundaries[measure_idx]
+        bounds[0] = min(bounds[0], note.time)
+        bounds[1] = max(bounds[1], note.time + note.duration)
+
+    # Add a small buffer to boundaries
+    for bounds in measure_boundaries.values():
+        bounds[0] = max(0, bounds[0] - 0.01)
+        bounds[1] = bounds[1] + 0.01
+
+    # Process each measure
+    final_notes = []
+    for measure_idx in sorted(measure_boundaries.keys()):
+        start_time, end_time = measure_boundaries[measure_idx]
+        
+        # Get notes for this measure
+        measure_primary = [n for n in primary_notes 
+                         if start_time <= n.time < end_time]
+        measure_secondary = [n for n in secondary_notes 
+                           if start_time <= n.time < end_time]
+
+        # Split by staff and merge
+        for staff in [1, 2]:  # 1=right, 2=left
+            staff_primary = [n for n in measure_primary if n.staff == staff]
+            staff_secondary = [n for n in measure_secondary if 
+                             (staff == 1 and n.midi >= 60) or 
+                             (staff == 2 and n.midi < 60)]
+            
+            # Use orchestra_utils to merge
+            merged = merge_orchestral_parts(
+                [note.__dict__ for note in staff_primary],
+                [note.__dict__ for note in staff_secondary],
+                start_time,
+                end_time - start_time,
+                is_upper_staff=(staff == 1)
+            )
+            
+            # Convert merged dict back to Note objects
+            final_notes.extend([
+                Note(
+                    midi=n["midi"],
+                    time=n["time"],
+                    velocity=n["velocity"],
+                    duration=n["duration"],
+                    ticks=n["ticks"],
+                    duration_ticks=n["duration_ticks"],
+                    staff=staff,
+                    group=-1
+                ) for n in merged
+            ])
+
+    return sorted(final_notes, key=lambda x: x.time)
+
+def parse_musicxml(xml_path: str, orchestra_mode: bool = False) -> Dict[str, Any]:
+    """Parse MusicXML with orchestra mode support"""
     tree = ET.parse(xml_path)
     root = tree.getroot()
+    
+    # Find the actual start of the piece (measure 1)
+    first_measure = root.find('.//measure')
+    start_measure = 0 if first_measure is None else int(first_measure.get('number', '1')) - 1
+    
+    # Identify primary piano, secondary piano, and orchestra parts
+    primary_piano_id = None
+    secondary_piano_id = None
+    orchestra_part_ids = []
+    
+    for score_part in root.findall('.//score-part'):
+        part_id = score_part.get('id')
+        instrument = score_part.find('.//instrument-name')
+        
+        if instrument is not None:
+            name = instrument.text.lower()
+            if 'piano' in name:
+                if '2' in name or 'secondo' in name:
+                    secondary_piano_id = part_id
+                else:
+                    primary_piano_id = part_id
+            elif orchestra_mode:
+                # Check for valid orchestra instruments
+                midi_instrument = score_part.find('.//midi-instrument/midi-program')
+                if midi_instrument is not None:
+                    program = int(midi_instrument.text) - 1  # MIDI programs are 1-based in XML
+                    if is_valid_orchestra_instrument(program):
+                        orchestra_part_ids.append(part_id)
+    
+    # Process primary piano part first
+    if not primary_piano_id:
+        primary_piano_id = identify_piano_part(root)
+    
+    # Extract notes from primary piano
+    primary_notes = extract_part_notes(root, primary_piano_id, start_measure)
+    
+    if orchestra_mode:
+        # Extract and merge secondary piano/orchestra parts
+        secondary_notes = []
+        if secondary_piano_id:
+            secondary_notes.extend(extract_part_notes(root, secondary_piano_id, start_measure))
+        for orch_id in orchestra_part_ids:
+            secondary_notes.extend(extract_part_notes(root, orch_id, start_measure))
+            
+        # Merge notes measure by measure
+        primary_notes = merge_notes_with_orchestra(primary_notes, secondary_notes)
+    
+    # Continue with existing processing...
     
     # Get title and artist using the metadata extractor
     title, artist = extract_metadata_from_xml(xml_path)
@@ -640,18 +768,27 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
 def main():
     import sys
     
-    # Handle command line arguments
-    if len(sys.argv) < 2 or len(sys.argv) > 3:
-        print("Usage: python musicxml_to_json.py <input_file> [output_dir]")
+    # Handle command line arguments with optional output dir and feature flags
+    if len(sys.argv) < 2:
+        print("Usage: python musicxml_to_json.py <input_file> [output_dir] [orchestra_mode] [simplified_mode]")
         sys.exit(1)
 
     xml_path = sys.argv[1]
-
+    
     # If no output directory is specified, use the same directory as the input file
-    if len(sys.argv) == 3:
+    if len(sys.argv) >= 3:
         output_dir = sys.argv[2]
     else:
         output_dir = os.path.dirname(xml_path)
+        
+    # Get optional flags with defaults
+    orchestra_mode = False
+    simplified_mode = False
+    
+    if len(sys.argv) > 3:
+        orchestra_mode = sys.argv[3].lower() == "true"
+    if len(sys.argv) > 4:
+        simplified_mode = sys.argv[4].lower() == "true"
 
     if not os.path.isfile(xml_path):
         print(f"Error: {xml_path} is not a file")
@@ -661,7 +798,7 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
     
     try:
-        output_json = parse_musicxml(xml_path)
+        output_json = parse_musicxml(xml_path, orchestra_mode)
         
         # Generate formatted output filename using the shared utility
         output_filename = format_output_filename(
