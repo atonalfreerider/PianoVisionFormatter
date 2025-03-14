@@ -23,8 +23,6 @@ class Track:
 def extract_tempo_events(mid: mido.MidiFile) -> List[Dict[str, Any]]:
     """Extract tempo events from MIDI with improved reliability"""
     tempo_events = []
-    current_tempo = 500000  # Default tempo (120 BPM)
-    last_tick = 0
     last_time = 0.0
     
     # First, collect all tempo events from all tracks
@@ -200,7 +198,7 @@ def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
             
             if msg.type == 'note_on' and msg.velocity > 0:
                 notes[(msg.channel, msg.note)] = (track_ticks, track_time, msg.velocity / 127.0)
-            elif (msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0)):
+            elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
                 if (msg.channel, msg.note) in notes:
                     start_tick, start_time, velocity = notes[(msg.channel, msg.note)]
                     duration_seconds = track_time - start_time
@@ -444,7 +442,6 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
         
         # Calculate measure time using tempo-aware timing
         measure_start_time = ticks_to_seconds(current_measure_tick, tempos, ticks_per_beat)
-        measure_end_time = ticks_to_seconds(current_measure_tick + ticks_per_measure, tempos, ticks_per_beat)
         
         # Add small offset to match reference behavior
         tick_offset = 0.35 * ticks_per_measure / 480

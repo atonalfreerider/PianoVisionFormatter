@@ -9,6 +9,7 @@ class PianoRollComparator(tk.Tk):
     def __init__(self):
         super().__init__()
 
+        self._resize_job = self.after(100, self.update_plot)
         self.title("Piano Roll Comparison")
         self.geometry("1200x800")
         
@@ -72,7 +73,8 @@ class PianoRollComparator(tk.Tk):
                 self.reference_data = json.load(f)
             self.update_plot()
 
-    def create_piano_roll_data(self, tracks_v2, hand="right"):
+    @staticmethod
+    def create_piano_roll_data(tracks_v2, hand="right"):
         """Convert track data to piano roll format"""
         notes = []
         times = []
@@ -90,21 +92,6 @@ class PianoRollComparator(tk.Tk):
         
         return np.array(notes), np.array(times), np.array(durations), colors
 
-    def plot_measure_lines(self, ax, measures, y_min, y_max):
-        """Plot measure lines and numbers"""
-        for i, measure in enumerate(measures):
-            time = measure['time']
-            ax.plot([0, 88], [time, time], 'k--', alpha=0.3)  # Updated x range
-            ax.text(-2, time, f"M{i+1}", fontsize=8, verticalalignment='bottom')
-
-    def plot_tempo_changes(self, ax, tempos, y_min, y_max):
-        """Plot tempo change markers"""
-        for tempo in tempos:
-            time = tempo['time']
-            bpm = tempo['bpm']
-            ax.plot([88, 92], [time, time], 'g-', linewidth=2)
-            ax.text(89, time, f"{bpm} BPM", fontsize=8, verticalalignment='bottom')
-
     def zoom_in(self):
         self.zoom_level *= 0.8
         self.update_plot()
@@ -118,7 +105,6 @@ class PianoRollComparator(tk.Tk):
             return
         if hasattr(self, '_resize_job'):
             self.after_cancel(self._resize_job)
-        self._resize_job = self.after(100, self.update_plot)
 
     def _on_plot_configure(self, event):
         """Handle plot widget configuration"""

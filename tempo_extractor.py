@@ -1,4 +1,3 @@
-import xml.etree.ElementTree as ET
 from typing import List, Dict, Any
 
 def extract_tempo_from_xml(root, ticks_per_beat: int = 480) -> List[Dict[str, Any]]:

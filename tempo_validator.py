@@ -2,7 +2,6 @@ import json
 import sys
 import os
 import matplotlib.pyplot as plt
-import numpy as np
 from typing import Dict, List, Any, Tuple
 
 def load_json(file_path: str) -> Dict[str, Any]:
@@ -118,9 +117,6 @@ def plot_tempo_comparison(generated_path: str, reference_path: str, output_path:
     # Extract tempo lists
     gen_tempos = generated.get("tempos", [])
     ref_tempos = reference.get("tempos", [])
-    
-    # Get all time points for a smooth graph
-    time_points = collect_time_points(ref_tempos, gen_tempos)
     
     # Create interpolated tempo values for both files
     gen_times = [float(t["time"]) for t in gen_tempos]
