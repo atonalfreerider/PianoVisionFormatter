@@ -1,7 +1,59 @@
 import xml.etree.ElementTree as ET
 import os
 import re
-from typing import Tuple
+from typing import Tuple, Optional
+import zipfile
+import tempfile
+
+
+def extract_mscx_from_mscz(mscz_path: str) -> Optional[str]:
+    """Extract the .mscx file from a .mscz archive"""
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with zipfile.ZipFile(mscz_path, 'r') as zip_ref:
+                # Find the .mscx file in the archive
+                mscx_files = [f for f in zip_ref.namelist() if f.endswith('.mscx')]
+                if not mscx_files:
+                    return None
+
+                # Extract the .mscx file
+                mscx_path = os.path.join(temp_dir, mscx_files[0])
+                zip_ref.extract(mscx_files[0], temp_dir)
+
+                # Read the content and return it
+                with open(mscx_path, 'r', encoding='utf-8') as f:
+                    return f.read()
+    except Exception as e:
+        print(f"Error extracting MSCX from {mscz_path}: {str(e)}")
+        return None
+
+def extract_metadata_from_musescore(root: ET.Element) -> Tuple[str, str]:
+    """Extract title and artist from MuseScore file"""
+    title = ""
+    artist = ""
+
+    # Look for title and composer in VBox/Text elements
+    for text_elem in root.findall(".//VBox/Text"):
+        style = text_elem.find("style")
+        if style is not None:
+            if style.text == "title":
+                title_text = text_elem.find("text")
+                if title_text is not None:
+                    title = title_text.text
+            elif style.text == "composer":
+                composer_text = text_elem.find("text")
+                if composer_text is not None:
+                    artist = composer_text.text
+
+    # Look for subtitle to append to title
+    for text_elem in root.findall(".//VBox/Text"):
+        style = text_elem.find("style")
+        if style is not None and style.text == "subtitle":
+            subtitle_text = text_elem.find("text")
+            if subtitle_text is not None and title:
+                title = f"{title} - {subtitle_text.text}"
+
+    return title, artist
 
 def extract_metadata_from_xml(xml_path: str) -> Tuple[str, str]:
     """Extract title and artist from MusicXML file"""
@@ -88,6 +140,22 @@ def format_output_filename(title: str, artist: str, file_path: str) -> str:
     formatted_title = formatted_title.strip().replace(' ', '_')
     
     return f"{auth}_{formatted_title}.json"
+
+
+def find_matching_musescore(midi_path: str) -> str:
+    """Look for a matching MusicXML file for a given MIDI file"""
+    base_name = os.path.splitext(os.path.basename(midi_path))[0]
+    parent_dir = os.path.dirname(midi_path)
+
+    # Try common MusicXML extensions
+    xml_extensions = ['.mscz', '.mscx']
+
+    for ext in xml_extensions:
+        potential_path = os.path.join(parent_dir, base_name + ext)
+        if os.path.exists(potential_path):
+            return potential_path
+
+    return None
 
 def find_matching_musicxml(midi_path: str) -> str:
     """Look for a matching MusicXML file for a given MIDI file"""

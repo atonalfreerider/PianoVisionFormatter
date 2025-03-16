@@ -1,24 +1,27 @@
 #!/bin/bash
 
 usage() {
-    echo "Usage: $0 [-m] <input_directory>"
-    echo "  -m : Process MIDI files instead of MusicXML files"
-    echo "      (only processes MIDIs with matching MusicXML files)"
+    echo "Usage: $0 [-m|-x] <input_directory>"
+    echo "  -m : Process MIDI files instead of MuseScore files"
+    echo "  -x : Process MusicXML files instead of MuseScore files"
+    echo "  Default: Process MuseScore (.mscz) files"
     exit 1
 }
 
-# Default to musicxml
-FILE_TYPE="musicxml"
-CONVERTER="musicxml_to_json.py"
-MIDI_MODE=false
+# Default to musescore
+FILE_TYPE="mscz"
+CONVERTER="musescore_to_json.py"
 
 # Parse options
-while getopts "m" opt; do
+while getopts "mx" opt; do
     case $opt in
         m)
             FILE_TYPE="mid"
             CONVERTER="midi_to_json.py"
-            MIDI_MODE=true
+            ;;
+        x)
+            FILE_TYPE="musicxml"
+            CONVERTER="musicxml_to_json.py"
             ;;
         *)
             usage
@@ -55,7 +58,7 @@ has_matching_musicxml() {
 }
 
 # Process files based on mode
-if [ "$MIDI_MODE" = true ]; then
+if [ "$FILE_TYPE" = "mid" ]; then
     echo "Processing MIDI files (only those with matching MusicXML files)"
     
     # Find all MIDI files and filter those with matching MusicXML
@@ -69,7 +72,7 @@ if [ "$MIDI_MODE" = true ]; then
     done
 else
     # Original behavior for MusicXML files
-    echo "Processing MusicXML files"
+    echo "Processing $FILE_TYPE files"
     find "$input_dir" -type f -name "*.$FILE_TYPE" -print0 | while IFS= read -r -d '' file; do
         echo "Processing: $file"
         python3 "${script_dir}/$CONVERTER" "$file" "$output_dir"
