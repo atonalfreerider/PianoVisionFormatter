@@ -1,67 +1,17 @@
 import xml.etree.ElementTree as ET
 import json
 import os
-import zipfile
-import tempfile
-from typing import Dict, Any, Optional, Tuple
-from metadata_extractor import format_output_filename
-from musicxml_to_json import (Note, Track, organize_tracks_v2, ticks_to_seconds)
-
-def extract_mscx_from_mscz(mscz_path: str) -> Optional[str]:
-    """Extract the .mscx file from a .mscz archive"""
-    try:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with zipfile.ZipFile(mscz_path, 'r') as zip_ref:
-                # Find the .mscx file in the archive
-                mscx_files = [f for f in zip_ref.namelist() if f.endswith('.mscx')]
-                if not mscx_files:
-                    return None
-                
-                # Extract the .mscx file
-                mscx_path = os.path.join(temp_dir, mscx_files[0])
-                zip_ref.extract(mscx_files[0], temp_dir)
-                
-                # Read the content and return it
-                with open(mscx_path, 'r', encoding='utf-8') as f:
-                    return f.read()
-    except Exception as e:
-        print(f"Error extracting MSCX from {mscz_path}: {str(e)}")
-        return None
-
-def extract_metadata(root: ET.Element) -> Tuple[str, str]:
-    """Extract title and artist from MuseScore file"""
-    title = ""
-    artist = ""
-    
-    # Look for title and composer in VBox/Text elements
-    for text_elem in root.findall(".//VBox/Text"):
-        style = text_elem.find("style")
-        if style is not None:
-            if style.text == "title":
-                title_text = text_elem.find("text")
-                if title_text is not None:
-                    title = title_text.text
-            elif style.text == "composer":
-                composer_text = text_elem.find("text")
-                if composer_text is not None:
-                    artist = composer_text.text
-    
-    # Look for subtitle to append to title
-    for text_elem in root.findall(".//VBox/Text"):
-        style = text_elem.find("style")
-        if style is not None and style.text == "subtitle":
-            subtitle_text = text_elem.find("text")
-            if subtitle_text is not None and title:
-                title = f"{title} - {subtitle_text.text}"
-    
-    return title, artist
+from typing import Dict, Any
+from metadata_extractor import format_output_filename, extract_metadata_from_musescore, extract_mscx_from_mscz
+from notes import Note, Track
+from musicxml_to_json import (organize_tracks_v2, ticks_to_seconds)
 
 def parse_musescore(mscx_content: str) -> Dict[str, Any]:
     """Parse MuseScore file and convert to Piano Vision format"""
     root = ET.fromstring(mscx_content)
     
     # Extract metadata
-    title, artist = extract_metadata(root)
+    title, artist = extract_metadata_from_musescore(root)
     
     # Get resolution (division) from the score
     division_elem = root.find(".//Division")

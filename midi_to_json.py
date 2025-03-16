@@ -1,24 +1,10 @@
+import xml.etree.ElementTree as ET
 import mido
 import json
 import os
 from typing import List, Dict, Any, Tuple
-from dataclasses import dataclass
-from metadata_extractor import extract_metadata_from_xml, format_output_filename, find_matching_musicxml
-
-@dataclass
-class Note:
-    midi: int
-    time: float  # in seconds
-    velocity: float
-    duration: float  # in seconds
-    ticks: int  # Store original tick position
-    duration_ticks: int  # Store original duration in ticks
-
-@dataclass
-class Track:
-    notes: List[Note]
-    myInstrument: int
-    theirInstrument: int
+from metadata_extractor import extract_metadata_from_musescore, format_output_filename, find_matching_musescore, extract_mscx_from_mscz
+from notes import Note, Track
 
 def extract_tempo_events(mid: mido.MidiFile) -> List[Dict[str, Any]]:
     """Extract tempo events from MIDI with improved reliability"""
@@ -218,7 +204,9 @@ def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
                         velocity=velocity,
                         duration=duration_seconds,
                         ticks=start_tick,
-                        duration_ticks=duration_ticks
+                        duration_ticks=duration_ticks,
+                        staff=hand_idx + 1,
+                        group=-1,
                     ))
                     del notes[(msg.channel, msg.note)]
 
@@ -401,12 +389,14 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
     tracks, song_length = get_notes_from_midi(midi_path)
     
     # Look for matching MusicXML file for metadata
-    matching_xml = find_matching_musicxml(midi_path)
+    matching_mscz = find_matching_musescore(midi_path)
+    mscx_content = extract_mscx_from_mscz(matching_mscz)
     
-    if matching_xml:
+    if mscx_content:
         # Use metadata from MusicXML if available
-        title, artist = extract_metadata_from_xml(matching_xml)
-        print(f"Using metadata from matching MusicXML file: {matching_xml}")
+        root = ET.fromstring(mscx_content)
+        title, artist = extract_metadata_from_musescore(root)
+        print(f"Using metadata from matching MuseScore file: {matching_mscz}")
     else:
         # Extract metadata from filename and directory
         filename = os.path.basename(midi_path)

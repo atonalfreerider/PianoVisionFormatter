@@ -2,27 +2,10 @@ import xml.etree.ElementTree as ET
 import json
 import os
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
 from tempo_extractor import extract_tempo_from_xml, ticks_to_seconds, verify_tempo_markings
 from metadata_extractor import extract_metadata_from_xml, format_output_filename
 from midi_to_json import extract_tempo_events
-
-@dataclass
-class Note:
-    midi: int
-    time: float  # in seconds
-    velocity: float
-    duration: float  # in seconds
-    ticks: int
-    duration_ticks: int
-    staff: int  # 1 = right hand, 2 = left hand
-    group: int  # group ID for related notes
-
-@dataclass
-class Track:
-    notes: List[Note]
-    myInstrument: int
-    theirInstrument: int
+from notes import Note, Track
 
 MIDI_NOTE_NAMES = {
     'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11
