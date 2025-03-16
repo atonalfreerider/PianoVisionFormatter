@@ -43,36 +43,34 @@ output_dir="${script_dir}/PianoVision"
 # Create output directory
 mkdir -p "$output_dir"
 
-# Function to check if a MIDI file has a matching MusicXML file
-has_matching_musicxml() {
+# Function to check if a MIDI file has a matching MuseScore file
+has_matching_companion() {
     local midi_file="$1"
     local midi_base="$(basename "$midi_file" .mid)"
     local midi_dir="$(dirname "$midi_file")"
     
-    # Check for both .musicxml and .xml extensions
-    if [ -f "${midi_dir}/${midi_base}.musicxml" ] || [ -f "${midi_dir}/${midi_base}.xml" ]; then
+    # Check for .mscz extension
+    if [ -f "${midi_dir}/${midi_base}.mscz" ]; then
         return 0  # Success - matching file found
     else
         return 1  # No matching file found
     fi
 }
 
-# Process files based on mode
+# Process files based on file type
+echo "Processing $FILE_TYPE files"
 if [ "$FILE_TYPE" = "mid" ]; then
-    echo "Processing MIDI files (only those with matching MusicXML files)"
-    
-    # Find all MIDI files and filter those with matching MusicXML
+    # MIDI files need special processing (only those with matching MuseScore files)
     find "$input_dir" -type f -name "*.mid" -print0 | while IFS= read -r -d '' file; do
-        if has_matching_musicxml "$file"; then
-            echo "Processing: $file (has matching MusicXML)"
+        if has_matching_companion "$file"; then
+            echo "Processing: $file (has matching MuseScore file)"
             python3 "${script_dir}/$CONVERTER" "$file" "$output_dir"
         else
-            echo "Skipping: $file (no matching MusicXML found)"
+            echo "Skipping: $file (no matching MuseScore file found)"
         fi
     done
 else
-    # Original behavior for MusicXML files
-    echo "Processing $FILE_TYPE files"
+    # Process MuseScore or MusicXML files directly
     find "$input_dir" -type f -name "*.$FILE_TYPE" -print0 | while IFS= read -r -d '' file; do
         echo "Processing: $file"
         python3 "${script_dir}/$CONVERTER" "$file" "$output_dir"
