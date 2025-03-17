@@ -484,12 +484,19 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
 
 def main():
     import sys
-    if len(sys.argv) != 3:
-        print("Usage: python midi_to_json.py <input_file> <output_dir>")
+    
+    # Handle command line arguments
+    if len(sys.argv) < 2 or len(sys.argv) > 3:
+        print("Usage: python midi_to_json.py <input_file> [output_dir]")
         sys.exit(1)
 
     midi_path = sys.argv[1]
-    output_dir = sys.argv[2]
+
+    # If no output directory is specified, use the same directory as the input file
+    if len(sys.argv) == 3:
+        output_dir = sys.argv[2]
+    else:
+        output_dir = os.path.dirname(midi_path)
 
     if not os.path.isfile(midi_path):
         print(f"Error: {midi_path} is not a file")

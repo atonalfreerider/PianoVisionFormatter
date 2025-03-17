@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ET
 import json
 import os
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List
 from metadata_extractor import format_output_filename, extract_metadata_from_musescore, extract_mscx_from_mscz
 from notes import Note, Track
 from musicxml_to_json import organize_tracks_v2, ticks_to_seconds
@@ -575,12 +575,19 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
 
 def main():
     import sys
-    if len(sys.argv) != 3:
-        print("Usage: python musescore_to_json.py <input_file> <output_dir>")
+    
+    # Handle command line arguments
+    if len(sys.argv) < 2 or len(sys.argv) > 3:
+        print("Usage: python musescore_to_json.py <input_file> [output_dir]")
         sys.exit(1)
 
     mscz_path = sys.argv[1]
-    output_dir = sys.argv[2]
+
+    # If no output directory is specified, use the same directory as the input file
+    if len(sys.argv) == 3:
+        output_dir = sys.argv[2]
+    else:
+        output_dir = os.path.dirname(mscz_path)
 
     if not os.path.isfile(mscz_path):
         print(f"Error: {mscz_path} is not a file")

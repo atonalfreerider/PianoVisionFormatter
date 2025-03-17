@@ -626,12 +626,19 @@ def get_note_length_type(duration_ticks: int) -> str:
 
 def main():
     import sys
-    if len(sys.argv) != 3:
-        print("Usage: python musicxml_to_json.py <input_file> <output_dir>")
+    
+    # Handle command line arguments
+    if len(sys.argv) < 2 or len(sys.argv) > 3:
+        print("Usage: python musicxml_to_json.py <input_file> [output_dir]")
         sys.exit(1)
 
     xml_path = sys.argv[1]
-    output_dir = sys.argv[2]
+
+    # If no output directory is specified, use the same directory as the input file
+    if len(sys.argv) == 3:
+        output_dir = sys.argv[2]
+    else:
+        output_dir = os.path.dirname(xml_path)
 
     if not os.path.isfile(xml_path):
         print(f"Error: {xml_path} is not a file")

@@ -5,7 +5,6 @@ from typing import Tuple, Optional
 import zipfile
 import tempfile
 
-
 def extract_mscx_from_mscz(mscz_path: str) -> Optional[str]:
     """Extract the .mscx file from a .mscz archive"""
     try:
@@ -43,7 +42,11 @@ def extract_metadata_from_musescore(root: ET.Element) -> Tuple[str, str]:
             elif style.text == "composer":
                 composer_text = text_elem.find("text")
                 if composer_text is not None:
-                    artist = composer_text.text
+                    # Handle multi-line composer text (take just the first line)
+                    artist_full = composer_text.text
+                    if artist_full:
+                        # Split by newline and take the first line
+                        artist = artist_full.split('\n')[0].strip()
 
     # Look for subtitle to append to title
     for text_elem in root.findall(".//VBox/Text"):
@@ -140,7 +143,6 @@ def format_output_filename(title: str, artist: str, file_path: str) -> str:
     formatted_title = formatted_title.strip().replace(' ', '_')
     
     return f"{auth}_{formatted_title}.json"
-
 
 def find_matching_musescore(midi_path: str) -> str:
     """Look for a matching MusicXML file for a given MIDI file"""
