@@ -26,6 +26,24 @@ def extract_mscx_from_mscz(mscz_path: str) -> Optional[str]:
         print(f"Error extracting MSCX from {mscz_path}: {str(e)}")
         return None
 
+def standardize_title(title: str) -> str:
+    """Standardize a title by removing newlines and extra spaces"""
+    if not title:
+        return ""
+    # Replace newlines with spaces, then normalize spaces
+    return re.sub(r'\s+', ' ', title.replace('\n', ' ')).strip()
+
+def standardize_artist(artist: str) -> str:
+    """Standardize an artist name by removing non-alphabetic characters and extra spaces"""
+    if not artist:
+        return ""
+    # Replace newlines with spaces
+    artist = artist.replace('\n', ' ')
+    # Remove non-alphabetic characters (except spaces)
+    artist = re.sub(r'[^a-zA-Z\s]', '', artist)
+    # Normalize spaces
+    return re.sub(r'\s+', ' ', artist).strip()
+
 def extract_metadata_from_musescore(root: ET.Element) -> Tuple[str, str]:
     """Extract title and artist from MuseScore file"""
     title = ""
@@ -38,15 +56,11 @@ def extract_metadata_from_musescore(root: ET.Element) -> Tuple[str, str]:
             if style.text == "title":
                 title_text = text_elem.find("text")
                 if title_text is not None:
-                    title = title_text.text
+                    title = standardize_title(title_text.text)
             elif style.text == "composer":
                 composer_text = text_elem.find("text")
                 if composer_text is not None:
-                    # Handle multi-line composer text (take just the first line)
-                    artist_full = composer_text.text
-                    if artist_full:
-                        # Split by newline and take the first line
-                        artist = artist_full.split('\n')[0].strip()
+                    artist = standardize_artist(composer_text.text)
 
     # Look for subtitle to append to title
     for text_elem in root.findall(".//VBox/Text"):
@@ -54,7 +68,8 @@ def extract_metadata_from_musescore(root: ET.Element) -> Tuple[str, str]:
         if style is not None and style.text == "subtitle":
             subtitle_text = text_elem.find("text")
             if subtitle_text is not None and title:
-                title = f"{title} - {subtitle_text.text}"
+                subtitle = standardize_title(subtitle_text.text)
+                title = f"{title} - {subtitle}"
 
     return title, artist
 
@@ -74,17 +89,17 @@ def extract_metadata_from_xml(xml_path: str) -> Tuple[str, str]:
                 if credit_type.text == 'title':
                     credit_words = credit.find('credit-words')
                     if credit_words is not None:
-                        title = credit_words.text
+                        title = standardize_title(credit_words.text)
                 elif credit_type.text == 'subtitle':
                     credit_words = credit.find('credit-words')
                     if credit_words is not None:
-                        subtitle = credit_words.text
+                        subtitle = standardize_title(credit_words.text)
         
         # Fallback to work-title if no credit title found
         if not title:
             work = root.find('.//work-title')
             if work is not None:
-                title = work.text
+                title = standardize_title(work.text)
         
         # Final fallback to filename
         if not title:
@@ -101,14 +116,14 @@ def extract_metadata_from_xml(xml_path: str) -> Tuple[str, str]:
             if credit_type is not None and credit_type.text == 'composer':
                 credit_words = credit.find('credit-words')
                 if credit_words is not None:
-                    artist = credit_words.text
+                    artist = standardize_artist(credit_words.text)
                     break
         
         # Fallback to creator field if no credit composer found
         if not artist:
             creator = root.find('.//creator[@type="composer"]')
             if creator is not None:
-                artist = creator.text
+                artist = standardize_artist(creator.text)
         
         # Final fallback to parent folder name
         if not artist:
