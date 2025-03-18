@@ -474,6 +474,12 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
                 if elem.find('grace') is not None:
                     continue
                 
+                # Check for accent articulation
+                has_accent = False
+                articulations = elem.find('.//notations/articulations/accent')
+                if articulations is not None:
+                    has_accent = True
+                
                 # Get note properties
                 staff = get_note_staff(elem, measure)
                 voice_elem = elem.find('voice')
@@ -525,6 +531,10 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
                         }
                         velocity = dynamics_map.get(dynamics.tag, 0.63)
                     
+                    # Boost velocity for accented notes
+                    if has_accent and velocity < 0.9:
+                        velocity = min(1.0, velocity * 1.25)  # Apply 25% boost but cap at 1.0
+                    
                     # Calculate precise timing
                     midi_note = note_to_midi(step, octave, alter)
                     note_start_time = ticks_to_seconds(note_start_ticks, tempos, output_resolution)
@@ -558,7 +568,8 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
                             ticks=note_start_ticks,
                             duration_ticks=duration_ticks,
                             staff=staff,
-                            group=left_hand_group if staff == 2 else right_hand_group
+                            group=left_hand_group if staff == 2 else right_hand_group,
+                            accent=1 if has_accent else 0
                         )
                         
                         # Update group for right hand based on timing gaps

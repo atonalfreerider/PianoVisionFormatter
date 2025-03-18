@@ -3,7 +3,7 @@ import mido
 import json
 import os
 from typing import List, Dict, Any, Tuple
-from pv_util import extract_metadata_from_musescore, format_output_filename, extract_mscx_from_mscz, ticks_to_seconds
+from pv_util import extract_metadata_from_musescore, format_output_filename, extract_mscx_from_mscz, ticks_to_seconds, extract_accented_notes
 from notes import Note, Track
 from track_organizer import get_note_name, get_note_length_type, calculate_rests
 
@@ -113,10 +113,24 @@ def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
     """Extract notes from MIDI with improved staff assignment"""
     mid = mido.MidiFile(midi_path)
     tracks: List[List[Note]] = [[] for _ in range(2)]  # Right hand (1), Left hand (2)
-    notes: Dict[Tuple[int, int], Tuple[int, float, float]] = {}
+    notes: Dict[Tuple[int, int], List[Tuple[int, float, float, int]]] = {}  # Channel, note -> [(tick, time, velocity, midi_note)]
+    pending_notes = {0: [], 1: []}  # Collect notes that start at the same time for each hand
     tempos = extract_tempo_events(mid)
     max_time = 0.0
     
+    # Check for accent information from MuseScore
+    accented_notes = {}
+    current_measure = 0
+    
+    # Try matching MuseScore file
+    matching_mscore = find_matching_musescore(midi_path)
+    if matching_mscore:
+        print(f"Found matching MuseScore file for accent analysis: {matching_mscore}")
+        mscx_content = extract_mscx_from_mscz(matching_mscore)
+        if mscx_content:
+            accented_notes = extract_accented_notes(mscx_content)
+            print(f"Found {len(accented_notes)} accented note patterns in score")
+
     # Improved piano track detection with channel-based allocation
     piano_tracks = []
     track_channels = {}
@@ -145,8 +159,8 @@ def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
             piano_tracks = [0, 1]
         else:
             piano_tracks = list(range(len(mid.tracks)))
-    
-    # Process piano tracks and collect notes
+
+    last_tick = 0
     for track_idx, track in enumerate(mid.tracks):
         if track_idx not in piano_tracks:
             continue
@@ -154,36 +168,43 @@ def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
         track_ticks = 0
         for msg in track:
             track_ticks += msg.time
-            track_time = ticks_to_seconds(track_ticks, tempos, mid.ticks_per_beat)
-            max_time = max(max_time, track_time)
             
+            # Note start
             if msg.type == 'note_on' and msg.velocity > 0:
-                notes[(msg.channel, msg.note)] = (track_ticks, track_time, msg.velocity / 127.0)
+                # Store note start info
+                if track_ticks != last_tick:
+                    # Process and clear pending notes for both hands
+                    for hand_idx in [0, 1]:
+                        if pending_notes[hand_idx]:
+                            process_chord(pending_notes[hand_idx], hand_idx, tracks, 
+                                       accented_notes, current_measure)
+                            pending_notes[hand_idx] = []
+                
+                hand_idx = 0 if piano_tracks.index(track_idx) == 0 else 1
+                pending_notes[hand_idx].append((
+                    track_ticks,
+                    ticks_to_seconds(track_ticks, tempos, mid.ticks_per_beat),
+                    msg.velocity / 127.0,
+                    msg.note
+                ))
+                last_tick = track_ticks
+            
+            # Note end
             elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
-                if (msg.channel, msg.note) in notes:
-                    start_tick, start_time, velocity = notes[(msg.channel, msg.note)]
-                    duration_seconds = track_time - start_time
-                    duration_ticks = track_ticks - start_tick
-                    
-                    # Determine hand based on note pitch or track
-                    if len(piano_tracks) >= 2:
-                        # If we have at least 2 piano tracks, use track index
-                        hand_idx = 0 if piano_tracks.index(track_idx) == 0 else 1
-                    else:
-                        # Otherwise determine based on note pitch (middle C = 60)
-                        hand_idx = 0 if msg.note >= 60 else 1
-                    
-                    tracks[hand_idx].append(Note(
-                        midi=msg.note,
-                        time=start_time,
-                        velocity=velocity,
-                        duration=duration_seconds,
-                        ticks=start_tick,
-                        duration_ticks=duration_ticks,
-                        staff=hand_idx + 1,
-                        group=-1,
-                    ))
-                    del notes[(msg.channel, msg.note)]
+                # Process note end
+                end_time = ticks_to_seconds(track_ticks, tempos, mid.ticks_per_beat)
+                hand_idx = 0 if piano_tracks.index(track_idx) == 0 else 1
+                process_note_end(track_ticks, end_time, msg.note, hand_idx, tracks)
+
+            # Update measure tracking
+            if track_ticks >= (current_measure + 1) * mid.ticks_per_beat * 4:
+                current_measure = track_ticks // (mid.ticks_per_beat * 4)
+    
+    # Process any remaining pending notes
+    for hand_idx in [0, 1]:
+        if pending_notes[hand_idx]:
+            process_chord(pending_notes[hand_idx], hand_idx, tracks, 
+                        accented_notes, current_measure)
 
     # Create final tracks
     final_tracks = []
@@ -196,6 +217,53 @@ def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
             ))
 
     return final_tracks, max_time
+
+def process_chord(pending_notes: List[Tuple[int, float, float, int]], 
+                 hand_idx: int, 
+                 tracks: List[List[Note]], 
+                 accented_notes: Dict[Tuple[int, int, int, List[int]], List[int]],
+                 measure_idx: int) -> None:
+    """Process a group of notes that start at the same time (a chord)"""
+    if not pending_notes:
+        return
+        
+    # Sort notes by pitch for consistent matching
+    pending_notes.sort(key=lambda x: x[3])  # Sort by MIDI note number
+    pitches = [note[3] for note in pending_notes]
+    
+    # Try to find matching chord pattern in accent data
+    position_key = (hand_idx + 1, measure_idx, 0, tuple(pitches))
+    accented_indices = accented_notes.get(position_key, [])
+    
+    # Create notes with accent information
+    for i, (tick, time, velocity, pitch) in enumerate(pending_notes):
+        is_accented = i in accented_indices
+        
+        if is_accented and velocity < 0.9:
+            velocity = min(1.0, velocity * 1.25)  # Boost accented notes
+        
+        # Add note to appropriate track
+        tracks[hand_idx].append(Note(
+            midi=pitch,
+            time=time,
+            velocity=velocity,
+            duration=0,  # Will be set by process_note_end
+            ticks=tick,
+            duration_ticks=0,  # Will be set by process_note_end
+            staff=hand_idx + 1,
+            group=measure_idx,
+            accent=1 if is_accented else 0
+        ))
+
+def process_note_end(tick: int, end_time: float, pitch: int, hand_idx: int, 
+                    tracks: List[List[Note]]) -> None:
+    """Process the end of a note by setting its duration"""
+    # Find the matching note start
+    for note in reversed(tracks[hand_idx]):
+        if note.midi == pitch and note.duration == 0:
+            note.duration = end_time - note.time
+            note.duration_ticks = tick - note.ticks
+            break
 
 def organize_tracks_v2(tracks: List[Track], time_sigs: List[Dict[str, Any]], tempos: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
     """Organize tracks into measures for tracksV2 format"""
@@ -223,7 +291,8 @@ def organize_tracks_v2(tracks: List[Track], time_sigs: List[Dict[str, Any]], tem
                 "group": -1,
                 "measureInd": int((note.ticks / TICKS_PER_BEAT) / 4),
                 "noteMeasureInd": len(right_hand_notes) if track_idx == 0 else len(left_hand_notes),
-                "id": f"{'r' if track_idx == 0 else 'l'}{len(right_hand_notes) if track_idx == 0 else len(left_hand_notes)}"
+                "id": f"{'r' if track_idx == 0 else 'l'}{len(right_hand_notes) if track_idx == 0 else len(left_hand_notes)}",
+                "accent": 1 if note.accent else 0
             }
             
             if track_idx == 0:

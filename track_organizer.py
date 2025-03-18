@@ -155,7 +155,8 @@ def organize_tracks_v2(tracks: List[Track], sorted_measures: List[Dict[str, Any]
                 "group": note.group,
                 "measureInd": measure_idx,
                 "noteMeasureInd": len(measure["notes"]),
-                "id": f"{'r' if track_idx == 0 else 'l'}{len(measure['notes'])}"
+                "id": f"{'r' if track_idx == 0 else 'l'}{len(measure['notes'])}",
+                "accent": note.accent
             }
             
             measure["notes"].append(note_data)
