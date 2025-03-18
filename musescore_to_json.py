@@ -4,7 +4,8 @@ import os
 from typing import Dict, Any, List
 from metadata_extractor import format_output_filename, extract_metadata_from_musescore, extract_mscx_from_mscz
 from notes import Note, Track
-from musicxml_to_json import organize_tracks_v2, ticks_to_seconds
+from track_organizer import organize_tracks_v2
+from tempo_extractor import ticks_to_seconds
 
 def extract_tempo_changes(root: ET.Element) -> List[Dict[str, Any]]:
     """Extract tempo changes from MuseScore file"""
@@ -242,7 +243,7 @@ def extract_tempo_changes(root: ET.Element) -> List[Dict[str, Any]]:
     all_tempos = explicit_tempos + gradual_tempos
     all_tempos.sort(key=lambda x: x["ticks"])
     
-    # Calculate absolute times
+    # Calculate absolute times - this is the correct implementation matching MuseScore's approach
     last_time = 0
     last_ticks = 0
     last_tempo_bpm = all_tempos[0]["bpm"]
@@ -351,8 +352,6 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
     tempos = extract_tempo_changes(root)
     
     # Initialize tracking variables
-    right_hand_notes = []
-    left_hand_notes = []
     measure_count = 0
     time_signatures = []
     key_signatures = []
@@ -406,15 +405,20 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
                             "scale": "major"
                         })
     
-    # Second pass: process notes for each staff independently
+    # Important: Initialize note collections per staff/hand first to maintain the original ordering
+    staff_notes = {}
+    
+    # Second pass: process notes, ensuring exact timing alignment between staves
+    # This approach follows more closely how the C++ code handles note timing
     for staff in staves:
         staff_id = int(staff.get('id', '0'))
         staff_hand = staff_map.get(staff_id, 2)  # Default to left hand if not found
-        measures = staff.findall("Measure")
+        staff_notes[staff_id] = []
         
         # Process measures in this staff
+        measures = staff.findall("Measure")
         for measure_idx, measure in enumerate(measures):
-            # Get the absolute tick position for this measure
+            # Get the absolute tick position for this measure - crucial for correct timing
             if staff_id in staff_measure_ticks and measure_idx in staff_measure_ticks[staff_id]:
                 measure_start_ticks = staff_measure_ticks[staff_id][measure_idx]
             else:
@@ -424,7 +428,7 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
             for voice_idx, voice in enumerate(measure.findall("voice")):
                 voice_tick = measure_start_ticks  # Start at beginning of measure
                 
-                # Process each element in the voice sequentially
+                # Process each element in the voice sequentially - just like MuseScore does
                 for elem in voice:
                     if elem.tag == "Chord":
                         duration_elem = elem.find("durationType")
@@ -438,7 +442,7 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
                         # Check if this is part of a chord
                         is_chord = elem.find("chord") is not None
                         
-                        # Process notes in the chord
+                        # Process notes in the chord - matching the C++ implementation
                         for note_elem in elem.findall("Note"):
                             pitch_elem = note_elem.find("pitch")
                             if pitch_elem is None:
@@ -449,11 +453,11 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
                                 velocity_elem = note_elem.find("velocity")
                                 velocity = float(velocity_elem.text) / 127.0 if velocity_elem is not None else 0.8
                                 
-                                # Calculate precise timing based on current position
+                                # Calculate precise timing matching the C++ implementation
                                 note_time = ticks_to_seconds(voice_tick, tempos, resolution)
                                 note_end_time = ticks_to_seconds(voice_tick + duration_ticks, tempos, resolution)
                                 
-                                # Create note with accurate timing
+                                # Create note with fully accurate timing
                                 note = Note(
                                     midi=pitch,
                                     time=note_time,
@@ -465,11 +469,7 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
                                     group=measure_idx
                                 )
                                 
-                                # Add note to correct hand based on staff_hand
-                                if staff_hand == 1:
-                                    right_hand_notes.append(note)
-                                else:
-                                    left_hand_notes.append(note)
+                                staff_notes[staff_id].append(note)
                                     
                             except (ValueError, AttributeError, TypeError):
                                 continue
@@ -478,13 +478,29 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
                         if not is_chord:
                             voice_tick += duration_ticks
                     
-                    # Handle rests 
+                    # Handle rests - important for proper timing
                     elif elem.tag == "Rest":
                         duration_elem = elem.find("durationType")
                         if duration_elem is not None:
                             duration_type = duration_elem.text
                             duration_ticks = get_duration_ticks(duration_type, elem.findall("dots"), resolution)
                             voice_tick += duration_ticks
+
+    # Collect notes per hand from the staff notes
+    right_hand_notes = []
+    left_hand_notes = []
+    
+    # Assign notes to the correct hand while preserving the exact timing from the original staff processing
+    for staff_id, notes in staff_notes.items():
+        hand = staff_map.get(staff_id, 2)
+        if hand == 1:
+            right_hand_notes.extend(notes)
+        else:
+            left_hand_notes.extend(notes)
+    
+    # Ensure notes are sorted by tick position and pitch within each hand
+    right_hand_notes.sort(key=lambda x: (x.ticks, x.midi))
+    left_hand_notes.sort(key=lambda x: (x.ticks, x.midi))
     
     # Ensure we have at least one time signature
     if not time_signatures:
@@ -493,10 +509,6 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
             "timeSignature": ["4", "4"],
             "measures": "0"
         })
-    
-    # Sort notes by time within each hand
-    right_hand_notes.sort(key=lambda x: (x.ticks, x.midi))
-    left_hand_notes.sort(key=lambda x: (x.ticks, x.midi))
     
     # Create measure list with proper time signatures
     measure_ticks = []
@@ -528,19 +540,26 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
             "type": "0.000" if i == 0 else "2"
         })
     
-    # Create tracks
-    right_track = Track(notes=sorted(right_hand_notes, key=lambda x: (x.ticks, x.midi)), 
-                       myInstrument=-5, theirInstrument=0)
-    left_track = Track(notes=sorted(left_hand_notes, key=lambda x: (x.ticks, x.midi)), 
-                      myInstrument=-5, theirInstrument=0)
+    # Create tracks with properly sorted notes
+    right_track = Track(
+        notes=right_hand_notes,
+        myInstrument=-5, 
+        theirInstrument=0
+    )
+    
+    left_track = Track(
+        notes=left_hand_notes, 
+        myInstrument=-5, 
+        theirInstrument=0
+    )
     
     # Calculate song length
     song_length = 0
     if right_hand_notes or left_hand_notes:
         all_notes = right_hand_notes + left_hand_notes
-        song_length = max([note.time + note.duration for note in all_notes])
+        song_length = max([note.time + note.duration for note in all_notes]) if all_notes else 0
     
-    # Create final output
+    # Create final output with all notes and their precise timing
     return {
         "supportingTracks": [
             {

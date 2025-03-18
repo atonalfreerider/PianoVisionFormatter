@@ -6,6 +6,7 @@ from tempo_extractor import extract_tempo_from_xml, ticks_to_seconds, verify_tem
 from metadata_extractor import extract_metadata_from_xml, format_output_filename
 from midi_to_json import extract_tempo_events
 from notes import Note, Track
+from track_organizer import organize_tracks_v2
 
 MIDI_NOTE_NAMES = {
     'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11
@@ -407,7 +408,7 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
     right_track = Track(notes=right_hand_notes, myInstrument=-5, theirInstrument=0)
     left_track = Track(notes=left_hand_notes, myInstrument=-5, theirInstrument=0)
     
-    # Organize tracks into measures
+    # Organize tracks into measures using the shared utility
     tracks_v2 = organize_tracks_v2([right_track, left_track], measure_ticks, tempos, output_resolution)
     
     # Calculate song length - max of last note end or last measure end
@@ -458,171 +459,6 @@ def parse_musicxml(xml_path: str) -> Dict[str, Any]:
         "artist": artist,
         "accompanyingTracks": []
     }
-
-def calculate_rests(start_time: float, end_time: float, notes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Calculate rest positions between notes in a measure"""
-    rests = []
-    current_time = start_time
-    sorted_notes = sorted(notes, key=lambda x: x["start"])
-    
-    # Add initial rest if needed
-    if not notes or sorted_notes[0]["start"] > start_time + 0.001:
-        rests.append({
-            "time": start_time,
-            "noteLengthType": "dottedquarter" if end_time - start_time > 0.75 else (
-                "dottedeighth" if end_time - start_time > 0.375 else "dottedsixteenth"
-            )
-        })
-    
-    # Add rests between notes
-    for i in range(len(sorted_notes)):
-        note = sorted_notes[i]
-        if note["start"] > current_time + 0.001:
-            duration = note["start"] - current_time
-            rests.append({
-                "time": current_time,
-                "noteLengthType": "dottedquarter" if duration > 0.75 else (
-                    "dottedeighth" if duration > 0.375 else "dottedsixteenth"
-                )
-            })
-        current_time = note["end"]
-        
-        if i < len(sorted_notes) - 1 and sorted_notes[i + 1]["start"] > current_time + 0.001:
-            duration = sorted_notes[i + 1]["start"] - current_time
-            rests.append({
-                "time": current_time,
-                "noteLengthType": "dottedquarter" if duration > 0.75 else (
-                    "dottedeighth" if duration > 0.375 else "dottedsixteenth"
-                )
-            })
-    
-    # Add final rest if needed
-    if current_time < end_time - 0.001:
-        duration = end_time - current_time
-        rests.append({
-            "time": current_time,
-            "noteLengthType": "dottedquarter" if duration > 0.75 else (
-                "dottedeighth" if duration > 0.375 else "dottedsixteenth"
-            )
-        })
-    
-    return rests
-
-def organize_tracks_v2(tracks: List[Track], sorted_measures: List[Dict[str, Any]], tempos: List[Dict[str, Any]], ticks_per_beat: int = 480) -> Dict[str, List[Dict[str, Any]]]:
-    """Organize notes into measures for each hand"""
-    # Ensure measure consistency
-    measure_count = len(sorted_measures)
-    right_measures = []
-    left_measures = []
-    
-    # Create base measures for both hands
-    for track_idx in range(2):  # 0 = right, 1 = left
-        for measure_idx in range(measure_count):
-            measure = sorted_measures[measure_idx]
-            next_measure = sorted_measures[measure_idx + 1] if measure_idx + 1 < measure_count else None
-            
-            # Calculate timeEnd using the tempo at this measure's end
-            if next_measure:
-                time_end = next_measure["time"]
-            else:
-                # For the last measure, calculate based on actual tempo
-                measure_end_ticks = measure["ticksStart"] + measure["totalTicks"]
-                time_end = ticks_to_seconds(measure_end_ticks, tempos, ticks_per_beat)
-            
-            # Ensure required fields exist
-            ticks_per_measure = measure.get("totalTicks", measure.get("ticksPerMeasure", 1920))  # Default to 4/4 time
-            
-            measure_data = {
-                "direction": "up" if track_idx == 0 else "down",
-                "time": measure["time"],
-                "timeEnd": time_end,
-                "timeSignature": measure["timeSignature"],
-                "notes": [],
-                "max": 0,
-                "min": 127,
-                "measureTicksStart": measure["ticksStart"],
-                "measureTicksEnd": measure["ticksStart"] + ticks_per_measure,
-                "ticksPerMeasure": ticks_per_measure,  # Ensure this field is always present
-                "totalTicks": ticks_per_measure,  # Add totalTicks as well for compatibility
-                "rests": [{"time": measure["time"], "noteLengthType": "dottedquarter"}],
-                "type": 0 if measure_idx == 0 else 2
-            }
-            
-            if track_idx == 0:
-                right_measures.append(measure_data)
-            else:
-                left_measures.append(measure_data)
-    
-    # Fill in notes for each track
-    for track_idx, track in enumerate(tracks):
-        measures = right_measures if track_idx == 0 else left_measures
-        sorted_notes = sorted(track.notes, key=lambda x: x.ticks)
-        
-        for note in sorted_notes:
-            # Find correct measure with strict comparison; if not found, assign to last measure.
-            measure_idx = next(
-                (i for i, m in enumerate(measures)
-                 if m["measureTicksStart"] <= note.ticks < m["measureTicksEnd"]),
-                None
-            )
-            if measure_idx is None:
-                measure_idx = len(measures) - 1
-            measure = measures[measure_idx]
-            measure_ticks = note.ticks - measure["measureTicksStart"]
-            
-            # Create note data
-            note_data = {
-                "note": note.midi,
-                "durationTicks": note.duration_ticks,
-                "noteOffVelocity": 0,
-                "ticksStart": note.ticks,
-                "velocity": note.velocity,
-                # Fix: Calculate measureBars correctly based on relative position within measure
-                "measureBars": float(measure_ticks) / float(measure["ticksPerMeasure"]),
-                "duration": note.duration,
-                "noteName": get_note_name(note.midi),
-                "octave": (note.midi // 12) - 1,
-                "notePitch": get_note_name(note.midi).rstrip('0123456789'),
-                "start": note.time,
-                "end": note.time + note.duration,
-                "noteLengthType": get_note_length_type(note.duration_ticks),
-                "group": note.group,
-                "measureInd": measure_idx,
-                "noteMeasureInd": len(measure["notes"]),
-                "id": f"{'r' if track_idx == 0 else 'l'}{len(measure['notes'])}"
-            }
-            
-            measure["notes"].append(note_data)
-            measure["max"] = max(measure["max"], note_data["note"])
-            measure["min"] = min(measure["min"], note_data["note"])
-            
-            if measure["notes"]:
-                measure["rests"] = calculate_rests(
-                    measure["time"],
-                    measure["timeEnd"],
-                    measure["notes"]
-                )
-    
-    return {
-        "right": right_measures,
-        "left": left_measures
-    }
-
-def get_note_name(midi_note: int) -> str:
-    """Get note name from MIDI note number"""
-    notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-    note_name = notes[midi_note % 12]
-    octave = (midi_note // 12) - 1
-    return f"{note_name}{octave}"
-
-def get_note_length_type(duration_ticks: int) -> str:
-    """Determine note length type based on duration in ticks"""
-    if duration_ticks >= 360:  # Roughly a quarter note
-        return "quarter"
-    elif duration_ticks >= 180:  # Roughly an eighth note
-        return "eighth"
-    else:
-        return "dottedsixteenth"
 
 def main():
     import sys
