@@ -405,102 +405,160 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
                             "scale": "major"
                         })
     
-    # Important: Initialize note collections per staff/hand first to maintain the original ordering
-    staff_notes = {}
+    # COMPLETE REWRITE OF NOTE COLLECTION LOGIC
+    all_notes = []
     
-    # Second pass: process notes, ensuring exact timing alignment between staves
-    # This approach follows more closely how the C++ code handles note timing
+    # Track tuplet contexts for each voice in each staff
+    tuplet_contexts = {}  # (staff_id, voice_idx) -> tuplet_info
+    
+    # Process each staff separately
     for staff in staves:
         staff_id = int(staff.get('id', '0'))
         staff_hand = staff_map.get(staff_id, 2)  # Default to left hand if not found
-        staff_notes[staff_id] = []
         
         # Process measures in this staff
         measures = staff.findall("Measure")
         for measure_idx, measure in enumerate(measures):
-            # Get the absolute tick position for this measure - crucial for correct timing
+            # Get measure start tick position
             if staff_id in staff_measure_ticks and measure_idx in staff_measure_ticks[staff_id]:
                 measure_start_ticks = staff_measure_ticks[staff_id][measure_idx]
             else:
                 measure_start_ticks = measure_idx * resolution * 4
+            
+            # Process each voice independently
+            voice_elements = measure.findall("voice")
+            for voice_idx, voice in enumerate(voice_elements):
+                # Start position for this voice in this measure
+                current_tick = measure_start_ticks
+                voice_key = (staff_id, voice_idx)
                 
-            # Process each voice in the measure
-            for voice_idx, voice in enumerate(measure.findall("voice")):
-                voice_tick = measure_start_ticks  # Start at beginning of measure
-                
-                # Process each element in the voice sequentially - just like MuseScore does
+                # Process elements in this voice sequentially
+                active_tuplet = None
                 for elem in voice:
-                    if elem.tag == "Chord":
+                    # Handle tuplets that affect timing
+                    if elem.tag == "Tuplet":
+                        # Extract tuplet ratio (e.g., 3:2 for triplets)
+                        normal_notes = elem.find("normalNotes")
+                        actual_notes = elem.find("actualNotes")
+                        base_note = elem.find("baseNote")
+                        
+                        if normal_notes is not None and actual_notes is not None and base_note is not None:
+                            normal = int(normal_notes.text)
+                            actual = int(actual_notes.text)
+                            base_type = base_note.text
+                            
+                            # Calculate tuplet ratio
+                            tuplet_ratio = normal / actual
+                            
+                            # Save active tuplet context
+                            active_tuplet = {
+                                "ratio": tuplet_ratio,
+                                "base_type": base_type,
+                                "normal": normal,
+                                "actual": actual
+                            }
+                    
+                    elif elem.tag == "endTuplet":
+                        # End current tuplet
+                        active_tuplet = None
+                        
+                    elif elem.tag == "location":
+                        # Handle explicit position changes within a voice
+                        fraction_elem = elem.find("fractions")
+                        if fraction_elem is not None and fraction_elem.text:
+                            try:
+                                # Parse the fraction (e.g., "1/4" or "-1/12")
+                                num, denom = fraction_elem.text.split('/')
+                                fraction_value = int(num) / int(denom)
+                                # Adjust the current tick position
+                                current_tick += int(fraction_value * resolution * 4)
+                            except (ValueError, ZeroDivisionError):
+                                pass
+                    
+                    elif elem.tag == "Chord":
+                        # Handle chord (a group of notes played simultaneously)
                         duration_elem = elem.find("durationType")
                         if duration_elem is None:
                             continue
                         
-                        # Calculate duration considering dots
                         duration_type = duration_elem.text
-                        duration_ticks = get_duration_ticks(duration_type, elem.findall("dots"), resolution)
+                        # Get base duration without tuplet adjustment
+                        base_duration_ticks = get_duration_ticks(duration_type, elem.findall("dots"), resolution)
                         
-                        # Check if this is part of a chord
-                        is_chord = elem.find("chord") is not None
+                        # Adjust duration if in tuplet (e.g., triplet eighth notes)
+                        duration_ticks = base_duration_ticks
+                        if active_tuplet:
+                            # Apply tuplet ratio to get actual duration (e.g., triplet eighth = 1/3 of a quarter)
+                            duration_ticks = int(base_duration_ticks * active_tuplet["ratio"])
                         
-                        # Process notes in the chord - matching the C++ implementation
+                        # Check if this is part of another chord (continuation)
+                        is_chord_continuation = elem.find("chord") is not None
+                        
+                        # Determine chord start position
+                        chord_start_tick = current_tick
+                        
+                        # Only advance position if this isn't a chord continuation
+                        if not is_chord_continuation:
+                            # Advance position for next element
+                            current_tick += duration_ticks
+                        
+                        # Process each note in this chord
                         for note_elem in elem.findall("Note"):
                             pitch_elem = note_elem.find("pitch")
                             if pitch_elem is None:
                                 continue
-                            
+                                
                             try:
                                 pitch = int(pitch_elem.text)
                                 velocity_elem = note_elem.find("velocity")
                                 velocity = float(velocity_elem.text) / 127.0 if velocity_elem is not None else 0.8
                                 
-                                # Calculate precise timing matching the C++ implementation
-                                note_time = ticks_to_seconds(voice_tick, tempos, resolution)
-                                note_end_time = ticks_to_seconds(voice_tick + duration_ticks, tempos, resolution)
+                                # Calculate precise timing
+                                note_time = ticks_to_seconds(chord_start_tick, tempos, resolution)
+                                note_end_time = ticks_to_seconds(chord_start_tick + duration_ticks, tempos, resolution)
                                 
-                                # Create note with fully accurate timing
+                                # Create note with accurate timing
                                 note = Note(
                                     midi=pitch,
                                     time=note_time,
                                     velocity=velocity,
                                     duration=note_end_time - note_time,
-                                    ticks=voice_tick,
+                                    ticks=chord_start_tick,
                                     duration_ticks=duration_ticks,
                                     staff=staff_hand,
                                     group=measure_idx
                                 )
                                 
-                                staff_notes[staff_id].append(note)
-                                    
+                                all_notes.append(note)
+                                
                             except (ValueError, AttributeError, TypeError):
                                 continue
-                        
-                        # Only advance tick position if not part of a chord
-                        if not is_chord:
-                            voice_tick += duration_ticks
                     
-                    # Handle rests - important for proper timing
                     elif elem.tag == "Rest":
+                        # Handle rest - adjust current position
                         duration_elem = elem.find("durationType")
                         if duration_elem is not None:
                             duration_type = duration_elem.text
-                            duration_ticks = get_duration_ticks(duration_type, elem.findall("dots"), resolution)
-                            voice_tick += duration_ticks
-
-    # Collect notes per hand from the staff notes
-    right_hand_notes = []
-    left_hand_notes = []
+                            # Get base duration
+                            base_duration_ticks = get_duration_ticks(duration_type, elem.findall("dots"), resolution)
+                            
+                            # Apply tuplet adjustment if needed
+                            duration_ticks = base_duration_ticks
+                            if active_tuplet:
+                                duration_ticks = int(base_duration_ticks * active_tuplet["ratio"])
+                            
+                            # Advance position
+                            current_tick += duration_ticks
     
-    # Assign notes to the correct hand while preserving the exact timing from the original staff processing
-    for staff_id, notes in staff_notes.items():
-        hand = staff_map.get(staff_id, 2)
-        if hand == 1:
-            right_hand_notes.extend(notes)
-        else:
-            left_hand_notes.extend(notes)
+    # Split notes by hand
+    right_hand_notes = [note for note in all_notes if note.staff == 1]
+    left_hand_notes = [note for note in all_notes if note.staff == 2]
     
-    # Ensure notes are sorted by tick position and pitch within each hand
-    right_hand_notes.sort(key=lambda x: (x.ticks, x.midi))
-    left_hand_notes.sort(key=lambda x: (x.ticks, x.midi))
+    # Sort notes by actual time first then MIDI number for consistent temporal ordering
+    # This is critical for proper playback since two notes with same tick position 
+    # might have different actual times due to tempo changes
+    right_hand_notes.sort(key=lambda x: (x.time, x.midi))
+    left_hand_notes.sort(key=lambda x: (x.time, x.midi))
     
     # Ensure we have at least one time signature
     if not time_signatures:
@@ -510,7 +568,7 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
             "measures": "0"
         })
     
-    # Create measure list with proper time signatures
+    # Create measure list with proper time signatures and accurate timing
     measure_ticks = []
     for i in range(measure_count):
         # Find measure start time based on first staff's measure positions
@@ -531,8 +589,11 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
         denominator = int(current_time_sig["timeSignature"][1])
         measure_length = (resolution * 4 * numerator) // denominator
         
+        # Calculate accurate temporal time for measure start
+        measure_start_time = ticks_to_seconds(measure_start_ticks, tempos, resolution)
+        
         measure_ticks.append({
-            "time": ticks_to_seconds(measure_start_ticks, tempos, resolution),
+            "time": measure_start_time,
             "timeSignature": current_time_sig["timeSignature"],
             "ticksPerMeasure": measure_length,
             "ticksStart": measure_start_ticks,
