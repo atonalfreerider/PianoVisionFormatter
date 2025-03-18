@@ -27,49 +27,85 @@ def extract_mscx_from_mscz(mscz_path: str) -> Optional[str]:
         return None
 
 def standardize_title(title: str) -> str:
-    """Standardize a title by removing newlines and extra spaces"""
+    """Standardize a title by removing font tags and extra spaces"""
     if not title:
         return ""
+    # Remove font tags
+    title = re.sub(r'<font[^>]*>|</font>', '', title)
     # Replace newlines with spaces, then normalize spaces
     return re.sub(r'\s+', ' ', title.replace('\n', ' ')).strip()
 
 def standardize_artist(artist: str) -> str:
-    """Standardize an artist name by removing non-alphabetic characters and extra spaces"""
+    """Standardize an artist name by removing font tags and normalizing spaces"""
     if not artist:
         return ""
+    # Remove font tags
+    artist = re.sub(r'<font[^>]*>|</font>', '', artist)
     # Replace newlines with spaces
     artist = artist.replace('\n', ' ')
+    # Remove text in parentheses
+    artist = re.sub(r'\([^)]*\)', '', artist)
     # Remove non-alphabetic characters (except spaces)
-    artist = re.sub(r'[^a-zA-Z\s]', '', artist)
+    artist = re.sub(r'[^a-zA-ZÀ-ÿ\s]', '', artist)
     # Normalize spaces
     return re.sub(r'\s+', ' ', artist).strip()
+
+def extract_text_content(elem: ET.Element) -> str:
+    """Extract text content from element, including all child text nodes"""
+    text_parts = []
+    if elem.text:
+        text_parts.append(elem.text)
+    for child in elem:
+        if child.text:
+            text_parts.append(child.text)
+        if child.tail:
+            text_parts.append(child.tail)
+    return ''.join(text_parts)
 
 def extract_metadata_from_musescore(root: ET.Element) -> Tuple[str, str]:
     """Extract title and artist from MuseScore file"""
     title = ""
+    subtitle = ""
     artist = ""
+    
+    # Look for title, subtitle, and composer in VBox/Text elements
+    for vbox in root.findall(".//VBox"):
+        for text_elem in vbox.findall("Text"):
+            style = text_elem.find("style")
+            text = text_elem.find("text")
+            
+            if style is not None and text is not None:
+                content = extract_text_content(text)
+                
+                if style.text == "title":
+                    title = standardize_title(content)
+                elif style.text == "subtitle":
+                    subtitle = standardize_title(content)
+                elif style.text == "composer":
+                    artist = standardize_artist(content)
+    
+    # Combine title and subtitle if both exist
+    if title and subtitle:
+        title = f"{title} - {subtitle}"
+    
+    # Create fallback metadata dictionary
+    fallback_metadata = {
+        "fallback_filename": "",
+        "fallback_folder": ""
+    }
 
-    # Look for title and composer in VBox/Text elements
-    for text_elem in root.findall(".//VBox/Text"):
-        style = text_elem.find("style")
-        if style is not None:
-            if style.text == "title":
-                title_text = text_elem.find("text")
-                if title_text is not None:
-                    title = standardize_title(title_text.text)
-            elif style.text == "composer":
-                composer_text = text_elem.find("text")
-                if composer_text is not None:
-                    artist = standardize_artist(composer_text.text)
+    # Store fallback values
+    if not title or not artist:
+        file_path = root.get("source", "")
+        if file_path:
+            fallback_metadata["fallback_filename"] = os.path.splitext(os.path.basename(file_path))[0].replace('_', ' ')
+            fallback_metadata["fallback_folder"] = os.path.basename(os.path.dirname(file_path))
 
-    # Look for subtitle to append to title
-    for text_elem in root.findall(".//VBox/Text"):
-        style = text_elem.find("style")
-        if style is not None and style.text == "subtitle":
-            subtitle_text = text_elem.find("text")
-            if subtitle_text is not None and title:
-                subtitle = standardize_title(subtitle_text.text)
-                title = f"{title} - {subtitle}"
+    # Use fallbacks if needed
+    if not title:
+        title = fallback_metadata["fallback_filename"]
+    if not artist:
+        artist = fallback_metadata["fallback_folder"]
 
     return title, artist
 
@@ -81,6 +117,13 @@ def extract_metadata_from_xml(xml_path: str) -> Tuple[str, str]:
         
         title = None
         subtitle = None
+        artist = None
+        
+        # Create fallback metadata dictionary
+        fallback_metadata = {
+            "fallback_filename": os.path.splitext(os.path.basename(xml_path))[0].replace('_', ' '),
+            "fallback_folder": os.path.basename(os.path.dirname(xml_path))
+        }
         
         # Try to get title and subtitle from credit elements
         for credit in root.findall('.//credit'):
@@ -110,7 +153,6 @@ def extract_metadata_from_xml(xml_path: str) -> Tuple[str, str]:
             title = f"{title} - {subtitle}"
 
         # Try to get composer from credit elements
-        artist = None
         for credit in root.findall('.//credit'):
             credit_type = credit.find('credit-type')
             if credit_type is not None and credit_type.text == 'composer':
@@ -129,12 +171,19 @@ def extract_metadata_from_xml(xml_path: str) -> Tuple[str, str]:
         if not artist:
             artist = os.path.basename(os.path.dirname(xml_path))
         
+        # If either value is empty after extraction, use fallbacks
+        if not title:
+            title = fallback_metadata["fallback_filename"]
+        if not artist:
+            artist = fallback_metadata["fallback_folder"]
+        
         return title, artist
+        
     except Exception as e:
         print(f"Error extracting metadata from {xml_path}: {str(e)}")
         # Return default values based on the filename
-        base_name = os.path.splitext(os.path.basename(xml_path))[0]
-        return base_name.replace('_', ' '), os.path.basename(os.path.dirname(xml_path))
+        return (os.path.splitext(os.path.basename(xml_path))[0].replace('_', ' '),
+                os.path.basename(os.path.dirname(xml_path)))
 
 def format_output_filename(title: str, artist: str, file_path: str) -> str:
     """Format the output filename according to specifications"""
