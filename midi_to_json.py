@@ -5,6 +5,8 @@ import os
 from typing import List, Dict, Any, Tuple
 from metadata_extractor import extract_metadata_from_musescore, format_output_filename, find_matching_musescore, extract_mscx_from_mscz
 from notes import Note, Track
+from tempo_extractor import ticks_to_seconds
+from track_organizer import get_note_name, get_note_length_type, calculate_rests
 
 def extract_tempo_events(mid: mido.MidiFile) -> List[Dict[str, Any]]:
     """Extract tempo events from MIDI with improved reliability"""
@@ -108,32 +110,6 @@ def extract_key_signatures(mid: mido.MidiFile) -> List[Dict[str, Any]]:
     
     return key_sigs
 
-def ticks_to_seconds(ticks: int, tempos: List[Dict[str, Any]], ticks_per_beat: int) -> float:
-    """Convert tick position to seconds considering tempo changes"""
-    if not tempos:
-        # Default tempo of 120 BPM (500000 microseconds per beat)
-        return (ticks * 500000) / (ticks_per_beat * 1000000)
-    
-    current_time = 0.0
-    current_ticks = 0
-    current_tempo = 500000  # Default tempo
-    
-    for tempo in tempos:
-        if ticks < tempo["ticks"]:
-            # Calculate remaining time until target ticks
-            delta_ticks = ticks - current_ticks
-            return current_time + (delta_ticks * current_tempo) / (ticks_per_beat * 1000000)
-        
-        # Add time until this tempo change
-        delta_ticks = tempo["ticks"] - current_ticks
-        current_time += (delta_ticks * current_tempo) / (ticks_per_beat * 1000000)
-        current_ticks = tempo["ticks"]
-        current_tempo = int(60000000 / tempo["bpm"])
-    
-    # Calculate remaining time after last tempo change
-    delta_ticks = ticks - current_ticks
-    return current_time + (delta_ticks * current_tempo) / (ticks_per_beat * 1000000)
-
 def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
     """Extract notes from MIDI with improved staff assignment"""
     mid = mido.MidiFile(midi_path)
@@ -222,15 +198,6 @@ def get_notes_from_midi(midi_path: str) -> Tuple[List[Track], float]:
 
     return final_tracks, max_time
 
-def get_note_length_type(duration_ticks: int) -> str:
-    """Determine note length type based on duration in ticks"""
-    if duration_ticks >= 360:  # Roughly a quarter note
-        return "quarter"
-    elif duration_ticks >= 180:  # Roughly an eighth note
-        return "eighth"
-    else:
-        return "dottedsixteenth"
-
 def organize_tracks_v2(tracks: List[Track], time_sigs: List[Dict[str, Any]], tempos: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
     """Organize tracks into measures for tracksV2 format"""
     right_hand_notes = []
@@ -270,13 +237,6 @@ def organize_tracks_v2(tracks: List[Track], time_sigs: List[Dict[str, Any]], tem
         "right": measure_data["right"],
         "left": measure_data["left"]
     }
-
-def get_note_name(midi_note: int) -> str:
-    """Get note name from MIDI note number"""
-    notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-    note_name = notes[midi_note % 12]
-    octave = (midi_note // 12) - 1
-    return f"{note_name}{octave}"
 
 def create_measure_data(time_sigs: List[Dict[str, Any]], 
                        right_notes: List[Dict[str, Any]], 
@@ -333,7 +293,7 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
                 "min": min(n["note"] for n in measure_right_notes),
                 "measureTicksStart": current_measure_tick,
                 "measureTicksEnd": end_tick,
-                "rests": calculate_rests(measure_right_notes, start_time, end_time),
+                "rests": calculate_rests(start_time, end_time, measure_right_notes),
                 "type": 0 if measure_idx == 0 else 2
             })
         
@@ -348,7 +308,7 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
                 "min": min(n["note"] for n in measure_left_notes),
                 "measureTicksStart": current_measure_tick,
                 "measureTicksEnd": end_tick,
-                "rests": calculate_rests(measure_left_notes, start_time, end_time),
+                "rests": calculate_rests(start_time, end_time, measure_left_notes),
                 "type": 0 if measure_idx == 0 else 2
             })
         
@@ -359,29 +319,6 @@ def create_measure_data(time_sigs: List[Dict[str, Any]],
         "right": measures_right,
         "left": measures_left
     }
-
-def calculate_rests(notes: List[Dict[str, Any]], start_time: float, end_time: float) -> List[Dict[str, Any]]:
-    """Calculate rest positions between notes in a measure"""
-    rests = []
-    current_time = start_time
-    
-    sorted_notes = sorted(notes, key=lambda x: x["start"])
-    
-    for note in sorted_notes:
-        if note["start"] > current_time:
-            rests.append({
-                "time": current_time,
-                "noteLengthType": "dottedsixteenth"
-            })
-        current_time = note["end"]
-    
-    if current_time < end_time:
-        rests.append({
-            "time": current_time,
-            "noteLengthType": "dottedsixteenth"
-        })
-    
-    return rests
 
 def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
     mid = mido.MidiFile(midi_path)
@@ -405,7 +342,7 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
 
     time_sigs = extract_time_signatures(mid)
     key_sigs = extract_key_signatures(mid)
-    
+
     # Get total number of measures from tracks
     tracks_v2 = organize_tracks_v2(tracks, time_sigs, tempos)
     
