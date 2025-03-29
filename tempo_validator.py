@@ -31,52 +31,6 @@ def tempo_at_time(tempos: List[Dict[str, Any]], target_time: float) -> float:
     # If we're past all tempo markings, return the last tempo
     return float(sorted_tempos[-1]["bpm"])
 
-def interpolate_tempo_at_tick(tempos: List[Dict[str, Any]], target_tick: int) -> float:
-    """Return the interpolated BPM at a specific tick position"""
-    # Sort tempos by ticks
-    sorted_tempos = sorted(tempos, key=lambda x: int(x["ticks"]))
-    
-    # If no tempos, raise error instead of returning default
-    if not sorted_tempos:
-        raise ValueError("No tempo markings available.")
-    
-    # If target tick is before first tempo, return first tempo
-    # (don't use a default - instead, the first tempo should be at tick 0)
-    if target_tick < int(sorted_tempos[0]["ticks"]):
-        return float(sorted_tempos[0]["bpm"])
-    
-    # Find the last tempo that's less than or equal to our target tick
-    for i in range(len(sorted_tempos) - 1):
-        current = int(sorted_tempos[i]["ticks"])
-        next_tick = int(sorted_tempos[i+1]["ticks"])
-        
-        if current <= target_tick < next_tick:
-            # Simple linear interpolation between tempo points
-            current_bpm = float(sorted_tempos[i]["bpm"])
-            next_bpm = float(sorted_tempos[i+1]["bpm"])
-            
-            # Calculate position ratio between tempo points
-            ratio = (target_tick - current) / (next_tick - current) if (next_tick - current) > 0 else 0
-            
-            # Interpolate BPM
-            return current_bpm + ratio * (next_bpm - current_bpm)
-    
-    # If we're past all tempo markings, return the last tempo
-    return float(sorted_tempos[-1]["bpm"])
-
-def collect_time_points(ref_tempos: List[Dict[str, Any]], gen_tempos: List[Dict[str, Any]]) -> List[float]:
-    """Collect all unique time points from both tempo lists for comparison"""
-    time_points = set()
-    
-    # Add all time points from both tempo lists
-    for tempo in ref_tempos:
-        time_points.add(float(tempo["time"]))
-    for tempo in gen_tempos:
-        time_points.add(float(tempo["time"]))
-        
-    # Sort time points
-    return sorted(time_points)
-
 def compare_tempos(generated_path: str, reference_path: str) -> List[Dict[str, Any]]:
     """Compare tempos between generated and reference files at all reference time points"""
     # Load files

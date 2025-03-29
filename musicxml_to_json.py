@@ -1,9 +1,8 @@
 import xml.etree.ElementTree as ET
 import json
 import os
-from typing import List, Dict, Any, Optional
-from tempo_extractor import extract_tempo_from_xml, ticks_to_seconds, verify_tempo_markings
-from metadata_extractor import extract_metadata_from_xml, format_output_filename
+from typing import List, Dict, Any, Optional, Tuple
+from pv_util import standardize_title, standardize_artist, format_output_filename, ticks_to_seconds
 from midi_to_json import extract_tempo_events
 from notes import Note, Track
 from track_organizer import organize_tracks_v2
@@ -11,6 +10,82 @@ from track_organizer import organize_tracks_v2
 MIDI_NOTE_NAMES = {
     'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11
 }
+
+def extract_metadata_from_xml(xml_path: str) -> Tuple[str, str]:
+    """Extract title and artist from MusicXML file"""
+    try:
+        tree = ET.parse(xml_path)
+        root = tree.getroot()
+
+        title = None
+        subtitle = None
+        artist = None
+
+        # Create fallback metadata dictionary
+        fallback_metadata = {
+            "fallback_filename": os.path.splitext(os.path.basename(xml_path))[0].replace('_', ' '),
+            "fallback_folder": os.path.basename(os.path.dirname(xml_path))
+        }
+
+        # Try to get title and subtitle from credit elements
+        for credit in root.findall('.//credit'):
+            credit_type = credit.find('credit-type')
+            if credit_type is not None:
+                if credit_type.text == 'title':
+                    credit_words = credit.find('credit-words')
+                    if credit_words is not None:
+                        title = standardize_title(credit_words.text)
+                elif credit_type.text == 'subtitle':
+                    credit_words = credit.find('credit-words')
+                    if credit_words is not None:
+                        subtitle = standardize_title(credit_words.text)
+
+        # Fallback to work-title if no credit title found
+        if not title:
+            work = root.find('.//work-title')
+            if work is not None:
+                title = standardize_title(work.text)
+
+        # Final fallback to filename
+        if not title:
+            title = os.path.splitext(os.path.basename(xml_path))[0].replace('_', ' ')
+
+        # Combine title and subtitle if both exist
+        if subtitle:
+            title = f"{title} - {subtitle}"
+
+        # Try to get composer from credit elements
+        for credit in root.findall('.//credit'):
+            credit_type = credit.find('credit-type')
+            if credit_type is not None and credit_type.text == 'composer':
+                credit_words = credit.find('credit-words')
+                if credit_words is not None:
+                    artist = standardize_artist(credit_words.text)
+                    break
+
+        # Fallback to creator field if no credit composer found
+        if not artist:
+            creator = root.find('.//creator[@type="composer"]')
+            if creator is not None:
+                artist = standardize_artist(creator.text)
+
+        # Final fallback to parent folder name
+        if not artist:
+            artist = os.path.basename(os.path.dirname(xml_path))
+
+        # If either value is empty after extraction, use fallbacks
+        if not title:
+            title = fallback_metadata["fallback_filename"]
+        if not artist:
+            artist = fallback_metadata["fallback_folder"]
+
+        return title, artist
+
+    except Exception as e:
+        print(f"Error extracting metadata from {xml_path}: {str(e)}")
+        # Return default values based on the filename
+        return (os.path.splitext(os.path.basename(xml_path))[0].replace('_', ' '),
+                os.path.basename(os.path.dirname(xml_path)))
 
 def note_to_midi(step: str, octave: int, alter: int = 0) -> int:
     """Convert note name and octave to MIDI note number"""
@@ -104,6 +179,121 @@ def get_note_staff(note_elem, measure) -> int:
             is_after_backup = False
 
     return 2 if is_after_backup else 1  # Default to staff 1 if unknown
+
+def extract_tempo_from_xml(root, ticks_per_beat: int = 480) -> List[Dict[str, Any]]:
+    """Extract tempo markings from MusicXML with improved reliability"""
+    tempos = []
+    current_ticks = 0
+    current_divisions = None
+
+    # Find all parts and process in order
+    for part in root.findall('.//part'):
+        measure_pos = 0
+
+        # Process each measure
+        for measure in part.findall('measure'):
+            measure_tempos = []
+
+            # Process attributes for divisions
+            for attr in measure.findall('attributes'):
+                div_elem = attr.find('divisions')
+                if div_elem is not None:
+                    current_divisions = int(div_elem.text)
+
+            if current_divisions is None:
+                continue  # Skip if no divisions defined yet
+
+            # Find all direction elements with tempo markings
+            for direction in measure.findall('direction'):
+                # Look for sound element with tempo
+                sound = direction.find('.//sound[@tempo]')
+                if sound is not None:
+                    tempo_bpm = float(sound.get('tempo'))
+
+                    # Calculate position within measure
+                    pos_in_measure = 0
+                    if direction.find('offset') is not None:
+                        offset = int(direction.find('offset').text)
+                        pos_in_measure = offset * ticks_per_beat / current_divisions
+
+                    tick_pos = current_ticks + measure_pos + pos_in_measure
+
+                    measure_tempos.append({
+                        "bpm": tempo_bpm,
+                        "ticks": int(tick_pos),
+                        "time": 0  # Will calculate actual time later
+                    })
+
+            # Add note durations to measure position
+            for note in measure.findall('note'):
+                if note.find('grace') is None and note.find('chord') is None:
+                    duration = note.find('duration')
+                    if duration is not None:
+                        measure_pos += int(duration.text) * ticks_per_beat / current_divisions
+
+            # Add measure tempos to main list
+            tempos.extend(measure_tempos)
+
+            # Reset measure position for next measure
+            current_ticks += measure_pos
+            measure_pos = 0
+
+    # Ensure we have at least one tempo marking at tick 0
+    if not tempos or tempos[0]["ticks"] > 0:
+        tempos.insert(0, {
+            "bpm": 120,  # Default tempo
+            "ticks": 0,
+            "time": 0
+        })
+
+    # Sort tempos by tick position
+    tempos.sort(key=lambda x: x["ticks"])
+
+    # Calculate times based on tempo changes - IMPROVED for precise timing
+    calculate_tempo_times(tempos, ticks_per_beat)
+
+    return tempos
+
+def calculate_tempo_times(tempos: List[Dict[str, Any]], ticks_per_beat: int):
+    """Calculate actual times for each tempo marking based on previous tempos"""
+    if not tempos:
+        return
+
+    # First tempo always at time 0
+    tempos[0]["time"] = 0.0
+
+    for i in range(1, len(tempos)):
+        curr_tempo = tempos[i]
+        prev_tempo = tempos[i - 1]
+
+        # Calculate time precisely using microseconds per quarter note
+        delta_ticks = curr_tempo["ticks"] - prev_tempo["ticks"]
+        microseconds_per_beat = 60000000 / prev_tempo["bpm"]
+        delta_seconds = (delta_ticks * microseconds_per_beat) / (ticks_per_beat * 1000000)
+
+        # Accumulate time precisely
+        curr_tempo["time"] = prev_tempo["time"] + delta_seconds
+
+def verify_tempo_markings(tempos: List[Dict[str, Any]]):
+    """Verify tempo markings for debugging"""
+    if not tempos:
+        print("WARNING: No tempo markings found, using default 120 BPM")
+        return
+
+    if tempos[0]["ticks"] != 0:
+        print("WARNING: First tempo marking not at tick 0, adding default tempo")
+
+    # Print all tempo markings
+    print(f"Found {len(tempos)} tempo markings:")
+    for i, tempo in enumerate(tempos):
+        print(f"  {i + 1}: {tempo['bpm']} BPM at tick {tempo['ticks']} (time: {tempo['time']:.3f}s)")
+
+    # Verify time calculations
+    for i in range(1, len(tempos)):
+        calculated_time = ticks_to_seconds(tempos[i]["ticks"], tempos, 480)
+        delta = abs(calculated_time - tempos[i]["time"])
+        if delta > 0.001:  # More than 1ms difference
+            print(f"WARNING: Tempo time calculation error at tempo {i + 1}: {delta:.6f}s")
 
 def find_matching_midi(xml_path: str) -> Optional[str]:
     """Find a MIDI file with matching name in the same directory as the XML file"""

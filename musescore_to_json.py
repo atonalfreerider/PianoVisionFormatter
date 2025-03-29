@@ -2,14 +2,12 @@ import xml.etree.ElementTree as ET
 import json
 import os
 from typing import Dict, Any, List
-from metadata_extractor import format_output_filename, extract_metadata_from_musescore, extract_mscx_from_mscz
+from pv_util import format_output_filename, extract_metadata_from_musescore, extract_mscx_from_mscz, ticks_to_seconds
 from notes import Note, Track
 from track_organizer import organize_tracks_v2
-from tempo_extractor import ticks_to_seconds
 
 def extract_tempo_changes(root: ET.Element) -> List[Dict[str, Any]]:
     """Extract tempo changes from MuseScore file"""
-    tempos = []
     division_elem = root.find(".//Division")
     resolution = int(division_elem.text) if division_elem is not None else 480
     
@@ -288,7 +286,6 @@ def create_measure_ticks_map(score: ET.Element, resolution: int) -> Dict[int, Di
     measure_lengths = {}  # Maps measure_idx to length in ticks
     
     # First pass: determine time signatures and measure lengths for first staff
-    current_tick = 0
     first_staff = None
     
     for staff in score.findall(".//Staff"):
@@ -407,10 +404,7 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
     
     # COMPLETE REWRITE OF NOTE COLLECTION LOGIC
     all_notes = []
-    
-    # Track tuplet contexts for each voice in each staff
-    tuplet_contexts = {}  # (staff_id, voice_idx) -> tuplet_info
-    
+
     # Process each staff separately
     for staff in staves:
         staff_id = int(staff.get('id', '0'))
@@ -430,7 +424,6 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
             for voice_idx, voice in enumerate(voice_elements):
                 # Start position for this voice in this measure
                 current_tick = measure_start_ticks
-                voice_key = (staff_id, voice_idx)
                 
                 # Process elements in this voice sequentially
                 active_tuplet = None

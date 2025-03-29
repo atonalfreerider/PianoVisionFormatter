@@ -1,9 +1,36 @@
 import xml.etree.ElementTree as ET
 import os
 import re
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List, Dict, Any
 import zipfile
 import tempfile
+
+def ticks_to_seconds(ticks: int, tempos: List[Dict[str, Any]], ticks_per_beat: int) -> float:
+    """
+    Convert tick position to seconds considering tempo changes
+    Improved to match MuseScore's C++ implementation for precise temporal placement
+    """
+    if not tempos:
+        # Default tempo of 120 BPM (500000 microseconds per beat)
+        return (ticks * 500000) / (ticks_per_beat * 1000000)
+
+    # Find correct tempo segment
+    last_tempo = tempos[0]
+    for tempo in tempos:
+        if tempo["ticks"] > ticks:
+            break
+        last_tempo = tempo
+
+    # If this is exactly at a tempo mark, return the exact time
+    if ticks == last_tempo["ticks"]:
+        return last_tempo["time"]
+
+    # Calculate time since last tempo change with high precision
+    delta_ticks = ticks - last_tempo["ticks"]
+    microseconds_per_beat = 60000000 / last_tempo["bpm"]
+    delta_time = (delta_ticks * microseconds_per_beat) / (ticks_per_beat * 1000000)
+
+    return last_tempo["time"] + delta_time
 
 def extract_mscx_from_mscz(mscz_path: str) -> Optional[str]:
     """Extract the .mscx file from a .mscz archive"""
@@ -109,82 +136,6 @@ def extract_metadata_from_musescore(root: ET.Element) -> Tuple[str, str]:
 
     return title, artist
 
-def extract_metadata_from_xml(xml_path: str) -> Tuple[str, str]:
-    """Extract title and artist from MusicXML file"""
-    try:
-        tree = ET.parse(xml_path)
-        root = tree.getroot()
-        
-        title = None
-        subtitle = None
-        artist = None
-        
-        # Create fallback metadata dictionary
-        fallback_metadata = {
-            "fallback_filename": os.path.splitext(os.path.basename(xml_path))[0].replace('_', ' '),
-            "fallback_folder": os.path.basename(os.path.dirname(xml_path))
-        }
-        
-        # Try to get title and subtitle from credit elements
-        for credit in root.findall('.//credit'):
-            credit_type = credit.find('credit-type')
-            if credit_type is not None:
-                if credit_type.text == 'title':
-                    credit_words = credit.find('credit-words')
-                    if credit_words is not None:
-                        title = standardize_title(credit_words.text)
-                elif credit_type.text == 'subtitle':
-                    credit_words = credit.find('credit-words')
-                    if credit_words is not None:
-                        subtitle = standardize_title(credit_words.text)
-        
-        # Fallback to work-title if no credit title found
-        if not title:
-            work = root.find('.//work-title')
-            if work is not None:
-                title = standardize_title(work.text)
-        
-        # Final fallback to filename
-        if not title:
-            title = os.path.splitext(os.path.basename(xml_path))[0].replace('_', ' ')
-        
-        # Combine title and subtitle if both exist
-        if subtitle:
-            title = f"{title} - {subtitle}"
-
-        # Try to get composer from credit elements
-        for credit in root.findall('.//credit'):
-            credit_type = credit.find('credit-type')
-            if credit_type is not None and credit_type.text == 'composer':
-                credit_words = credit.find('credit-words')
-                if credit_words is not None:
-                    artist = standardize_artist(credit_words.text)
-                    break
-        
-        # Fallback to creator field if no credit composer found
-        if not artist:
-            creator = root.find('.//creator[@type="composer"]')
-            if creator is not None:
-                artist = standardize_artist(creator.text)
-        
-        # Final fallback to parent folder name
-        if not artist:
-            artist = os.path.basename(os.path.dirname(xml_path))
-        
-        # If either value is empty after extraction, use fallbacks
-        if not title:
-            title = fallback_metadata["fallback_filename"]
-        if not artist:
-            artist = fallback_metadata["fallback_folder"]
-        
-        return title, artist
-        
-    except Exception as e:
-        print(f"Error extracting metadata from {xml_path}: {str(e)}")
-        # Return default values based on the filename
-        return (os.path.splitext(os.path.basename(xml_path))[0].replace('_', ' '),
-                os.path.basename(os.path.dirname(xml_path)))
-
 def format_output_filename(title: str, artist: str, file_path: str) -> str:
     """Format the output filename according to specifications"""
     
@@ -207,33 +158,3 @@ def format_output_filename(title: str, artist: str, file_path: str) -> str:
     formatted_title = formatted_title.strip().replace(' ', '_')
     
     return f"{auth}_{formatted_title}.json"
-
-def find_matching_musescore(midi_path: str) -> str:
-    """Look for a matching MusicXML file for a given MIDI file"""
-    base_name = os.path.splitext(os.path.basename(midi_path))[0]
-    parent_dir = os.path.dirname(midi_path)
-
-    # Try common MusicXML extensions
-    xml_extensions = ['.mscz', '.mscx']
-
-    for ext in xml_extensions:
-        potential_path = os.path.join(parent_dir, base_name + ext)
-        if os.path.exists(potential_path):
-            return potential_path
-
-    return None
-
-def find_matching_musicxml(midi_path: str) -> str:
-    """Look for a matching MusicXML file for a given MIDI file"""
-    base_name = os.path.splitext(os.path.basename(midi_path))[0]
-    parent_dir = os.path.dirname(midi_path)
-    
-    # Try common MusicXML extensions
-    xml_extensions = ['.xml', '.musicxml', '.mxl']
-    
-    for ext in xml_extensions:
-        potential_path = os.path.join(parent_dir, base_name + ext)
-        if os.path.exists(potential_path):
-            return potential_path
-    
-    return None

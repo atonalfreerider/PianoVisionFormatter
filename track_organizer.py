@@ -1,5 +1,6 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from notes import Track
+from pv_util import ticks_to_seconds
 
 def get_note_name(midi_note: int) -> str:
     """Get note name from MIDI note number"""
@@ -89,7 +90,6 @@ def organize_tracks_v2(tracks: List[Track], sorted_measures: List[Dict[str, Any]
             else:
                 # For the last measure, calculate based on actual tempo
                 measure_end_ticks = measure["ticksStart"] + measure["totalTicks"]
-                from tempo_extractor import ticks_to_seconds
                 time_end = ticks_to_seconds(measure_end_ticks, tempos, ticks_per_beat)
             
             # Ensure required fields exist

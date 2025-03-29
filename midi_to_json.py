@@ -3,9 +3,8 @@ import mido
 import json
 import os
 from typing import List, Dict, Any, Tuple
-from metadata_extractor import extract_metadata_from_musescore, format_output_filename, find_matching_musescore, extract_mscx_from_mscz
+from pv_util import extract_metadata_from_musescore, format_output_filename, extract_mscx_from_mscz, ticks_to_seconds
 from notes import Note, Track
-from tempo_extractor import ticks_to_seconds
 from track_organizer import get_note_name, get_note_length_type, calculate_rests
 
 def extract_tempo_events(mid: mido.MidiFile) -> List[Dict[str, Any]]:
@@ -418,6 +417,21 @@ def create_piano_vision_json(midi_path: str) -> Dict[str, Any]:
         "artist": artist,
         "accompanyingTracks": []
     }
+
+def find_matching_musescore(midi_path: str) -> str:
+    """Look for a matching MusicXML file for a given MIDI file"""
+    base_name = os.path.splitext(os.path.basename(midi_path))[0]
+    parent_dir = os.path.dirname(midi_path)
+
+    # Try common MusicXML extensions
+    xml_extensions = ['.mscz', '.mscx']
+
+    for ext in xml_extensions:
+        potential_path = os.path.join(parent_dir, base_name + ext)
+        if os.path.exists(potential_path):
+            return potential_path
+
+    return None
 
 def main():
     import sys
