@@ -281,14 +281,84 @@ def get_duration_ticks(duration_type: str, dots_elements: list, resolution: int)
     
     return base_duration
 
-def create_measure_ticks_map(score: ET.Element, resolution: int) -> Dict[int, Dict[int, int]]:
+def get_measure_ticks_from_midi(midi_path: str) -> Dict[int, Dict[int, int]]:
+    """Extract measure tick positions from MIDI file"""
+    import mido
+    
+    try:
+        midi = mido.MidiFile(midi_path)
+        staff_measure_ticks = {1: {}, 2: {}}  # Initialize with two staves
+        current_tick = 0
+        measure_idx = 0
+        last_time_sig = (4, 4)  # Default 4/4 time
+        
+        # Look for time signature changes and calculate measure positions
+        for track in midi.tracks:
+            track_tick = 0
+            track_measure_idx = 0
+            
+            for msg in track:
+                track_tick += msg.time
+                
+                if msg.type == 'time_signature':
+                    last_time_sig = (msg.numerator, msg.denominator)
+                    
+                    # If this is not the first time signature, record previous measure
+                    if track_measure_idx > 0:
+                        for staff_id in [1, 2]:
+                            staff_measure_ticks[staff_id][track_measure_idx - 1] = current_tick
+                    
+                    current_tick = track_tick
+                    track_measure_idx += 1
+            
+            # Break after first track (usually contains all time signatures)
+            break
+        
+        # Calculate remaining measures based on last time signature
+        numerator, denominator = last_time_sig
+        ticks_per_measure = midi.ticks_per_beat * 4 * numerator // denominator
+        
+        # Find the last tick in the MIDI file
+        last_tick = 0
+        for track in midi.tracks:
+            track_tick = 0
+            for msg in track:
+                track_tick += msg.time
+                last_tick = max(last_tick, track_tick)
+        
+        # Fill in measure positions up to the last tick
+        while current_tick <= last_tick:
+            for staff_id in [1, 2]:
+                staff_measure_ticks[staff_id][measure_idx] = current_tick
+            current_tick += ticks_per_measure
+            measure_idx += 1
+        
+        return staff_measure_ticks
+        
+    except Exception as e:
+        print(f"Warning: Failed to extract measure ticks from MIDI: {str(e)}")
+        return None
+
+def create_measure_ticks_map(score: ET.Element, mscz_path: str, resolution: int) -> Dict[int, Dict[int, int]]:
     """Create a mapping from (staff_id, measure_idx) to absolute tick position"""
-    staff_measure_ticks = {}  # Maps (staff_id, measure_idx) to absolute tick position
-    measure_lengths = {}  # Maps measure_idx to length in ticks
+    # BUG this currently does not handle pickup measures correctly
+
+    if mscz_path:
+        matching_midi = find_matching_midi(mscz_path)
+        if matching_midi:
+            print(f"Using measure timing from MIDI file: {matching_midi}")
+            midi_measure_ticks = get_measure_ticks_from_midi(matching_midi)
+            if midi_measure_ticks:
+                return midi_measure_ticks
+            
+    print("No MIDI timing available, using MuseScore timing. This is not acurate")
+    
+    # Original MuseScore timing logic as fallback
+    staff_measure_ticks = {}
+    measure_lengths = {}
     
     # First pass: determine time signatures and measure lengths for first staff
     first_staff = None
-    
     for staff in score.findall(".//Staff"):
         if int(staff.get('id', '1')) == 1:
             first_staff = staff
@@ -298,7 +368,9 @@ def create_measure_ticks_map(score: ET.Element, resolution: int) -> Dict[int, Di
         return {}
     
     # Calculate measure lengths from first staff
+    current_tick = 0
     measures = first_staff.findall("Measure")
+    
     for measure_idx, measure in enumerate(measures):
         measure_lengths[measure_idx] = resolution * 4  # Default 4/4 time
         
@@ -311,6 +383,23 @@ def create_measure_ticks_map(score: ET.Element, resolution: int) -> Dict[int, Di
                 measure_lengths[measure_idx] = (resolution * 4 * numerator) // denominator
             except (AttributeError, TypeError, ValueError):
                 pass
+        
+        # Check for irregular measure (pickup)
+        irregular = measure.find(".//irregular")
+        if irregular is not None:
+            # Get actual duration of pickup measure from its contents
+            measure_length = 0
+            for voice in measure.findall(".//voice"):
+                voice_length = 0
+                for elem in voice:
+                    if elem.tag in ["Chord", "Rest"]:
+                        duration_type = elem.find("durationType")
+                        if duration_type is not None:
+                            duration_ticks = get_duration_ticks(duration_type.text, elem.findall("dots"), resolution)
+                            voice_length += duration_ticks
+                measure_length = max(measure_length, voice_length)
+            if measure_length > 0:
+                measure_lengths[measure_idx] = measure_length
     
     # Second pass: calculate absolute tick positions for each measure in each staff
     for staff in score.findall(".//Staff"):
@@ -322,10 +411,7 @@ def create_measure_ticks_map(score: ET.Element, resolution: int) -> Dict[int, Di
         
         for measure_idx, measure in enumerate(measures):
             staff_measure_ticks[staff_id][measure_idx] = current_tick
-            
-            # Use the length calculated from first staff's time signatures
-            measure_length = measure_lengths.get(measure_idx, resolution * 4)
-            current_tick += measure_length
+            current_tick += measure_lengths[measure_idx]
     
     return staff_measure_ticks
 
@@ -342,9 +428,6 @@ def parse_musescore(mscx_content: str, mscz_path: str) -> Dict[str, Any]:
     score = root.find("Score")
     if score is None:
         raise ValueError("No Score element found")
-        
-    # Create tick mapping for measures across staves
-    staff_measure_ticks = create_measure_ticks_map(score, resolution)
 
     # Check for matching MIDI file to extract tempos
     matching_midi = find_matching_midi(mscz_path)
@@ -357,6 +440,9 @@ def parse_musescore(mscx_content: str, mscz_path: str) -> Dict[str, Any]:
     else:
         # Use MuseScore tempo markings (currently not working
         tempos = extract_tempo_changes(root)
+
+    # Create tick mapping for measures across staves
+    staff_measure_ticks = create_measure_ticks_map(score, mscz_path, resolution)
 
     # Initialize tracking variables
     measure_count = 0

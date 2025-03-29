@@ -2,8 +2,10 @@
 
 Converts piano MuseScore .mscz MusicXML .musicxml or MIDI .mid files to PianoVision json format  
 
-BUG: MuseScore and MusicXML tempo interpretation is not working. The tick conversion is very wrong.  
-BUG: The notes are also sometimes inaccurate  
+BUG: MuseScore and MusicXML tempo interpretation and measure timing is not working. The tick conversion is very wrong.  
+BUG: The notes are also sometimes inaccurate.  
+BUG: midi is not distinguishing between main piano and other piano.  
+BUG: MuseScore does not handle pickup measures correctly.  
 
 Reference:  
 
