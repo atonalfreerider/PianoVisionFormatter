@@ -158,3 +158,16 @@ def format_output_filename(title: str, artist: str, file_path: str) -> str:
     formatted_title = formatted_title.strip().replace(' ', '_')
     
     return f"{auth}_{formatted_title}.json"
+
+def find_matching_midi(path: str) -> Optional[str]:
+    """Find a MIDI file with matching name in the same directory as the XML file"""
+    xml_dir = os.path.dirname(path)
+    xml_basename = os.path.splitext(os.path.basename(path))[0]
+
+    # Check for .mid and .midi extensions
+    for ext in ['.mid', '.midi']:
+        midi_path = os.path.join(xml_dir, xml_basename + ext)
+        if os.path.isfile(midi_path):
+            return midi_path
+
+    return None

@@ -2,7 +2,7 @@ import xml.etree.ElementTree as ET
 import json
 import os
 from typing import List, Dict, Any, Optional, Tuple
-from pv_util import standardize_title, standardize_artist, format_output_filename, ticks_to_seconds
+from pv_util import standardize_title, standardize_artist, format_output_filename, ticks_to_seconds, find_matching_midi
 from midi_to_json import extract_tempo_events
 from notes import Note, Track
 from track_organizer import organize_tracks_v2
@@ -294,19 +294,6 @@ def verify_tempo_markings(tempos: List[Dict[str, Any]]):
         delta = abs(calculated_time - tempos[i]["time"])
         if delta > 0.001:  # More than 1ms difference
             print(f"WARNING: Tempo time calculation error at tempo {i + 1}: {delta:.6f}s")
-
-def find_matching_midi(xml_path: str) -> Optional[str]:
-    """Find a MIDI file with matching name in the same directory as the XML file"""
-    xml_dir = os.path.dirname(xml_path)
-    xml_basename = os.path.splitext(os.path.basename(xml_path))[0]
-    
-    # Check for .mid and .midi extensions
-    for ext in ['.mid', '.midi']:
-        midi_path = os.path.join(xml_dir, xml_basename + ext)
-        if os.path.isfile(midi_path):
-            return midi_path
-    
-    return None
 
 def parse_musicxml(xml_path: str) -> Dict[str, Any]:
     tree = ET.parse(xml_path)

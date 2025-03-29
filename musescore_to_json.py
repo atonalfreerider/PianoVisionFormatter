@@ -2,9 +2,10 @@ import xml.etree.ElementTree as ET
 import json
 import os
 from typing import Dict, Any, List
-from pv_util import format_output_filename, extract_metadata_from_musescore, extract_mscx_from_mscz, ticks_to_seconds
+from pv_util import format_output_filename, extract_metadata_from_musescore, extract_mscx_from_mscz, ticks_to_seconds, find_matching_midi
 from notes import Note, Track
 from track_organizer import organize_tracks_v2
+from midi_to_json import extract_tempo_events
 
 def extract_tempo_changes(root: ET.Element) -> List[Dict[str, Any]]:
     """Extract tempo changes from MuseScore file"""
@@ -328,7 +329,7 @@ def create_measure_ticks_map(score: ET.Element, resolution: int) -> Dict[int, Di
     
     return staff_measure_ticks
 
-def parse_musescore(mscx_content: str) -> Dict[str, Any]:
+def parse_musescore(mscx_content: str, mscz_path: str) -> Dict[str, Any]:
     """Parse MuseScore file and convert to Piano Vision format"""
     root = ET.fromstring(mscx_content)
     
@@ -344,10 +345,19 @@ def parse_musescore(mscx_content: str) -> Dict[str, Any]:
         
     # Create tick mapping for measures across staves
     staff_measure_ticks = create_measure_ticks_map(score, resolution)
-    
-    # Extract tempo changes after we have measure positions
-    tempos = extract_tempo_changes(root)
-    
+
+    # Check for matching MIDI file to extract tempos
+    matching_midi = find_matching_midi(mscz_path)
+    if matching_midi:
+        print(f"Found matching MIDI file: {matching_midi}")
+        print(f"Using tempo from MIDI file instead of MuseScore")
+        import mido
+        midi_file = mido.MidiFile(matching_midi)
+        tempos = extract_tempo_events(midi_file)
+    else:
+        # Use MuseScore tempo markings (currently not working
+        tempos = extract_tempo_changes(root)
+
     # Initialize tracking variables
     measure_count = 0
     time_signatures = []
@@ -675,7 +685,7 @@ def main():
             raise Exception("Failed to extract MSCX content from MSCZ file")
         
         # Parse the content
-        output_json = parse_musescore(mscx_content)
+        output_json = parse_musescore(mscx_content, mscz_path)
         
         # Generate output filename
         output_filename = format_output_filename(
