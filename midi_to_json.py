@@ -3,7 +3,7 @@ import mido
 import json
 import os
 from typing import List, Dict, Any, Tuple, Set
-from pv_util import extract_metadata_from_musescore, format_output_filename, extract_mscx_from_mscz, ticks_to_seconds
+from pv_util import extract_metadata_from_musescore, format_output_filename, extract_mscx_from_mscz, ticks_to_seconds, extract_accented_notes
 from notes import Note, Track
 from track_organizer import get_note_name, get_note_length_type, calculate_rests
 from orchestra_utils import is_valid_orchestra_instrument
@@ -185,27 +185,61 @@ def get_notes_from_midi(midi_path: str,
     other_orchestra_tracks: List[List[Note]] = [[], []]  # Other orchestra instruments RH, LH
     tempos = extract_tempo_events(mid)
     max_time = 0.0
+    accented_notes_data = {}
 
-    # Look for matching MusicXML file for merge markers
+    # Look for matching MusicXML file for merge markers and accent data
     if merge_measures is None:
         merge_measures = {'right': set(), 'left': set()}
     matching_musescore = find_matching_musescore(midi_path)
     if matching_musescore:
         try:
-            # Extract only merge measures information
+            # Extract metadata and accent information
             mscx_content = extract_mscx_from_mscz(matching_musescore)
-            root = ET.fromstring(mscx_content)
-            _, _, merge_measures = extract_metadata_from_musescore(root)
+            if mscx_content:
+                root = ET.fromstring(mscx_content)
+                _, _, merge_measures = extract_metadata_from_musescore(root)
+                # Extract accent data using the utility function
+                accented_notes_data = extract_accented_notes(mscx_content) 
+                print(f"Extracted {len(accented_notes_data)} accent patterns from {matching_musescore}")
 
-            if merge_measures['right'] or merge_measures['left']:
-                print(f"Found merge markers: {len(merge_measures['right'])} measures for right hand, "
-                      f"{len(merge_measures['left'])} measures for left hand")
+                if merge_measures['right'] or merge_measures['left']:
+                    print(f"Found merge markers: {len(merge_measures['right'])} measures for right hand, "
+                          f"{len(merge_measures['left'])} measures for left hand")
+                # Removed redundant print statement for accents here
+            else:
+                 print(f"Warning: Could not extract MSCX content from {matching_musescore}")
+
         except Exception as e:
-            print(f"Error extracting merge markers: {e}")
+            print(f"Error extracting metadata/accents from {matching_musescore}: {e}")
 
     # Calculate measure map for accurate measure detection
     measure_map = calculate_measure_map(mid)
-    
+
+    # Function to get measure number for a tick position
+    def get_measure_for_tick(tick_pos):
+        for measure in measure_map:
+            if measure['start_tick'] <= tick_pos < measure['end_tick']:
+                return measure['measure_num']
+        # Fallback for ticks beyond the last calculated measure
+        if measure_map and tick_pos >= measure_map[-1]['end_tick']:
+             last_measure = measure_map[-1]
+             # Ensure measure_length is not zero to avoid division error
+             measure_length = last_measure['end_tick'] - last_measure['start_tick']
+             if measure_length > 0:
+                 # Calculate overflow measures based on the last measure's length
+                 overflow_measures = (tick_pos - last_measure['end_tick']) // measure_length
+                 return last_measure['measure_num'] + overflow_measures + 1
+             else:
+                 # If last measure has zero length, return its number
+                 return last_measure['measure_num']
+        # Fallback if no measure map or tick is before the first measure
+        # Use a simple calculation based on default 4/4 time
+        default_measure_length = mid.ticks_per_beat * 4
+        if default_measure_length > 0:
+            return (tick_pos // default_measure_length) + 1
+        else:
+            return 1 # Should not happen if ticks_per_beat is valid
+
     # First pass: Identify track types and their channels
     piano_tracks = []  # [(track_idx, track_type)]
     orchestra_tracks = []  # [(track_idx, instrument)]
@@ -259,64 +293,86 @@ def get_notes_from_midi(midi_path: str,
             piano_tracks.append((1, TRACK_PRIMARY))
 
     # Process notes from primary piano tracks
+    active_notes = {}  # (channel, note) -> Note object
+
     for track_idx, track_type in piano_tracks:
         track = mid.tracks[track_idx]
-        active_notes = {}  # (channel, note) -> (start_tick, start_time, velocity)
         track_ticks = 0
-        
+
         for msg in track:
             track_ticks += msg.time
             track_time = ticks_to_seconds(track_ticks, tempos, mid.ticks_per_beat)
             max_time = max(max_time, track_time)
-            
+
             if not hasattr(msg, 'channel'):
                 continue
-                
+
             if msg.type == 'note_on' and msg.velocity > 0:
-                active_notes[(msg.channel, msg.note)] = (track_ticks, track_time, msg.velocity / 127.0)
+                # Determine hand based on track position
+                hand_idx = 0  # Default to right hand
+                same_type_tracks = [t[0] for t in piano_tracks if t[1] == track_type]
+                if len(same_type_tracks) >= 2:
+                    hand_idx = 0 if same_type_tracks.index(track_idx) == 0 else 1
+
+                staff_id = hand_idx + 1
+                measure_num = get_measure_for_tick(track_ticks)
+
+                note = Note(
+                    midi=msg.note,
+                    time=track_time,
+                    velocity=msg.velocity / 127.0,
+                    duration=0, # Duration set by note_off
+                    ticks=track_ticks,
+                    duration_ticks=0, # Duration set by note_off
+                    staff=staff_id,
+                    group=measure_num - 1, # Use 0-based measure index
+                    accent=0 # Initial accent, updated later
+                )
+
+                # Add note to the appropriate track list
+                target_list = None
+                if track_type == TRACK_PRIMARY:
+                    target_list = primary_tracks[hand_idx]
+                elif track_type == TRACK_SIMPLIFIED:
+                    target_list = simplified_tracks[hand_idx]
+                elif track_type == TRACK_ORCHESTRAL:
+                    target_list = orchestral_tracks[hand_idx]
+                
+                if target_list is not None:
+                    target_list.append(note)
+
+                # Store the note object itself for easy update on note_off
+                active_notes[(msg.channel, msg.note)] = note
+
             elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
                 if (msg.channel, msg.note) in active_notes:
-                    start_tick, start_time, velocity = active_notes[(msg.channel, msg.note)]
-                    duration_seconds = track_time - start_time
-                    duration_ticks = track_ticks - start_tick
+                    note_obj = active_notes[(msg.channel, msg.note)]
                     
-                    # Determine hand based on track position
-                    hand_idx = 0  # Default to right hand
+                    # Calculate duration
+                    duration_seconds = track_time - note_obj.time
+                    duration_ticks = track_ticks - note_obj.ticks
+
+                    # Prevent negative durations if events are out of order
+                    if duration_seconds < 0: duration_seconds = 0
+                    if duration_ticks < 0: duration_ticks = 0
                     
-                    # Determine the track type and hand assignment
-                    track_type = next(t[1] for t in piano_tracks if t[0] == track_idx)
+                    # Update the note object directly
+                    note_obj.duration = duration_seconds
+                    note_obj.duration_ticks = duration_ticks
                     
-                    # If we have at least 2 piano tracks of the same type, use track index for hand assignment
-                    same_type_tracks = [t[0] for t in piano_tracks if t[1] == track_type]
-                    if len(same_type_tracks) >= 2:
-                        hand_idx = 0 if same_type_tracks.index(track_idx) == 0 else 1
-                    
-                    note = Note(
-                        midi=msg.note,
-                        time=start_time,
-                        velocity=velocity,
-                        duration=duration_seconds,
-                        ticks=start_tick,
-                        duration_ticks=duration_ticks,
-                        staff=hand_idx + 1,
-                        group=-1,
-                    )
-                    
-                    # Add note to the appropriate track based on type
-                    if track_type == TRACK_PRIMARY:
-                        primary_tracks[hand_idx].append(note)
-                    elif track_type == TRACK_SIMPLIFIED:
-                        simplified_tracks[hand_idx].append(note)
-                    elif track_type == TRACK_ORCHESTRAL:
-                        orchestral_tracks[hand_idx].append(note)
-                    
+                    # Remove from active notes
                     del active_notes[(msg.channel, msg.note)]
-    
+                # else:
+                #     # This warning can be noisy if MIDI has overlapping notes or issues
+                #     # print(f"Warning: Received note_off for inactive note: channel={msg.channel}, note={msg.note}, tick={track_ticks}")
+
+    # --- Accent post-processing moved after merging ---
+
     # Process orchestra instrument tracks if needed
     if orchestra_mode:
+        active_notes_orch = {} # Separate active notes for orchestra tracks
         for track_idx, _ in orchestra_tracks:
             track = mid.tracks[track_idx]
-            active_notes = {}  # (channel, note) -> (start_tick, start_time, velocity)
             track_ticks = 0
             
             for msg in track:
@@ -328,30 +384,40 @@ def get_notes_from_midi(midi_path: str,
                     continue
                     
                 if msg.type == 'note_on' and msg.velocity > 0:
-                    active_notes[(msg.channel, msg.note)] = (track_ticks, track_time, msg.velocity / 127.0)
-                elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
-                    if (msg.channel, msg.note) in active_notes:
-                        start_tick, start_time, velocity = active_notes[(msg.channel, msg.note)]
-                        duration_seconds = track_time - start_time
-                        duration_ticks = track_ticks - start_tick
-                        
-                        # Since these are orchestra tracks, use note-based assignment if needed
-                        hand_idx = 0 if msg.note >= 60 else 1
+                    # Since these are orchestra tracks, use note-based assignment if needed
+                    hand_idx = 0 if msg.note >= 60 else 1
+                    measure_num = get_measure_for_tick(track_ticks)
                             
-                        note = Note(
-                            midi=msg.note,
-                            time=start_time,
-                            velocity=velocity,
-                            duration=duration_seconds,
-                            ticks=start_tick,
-                            duration_ticks=duration_ticks,
-                            staff=hand_idx + 1,
-                            group=-1,
-                        )
+                    note = Note(
+                        midi=msg.note,
+                        time=track_time,
+                        velocity=msg.velocity / 127.0,
+                        duration=0, # Set by note_off
+                        ticks=track_ticks,
+                        duration_ticks=0, # Set by note_off
+                        staff=hand_idx + 1,
+                        group=measure_num - 1, # Use 0-based measure index
+                        accent=0 # Accents not typically applied to orchestra fill
+                    )
+                    # Add to orchestra instruments collection
+                    other_orchestra_tracks[hand_idx].append(note)
+                    # Store for duration update
+                    active_notes_orch[(msg.channel, msg.note)] = note
+
+                elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
+                    if (msg.channel, msg.note) in active_notes_orch:
+                        note_obj = active_notes_orch[(msg.channel, msg.note)]
                         
-                        # Add to orchestra instruments collection
-                        other_orchestra_tracks[hand_idx].append(note)
-                        del active_notes[(msg.channel, msg.note)]
+                        # Calculate duration
+                        duration_seconds = track_time - note_obj.time
+                        duration_ticks = track_ticks - note_obj.ticks
+                        
+                        # Update the note object directly
+                        note_obj.duration = duration_seconds
+                        note_obj.duration_ticks = duration_ticks
+                        
+                        # Remove from active notes
+                        del active_notes_orch[(msg.channel, msg.note)]
 
     # Create the final result tracks based on mode flags and measure information
     result_tracks = merge_tracks_with_measure_info(
@@ -366,15 +432,75 @@ def get_notes_from_midi(midi_path: str,
         merge_measures
     )
 
+    # --- Apply Accents AFTER Merging ---
+    if accented_notes_data:
+        print("Applying accents to final merged tracks...")
+        notes_by_tick_hand = {}
+        # Collect notes from the final result_tracks
+        for hand_idx, hand_notes in enumerate(result_tracks):
+            for note in hand_notes:
+                key = (note.ticks, hand_idx) # Group by (tick, hand_idx)
+                if key not in notes_by_tick_hand:
+                    notes_by_tick_hand[key] = []
+                notes_by_tick_hand[key].append(note)
+
+        accent_application_count = 0
+        for (tick, hand_idx), notes_list in notes_by_tick_hand.items():
+            if not notes_list:
+                continue
+
+            notes_list.sort(key=lambda x: x.midi) # Sort by pitch for consistent matching
+            pitches = tuple(n.midi for n in notes_list)
+            
+            # Use the first note to determine measure and staff (all notes at this tick share these)
+            measure_num = get_measure_for_tick(tick)
+            staff_id = notes_list[0].staff # staff is 1-based (1=RH, 2=LH)
+
+            accented_indices_found = None
+            # Try matching against different voices (usually 0 or 1)
+            for voice_idx in range(4): # Check voices 0, 1, 2, 3 - common in MuseScore
+                position_key = (staff_id, measure_num - 1, voice_idx, pitches) # measure_idx is 0-based
+                
+                if position_key in accented_notes_data:
+                    accented_indices_found = accented_notes_data[position_key]
+                    # print(f"  Match found for key {position_key}: indices {accented_indices_found}") # Debugging
+                    break # Found accent data for this tick/pitch combo, stop checking voices
+
+            if accented_indices_found is not None:
+                for i, note_obj in enumerate(notes_list):
+                    # Apply accent if this note's index (in the pitch-sorted list) is marked
+                    if i in accented_indices_found:
+                        if note_obj.accent == 0: # Apply only if not already accented
+                             accent_application_count += 1
+                        note_obj.accent = 1
+                        # Boost velocity slightly for accented notes, capped at 1.0
+                        if note_obj.velocity < 0.95: # Use a slightly higher threshold
+                            note_obj.velocity = min(1.0, note_obj.velocity * 1.2) # Slightly smaller boost
+                        # else: # Debugging
+                        #    print(f"    Note {note_obj.midi} at tick {tick} already had high velocity {note_obj.velocity} or accent {note_obj.accent}")
+
+        print(f"Applied accents to {accent_application_count} notes.")
+    # --- End of Accent Application ---
+
+
     # Create final Track objects
     final_tracks = []
     for hand_idx, hand_notes in enumerate(result_tracks):
         if hand_notes:
+            # Sort final notes by time before creating Track object
             final_tracks.append(Track(
                 notes=sorted(hand_notes, key=lambda x: x.time),
                 myInstrument=-5,
                 theirInstrument=0
             ))
+        # else: # Handle cases where a hand might have no notes after merging
+        #    final_tracks.append(Track(notes=[], myInstrument=-5, theirInstrument=0))
+
+
+    # Ensure two tracks exist, even if empty
+    while len(final_tracks) < 2:
+        final_tracks.append(Track(notes=[], myInstrument=-5, theirInstrument=0))
+
 
     return final_tracks, max_time
 
@@ -565,7 +691,8 @@ def organize_tracks_v2(tracks: List[Track], time_sigs: List[Dict[str, Any]], tem
                 "group": -1,
                 "measureInd": int((note.ticks / TICKS_PER_BEAT) / 4),
                 "noteMeasureInd": len(right_hand_notes) if track_idx == 0 else len(left_hand_notes),
-                "id": f"{'r' if track_idx == 0 else 'l'}{len(right_hand_notes) if track_idx == 0 else len(left_hand_notes)}"
+                "id": f"{'r' if track_idx == 0 else 'l'}{len(right_hand_notes) if track_idx == 0 else len(left_hand_notes)}",
+                "accent": int(note.accent) # Explicitly cast to int
             }
             
             if track_idx == 0:
@@ -666,9 +793,11 @@ def create_piano_vision_json(midi_path: str, orchestra_mode: bool = False, simpl
     mid = mido.MidiFile(midi_path)
     tempos = extract_tempo_events(mid)
     
-    # Look for matching MuseScore file for metadata
+    # Look for matching MuseScore file for metadata and merge markers
     matching_mscz = find_matching_musescore(midi_path)
     merge_markers = {'right': set(), 'left': set()}
+    title = ""
+    artist = ""
     
     if matching_mscz:
         try:
@@ -676,6 +805,7 @@ def create_piano_vision_json(midi_path: str, orchestra_mode: bool = False, simpl
             mscx_content = extract_mscx_from_mscz(matching_mscz)
             if mscx_content:
                 root = ET.fromstring(mscx_content)
+                # Update to capture merge markers from the function
                 title, artist, merge_markers = extract_metadata_from_musescore(root)
                 print(f"Using metadata from matching MuseScore file: {matching_mscz}")
             else:
@@ -683,6 +813,7 @@ def create_piano_vision_json(midi_path: str, orchestra_mode: bool = False, simpl
                 filename = os.path.basename(midi_path)
                 title = os.path.splitext(filename)[0].replace('_', ' ')
                 artist = os.path.basename(os.path.dirname(midi_path))
+                print(f"Warning: Could not extract MSCX from {matching_mscz}. Using filename/folder for metadata.")
         except Exception as e:
             print(f"Error extracting metadata from {matching_mscz}: {str(e)}")
             # Fallback to filename and directory
@@ -690,7 +821,7 @@ def create_piano_vision_json(midi_path: str, orchestra_mode: bool = False, simpl
             title = os.path.splitext(filename)[0].replace('_', ' ')
             artist = os.path.basename(os.path.dirname(midi_path))
     else:
-        # Extract metadata from filename and directory
+        # Extract metadata from filename and directory if no mscz found
         filename = os.path.basename(midi_path)
         title = os.path.splitext(filename)[0].replace('_', ' ')
         artist = os.path.basename(os.path.dirname(midi_path))
@@ -700,7 +831,7 @@ def create_piano_vision_json(midi_path: str, orchestra_mode: bool = False, simpl
         midi_path,
         orchestra_mode, 
         simplified_mode,
-        merge_markers
+        merge_markers # Pass the extracted merge markers
     )
     
     time_sigs = extract_time_signatures(mid)

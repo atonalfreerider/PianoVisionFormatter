@@ -455,3 +455,109 @@ def find_matching_midi(path: str) -> Optional[str]:
             return midi_path
 
     return None
+
+def get_duration_ticks(duration_type: str, dots_elements: list, resolution: int) -> int:
+    """Calculate duration in ticks based on note type and dots"""
+    duration_map = {
+        "whole": resolution * 4,
+        "half": resolution * 2,
+        "quarter": resolution,
+        "eighth": resolution // 2,
+        "16th": resolution // 4,
+        "32nd": resolution // 8,
+        "64th": resolution // 16,
+    }
+
+    base_duration = duration_map.get(duration_type, resolution)
+
+    # Handle dots
+    if dots_elements:
+        dot_count = len(dots_elements)
+        dot_factor = sum(0.5 ** (i + 1) for i in range(dot_count))
+        base_duration = int(base_duration * (1 + dot_factor))
+
+    return base_duration
+
+def extract_accented_notes(mscx_content: str) -> Dict[Tuple[int, int, int, Tuple[int]], List[int]]:
+    """Extract a dictionary of accented notes from MuseScore content.
+    Returns a dict with (staff_id, measure_idx, voice_idx, pitch_tuple) tuples as keys
+    and a list of note indices within that chord/position as values.
+    This allows matching based on pitch patterns within measures.
+    """
+    root = ET.fromstring(mscx_content)
+    score = root.find("Score")
+    if score is None:
+        return {}
+
+    accented_notes = {}
+    resolution_elem = root.find(".//Division")
+    resolution = int(resolution_elem.text) if resolution_elem is not None else 480
+
+    # Process each staff
+    for staff in score.findall(".//Staff"):
+        staff_id = int(staff.get('id', '1'))
+
+        # Process measures in this staff
+        for measure_idx, measure in enumerate(staff.findall("Measure")):
+            # Process each voice independently
+            for voice_idx, voice in enumerate(measure.findall("voice")):
+                position_in_measure = 0  # Keep track of position in ticks
+
+                for elem in voice:
+                    if elem.tag == "Chord":
+                        # Get all pitches in this chord
+                        chord_pitches = []
+                        note_indices = []
+
+                        # Check for accent articulation
+                        has_accent = False
+                        for articulation in elem.findall(".//Articulation"):
+                            subtype = articulation.find("subtype")
+                            if (subtype is not None and
+                                subtype.text and
+                                "accent" in subtype.text.lower()):
+                                has_accent = True
+                                break
+
+                        # Process all notes in the chord
+                        note_index_counter = 0
+                        for note_elem in elem.findall("Note"):
+                            pitch_elem = note_elem.find("pitch")
+                            if pitch_elem is not None:
+                                try:
+                                    midi_note = int(pitch_elem.text)
+                                    chord_pitches.append(midi_note)
+                                    if has_accent:
+                                        note_indices.append(note_index_counter)
+                                    note_index_counter += 1
+                                except (ValueError, TypeError):
+                                    continue
+
+                        if has_accent and chord_pitches:
+                            # Sort pitches to create consistent pattern
+                            chord_pitches.sort()
+                            # Store position and accent information
+                            # Using position_in_measure as a proxy for chord index within voice
+                            position_key = (staff_id, measure_idx, voice_idx, tuple(chord_pitches))
+                            accented_notes[position_key] = note_indices
+
+                        # Get duration to advance position if it's not a continuation chord
+                        is_chord_continuation = elem.find("chord") is not None
+                        if not is_chord_continuation:
+                            duration_elem = elem.find("durationType")
+                            if duration_elem is not None:
+                                duration_type = duration_elem.text
+                                duration = get_duration_ticks(duration_type, elem.findall("dots"), resolution)
+                                # Handle tuplets if necessary (simplified for now)
+                                position_in_measure += duration
+
+                    elif elem.tag == "Rest":
+                        # Handle rest duration
+                        duration_elem = elem.find("durationType")
+                        if duration_elem is not None:
+                            duration_type = duration_elem.text
+                            duration = get_duration_ticks(duration_type, elem.findall("dots"), resolution)
+                            # Handle tuplets if necessary (simplified for now)
+                            position_in_measure += duration
+
+    return accented_notes
