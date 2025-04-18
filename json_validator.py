@@ -70,13 +70,31 @@ def format_number(value: float) -> str:
     """Format numbers according to specified rules:
     - Numbers > 1 or < -1: truncate to integer
     - Numbers between -1 and 1: 4 digits of precision
+    - Handle integer 0 as "0"
     """
+    # Check for integer 0 first
+    if isinstance(value, int) and value == 0:
+        return "0"
+
     try:
         num = float(value)
-        if abs(num) >= 1:
-            return str(int(num))
-        else:
-            return f"{num:.3f}"
+        # Handle float 0.0 (or very close)
+        if abs(num) < 1e-9: # Use a small tolerance for float comparison
+             return "0.000" # Always format float 0 with decimals
+        elif abs(num) >= 1:
+            # Check if it's effectively an integer before truncating
+            if abs(num - round(num)) < 1e-9:
+                return str(int(round(num)))
+            else:
+                # If it has significant decimal part, format it
+                formatted = f"{num:.3f}".rstrip('0').rstrip('.')
+                return formatted if formatted and formatted != '-' else str(int(round(num))) # Fallback if formatting fails
+        else: # Numbers between -1 and 1 (excluding 0)
+            # Format with 3 decimal places, but remove trailing zeros and potentially the decimal point
+            formatted = f"{num:.3f}".rstrip('0').rstrip('.')
+            # Ensure it doesn't become empty string if it was 0.000... (already handled above)
+            # Ensure it doesn't become just '-' if it was negative close to zero
+            return formatted if formatted and formatted != '-' else "0.000"
     except (ValueError, TypeError):
         return str(value)
 
