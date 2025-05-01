@@ -53,6 +53,32 @@ output_dir="${script_dir}/PianoVision"
 # Create output directory
 mkdir -p "$output_dir"
 
+# --- Helper Function: Check if conversion is needed based on timestamps ---
+# Arguments: $1 = input_file, $2 = output_json_file
+should_convert() {
+    local input_file="$1"
+    local output_json_file="$2"
+    local min_age_diff=180 # 3 minutes in seconds
+
+    if [ ! -f "$output_json_file" ]; then
+        # Output file doesn't exist, conversion needed
+        return 0
+    fi
+
+    # Get modification times (seconds since epoch)
+    local input_mtime=$(stat -c %Y "$input_file")
+    local output_mtime=$(stat -c %Y "$output_json_file")
+
+    # Check if input is at least min_age_diff seconds newer than output
+    if [ $((input_mtime - output_mtime)) -ge $min_age_diff ]; then
+        # Input is significantly newer, conversion needed
+        return 0
+    else
+        # Output exists and is not significantly older than input, skip conversion
+        return 1
+    fi
+}
+
 # Function to check if a MIDI file has a matching MuseScore file
 has_matching_companion() {
     local midi_file="$1"
@@ -73,8 +99,15 @@ if [ "$FILE_TYPE" = "mid" ]; then
     # MIDI files need special processing (only those with matching MuseScore files)
     find "$input_dir" -type f -name "*.mid" -print0 | while IFS= read -r -d '' file; do
         if has_matching_companion "$file"; then
-            echo "Processing: $file (has matching MuseScore file)"
-            python3 "${script_dir}/$CONVERTER" "$file" "$output_dir" $ORCHESTRA_MODE $SIMPLIFIED_MODE
+            input_base="$(basename "$file" .mid)"
+            output_json="${output_dir}/${input_base}.json"
+
+            if should_convert "$file" "$output_json"; then
+                 echo "Processing: $file (has matching MuseScore file, newer or JSON missing)"
+                 python3 "${script_dir}/$CONVERTER" "$file" "$output_dir" $ORCHESTRA_MODE $SIMPLIFIED_MODE
+            else
+                 echo "Skipping: $file (JSON exists and is up-to-date)"
+            fi
         else
             echo "Skipping: $file (no matching MuseScore file found)"
         fi
@@ -89,9 +122,16 @@ else
     
     for ext in "${extensions[@]}"; do
         find "$input_dir" -type f -name "*.$ext" -print0 | while IFS= read -r -d '' file; do
-            echo "Processing: $file"
-            # Also pass orchestra and simplified mode flags to other converters
-            python3 "${script_dir}/$CONVERTER" "$file" "$output_dir" $ORCHESTRA_MODE $SIMPLIFIED_MODE
+            input_base="$(basename "$file" .$ext)"
+            output_json="${output_dir}/${input_base}.json"
+
+            if should_convert "$file" "$output_json"; then
+                echo "Processing: $file (newer or JSON missing)"
+                # Also pass orchestra and simplified mode flags to other converters
+                python3 "${script_dir}/$CONVERTER" "$file" "$output_dir" $ORCHESTRA_MODE $SIMPLIFIED_MODE
+            else
+                echo "Skipping: $file (JSON exists and is up-to-date)"
+            fi
         done
     done
 fi
