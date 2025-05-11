@@ -4,6 +4,8 @@ import re
 from typing import Tuple, Optional, List, Dict, Any, Set
 import zipfile
 import tempfile
+import sys # Added for stderr and exit
+import argparse # Added for command-line parsing
 
 def ticks_to_seconds(ticks: int, tempos: List[Dict[str, Any]], ticks_per_beat: int) -> float:
     """
@@ -89,7 +91,7 @@ def extract_text_content(elem: ET.Element) -> str:
             text_parts.append(child.tail)
     return ''.join(text_parts)
 
-def extract_metadata_from_musescore(root: ET.Element) -> Tuple[str, str, Dict[str, Set[int]]]:
+def extract_metadata_from_musescore(root: ET.Element, mscz_file_path: str) -> Tuple[str, str, Dict[str, Set[int]]]:
     """Extract title and artist from MuseScore file"""
     title = ""
     subtitle = ""
@@ -121,12 +123,11 @@ def extract_metadata_from_musescore(root: ET.Element) -> Tuple[str, str, Dict[st
         "fallback_folder": ""
     }
 
-    # Store fallback values
-    if not title or not artist:
-        file_path = root.get("source", "")
-        if file_path:
-            fallback_metadata["fallback_filename"] = os.path.splitext(os.path.basename(file_path))[0].replace('_', ' ')
-            fallback_metadata["fallback_folder"] = os.path.basename(os.path.dirname(file_path))
+    # Store fallback values using the provided mscz_file_path
+    if not title or not artist: # Only compute if needed
+        if mscz_file_path: # Check if a path was actually provided
+            fallback_metadata["fallback_filename"] = os.path.splitext(os.path.basename(mscz_file_path))[0].replace('_', ' ')
+            fallback_metadata["fallback_folder"] = os.path.basename(os.path.dirname(mscz_file_path))
 
     # Use fallbacks if needed
     if not title:
@@ -313,10 +314,11 @@ def extract_metadata_from_xml(xml_path: str) -> Tuple[str, str, Dict[str, Set[in
         
         return title, artist, extract_merge_markers_from_xml(root)
     except Exception as e:
-        print(f"Error extracting metadata from {xml_path}: {str(e)}")
+        print(f"Error extracting metadata from {xml_path}: {str(e)}", file=sys.stderr)
         # Return default values based on the filename
         base_name = os.path.splitext(os.path.basename(xml_path))[0]
-        return base_name.replace('_', ' '), os.path.basename(os.path.dirname(xml_path)), extract_merge_markers_from_xml(tree.getroot())
+        # Fixed: Return empty merge markers on error, not a recursive call
+        return base_name.replace('_', ' '), os.path.basename(os.path.dirname(xml_path)), {'right': set(), 'left': set()}
 
 def extract_merge_markers_from_xml(root) -> Dict[str, Set[int]]:
     """Extract merge markers from MusicXML staff text
@@ -561,3 +563,81 @@ def extract_accented_notes(mscx_content: str) -> Dict[Tuple[int, int, int, Tuple
                             position_in_measure += duration
 
     return accented_notes
+
+def get_predicted_title_artist(input_file_path: str, file_type: str) -> Tuple[str, str]:
+    title, artist = "", ""
+
+    if file_type == "mscz":
+        mscx_content = extract_mscx_from_mscz(input_file_path)
+        if mscx_content:
+            try:
+                root = ET.fromstring(mscx_content)
+                title, artist, _ = extract_metadata_from_musescore(root, input_file_path)
+            except ET.ParseError as e:
+                print(f"Error parsing MSCX content from {input_file_path}: {e}", file=sys.stderr)
+                title = os.path.splitext(os.path.basename(input_file_path))[0].replace('_', ' ')
+                artist = os.path.basename(os.path.dirname(input_file_path))
+        else:
+            title = os.path.splitext(os.path.basename(input_file_path))[0].replace('_', ' ')
+            artist = os.path.basename(os.path.dirname(input_file_path))
+
+    elif file_type == "musicxml" or file_type == "xml":
+        try:
+            title, artist, _ = extract_metadata_from_xml(input_file_path)
+        except Exception as e:
+            print(f"Error extracting metadata from XML {input_file_path}: {e}", file=sys.stderr)
+            title = os.path.splitext(os.path.basename(input_file_path))[0].replace('_', ' ')
+            artist = os.path.basename(os.path.dirname(input_file_path))
+
+    elif file_type == "mid":
+        companion_mscz = find_matching_musescore(input_file_path)
+        if companion_mscz:
+            mscx_content = extract_mscx_from_mscz(companion_mscz)
+            if mscx_content:
+                try:
+                    root = ET.fromstring(mscx_content)
+                    title, artist, _ = extract_metadata_from_musescore(root, companion_mscz)
+                except ET.ParseError as e:
+                    print(f"Error parsing MSCX from companion {companion_mscz}: {e}", file=sys.stderr)
+                    title = os.path.splitext(os.path.basename(input_file_path))[0].replace('_', ' ')
+                    artist = os.path.basename(os.path.dirname(input_file_path))
+            else:
+                title = os.path.splitext(os.path.basename(input_file_path))[0].replace('_', ' ')
+                artist = os.path.basename(os.path.dirname(input_file_path))
+        else:
+            companion_xml = find_matching_musicxml(input_file_path)
+            if companion_xml:
+                try:
+                    title, artist, _ = extract_metadata_from_xml(companion_xml)
+                except Exception as e:
+                    print(f"Error extracting metadata from companion XML {companion_xml}: {e}", file=sys.stderr)
+                    title = os.path.splitext(os.path.basename(input_file_path))[0].replace('_', ' ')
+                    artist = os.path.basename(os.path.dirname(input_file_path))
+            else:
+                title = os.path.splitext(os.path.basename(input_file_path))[0].replace('_', ' ')
+                artist = os.path.basename(os.path.dirname(input_file_path))
+    else:
+        print(f"Unsupported file_type for prediction: {file_type}", file=sys.stderr)
+        title = os.path.splitext(os.path.basename(input_file_path))[0].replace('_', ' ')
+        artist = os.path.basename(os.path.dirname(input_file_path))
+
+    return title if title is not None else "", artist if artist is not None else ""
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="PianoVision Utility Tool")
+    parser.add_argument("--get-predicted-filename", metavar="INPUT_FILE", help="Predict the output JSON filename for a given input file.")
+    parser.add_argument("--file-type", choices=["mscz", "musicxml", "mid", "xml"], help="The type of the input file. Required with --get-predicted-filename.")
+
+    args = parser.parse_args()
+
+    if args.get_predicted_filename:
+        if not args.file_type:
+            parser.error("--file-type is required with --get-predicted-filename")
+        
+        input_path = args.get_predicted_filename
+        file_type_arg = args.file_type.lower()
+
+        pred_title, pred_artist = get_predicted_title_artist(input_path, file_type_arg)
+        predicted_filename = format_output_filename(pred_title, pred_artist, input_path)
+        print(predicted_filename)

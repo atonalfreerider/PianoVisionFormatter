@@ -30,3 +30,9 @@ These jsons can be copied to
 `Internal shared storage/Android/data/com.ZarApps.PianoVision/files`
 
 Each script can be run with a single argument to the file to be converted to json  
+
+Example CMDs:
+
+/home/john/Desktop/Piano/PianoVisionFormatter/convert_all.sh -m -o -s /home/john/Documents/MuseScore4/Scores
+
+/home/john/Desktop/Piano/PianoVisionFormatter/sync_pianovision_files.sh /home/john/Desktop/Piano/PianoVisionFormatter/PianoVision

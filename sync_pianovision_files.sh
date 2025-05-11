@@ -2,9 +2,23 @@
 # filepath: /home/john/Desktop/Piano/PianoVisionFormatter/sync_pianovision_files.sh
 
 # --- Configuration ---
-SOURCE_DIR="/home/john/Desktop/Piano/PianoVisionFormatter/PianoVision"
 TARGET_DIR="/sdcard/Android/data/com.ZarApps.PianoVision/files" # Standard ADB path
 FILE_PATTERN="*.json"
+
+# Check if a source directory is provided as an argument
+if [ -n "$1" ]; then
+    SOURCE_DIR="$1"
+    echo "Using provided source directory: $SOURCE_DIR"
+else
+    echo "No source directory provided"
+    exit 1
+fi
+
+# Validate if SOURCE_DIR exists
+if [ ! -d "$SOURCE_DIR" ]; then
+    echo "Error: Source directory '$SOURCE_DIR' not found."
+    exit 1
+fi
 # --- End Configuration ---
 
 echo "Starting PianoVision JSON sync..."
@@ -70,7 +84,7 @@ for target_file in "${target_files[@]}"; do
     for source_file in "${source_files[@]}"; do
         if [[ "$source_file" == "$target_file_clean" ]]; then
             found=1
-            breaks
+            break # Corrected from 'breaks'
         fi
     done
 
