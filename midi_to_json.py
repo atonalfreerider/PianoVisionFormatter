@@ -197,7 +197,8 @@ def get_notes_from_midi(midi_path: str,
             mscx_content = extract_mscx_from_mscz(matching_musescore)
             if mscx_content:
                 root = ET.fromstring(mscx_content)
-                _, _, merge_measures = extract_metadata_from_musescore(root)
+                # Pass matching_musescore as the file path argument
+                _, _, merge_measures = extract_metadata_from_musescore(root, matching_musescore)
                 # Extract accent data using the utility function
                 accented_notes_data = extract_accented_notes(mscx_content) 
                 print(f"Extracted {len(accented_notes_data)} accent patterns from {matching_musescore}")
@@ -534,55 +535,55 @@ def merge_tracks_with_measure_info(
         # Fallback to simple calculation if all else fails
         return (tick_pos // (mid.ticks_per_beat * 4)) + 1
     
-    # Start with primary tracks as the base for both hands
+    # Initialize result_tracks with primary notes. This will be selectively overwritten or appended to.
     for hand_idx in [0, 1]:
         result_tracks[hand_idx] = primary_tracks[hand_idx].copy()
 
     # Step 1: If simplified mode is on, replace measures that have simplified notes
-    if simplified_mode and any(simplified_tracks):
+    if simplified_mode and any(s_track for s_track in simplified_tracks if s_track): # Check if any hand has simplified notes
         for hand_idx in [0, 1]:
-
-            if simplified_tracks[hand_idx]:  # Only process if there are simplified notes
-                # Group notes by measure using accurate measure calculation
-                primary_by_measure = {}
-                simplified_by_measure = {}
+            if simplified_tracks[hand_idx]:  # Process this hand only if it has simplified notes
                 
-                # Group primary notes by measure number
-                for note in primary_tracks[hand_idx]:
+                # Group original primary notes for this hand by measure
+                current_hand_primary_notes = primary_tracks[hand_idx]
+                primary_by_measure = {}
+                for note in current_hand_primary_notes:
                     measure_num = get_measure_for_tick(note.ticks)
                     if measure_num not in primary_by_measure:
                         primary_by_measure[measure_num] = []
                     primary_by_measure[measure_num].append(note)
                 
-                # Group simplified notes by measure number
-                simplified_measure_counts = {}
-                for note in simplified_tracks[hand_idx]:
+                # Group simplified notes for this hand by measure
+                current_hand_simplified_notes = simplified_tracks[hand_idx]
+                simplified_by_measure = {}
+                for note in current_hand_simplified_notes:
                     measure_num = get_measure_for_tick(note.ticks)
                     if measure_num not in simplified_by_measure:
                         simplified_by_measure[measure_num] = []
-                        simplified_measure_counts[measure_num] = 0
                     simplified_by_measure[measure_num].append(note)
-                    simplified_measure_counts[measure_num] += 1
 
-                # Create new track with measure-based selection
-                new_track = []
-                all_measures = set(list(primary_by_measure.keys()) + list(simplified_by_measure.keys()))
+                # Build the new track for this hand from scratch
+                new_hand_track = []
                 
-                for measure_num in sorted(all_measures):
-                    use_simplified = False
-                    
-                    # Always use simplified if we have them and simplified mode is on
-                    # (We're not relying on XML data for measure analysis as requested)
-                    if measure_num in simplified_by_measure and simplified_by_measure[measure_num]:
-                        use_simplified = True
+                # Consider all measures that have either primary or simplified notes for this hand
+                all_measures_for_hand = set(primary_by_measure.keys()) | set(simplified_by_measure.keys())
+                
+                for measure_num in sorted(list(all_measures_for_hand)):
+                    # Check if simplified notes exist for this specific measure and are non-empty
+                    use_simplified_for_this_measure = (
+                        measure_num in simplified_by_measure and 
+                        simplified_by_measure[measure_num] 
+                    )
 
-                    if use_simplified:
-                        new_track.extend(simplified_by_measure[measure_num])
-                    elif measure_num in primary_by_measure:
-                         new_track.extend(primary_by_measure[measure_num])
+                    if use_simplified_for_this_measure:
+                        new_hand_track.extend(simplified_by_measure[measure_num])
+                    elif measure_num in primary_by_measure and primary_by_measure[measure_num]:
+                        # Only add primary notes if simplified notes were not used for this measure
+                        new_hand_track.extend(primary_by_measure[measure_num])
                 
-                # Replace with merged result
-                result_tracks[hand_idx] = sorted(new_track, key=lambda note: note.ticks)
+                # Replace the hand's track in result_tracks with the newly constructed one
+                result_tracks[hand_idx] = sorted(new_hand_track, key=lambda note: note.ticks)
+            # If simplified_tracks[hand_idx] is empty, result_tracks[hand_idx] (initialized from primary_tracks) remains unchanged by this step.
     
     # Step 2: Handle orchestra parts
     if orchestra_mode or any(merge_measures.values()):
@@ -796,8 +797,6 @@ def create_piano_vision_json(midi_path: str, orchestra_mode: bool = False, simpl
     # Look for matching MuseScore file for metadata and merge markers
     matching_mscz = find_matching_musescore(midi_path)
     merge_markers = {'right': set(), 'left': set()}
-    title = ""
-    artist = ""
     
     if matching_mscz:
         try:
@@ -806,7 +805,8 @@ def create_piano_vision_json(midi_path: str, orchestra_mode: bool = False, simpl
             if mscx_content:
                 root = ET.fromstring(mscx_content)
                 # Update to capture merge markers from the function
-                title, artist, merge_markers = extract_metadata_from_musescore(root)
+                # Pass matching_mscz as the file path argument
+                title, artist, merge_markers = extract_metadata_from_musescore(root, matching_mscz)
                 print(f"Using metadata from matching MuseScore file: {matching_mscz}")
             else:
                 # Fallback to filename and directory if MSCX extraction fails

@@ -398,7 +398,7 @@ def parse_musescore(mscx_content: str, mscz_path: str) -> Dict[str, Any]:
     root = ET.fromstring(mscx_content)
     
     # Extract metadata
-    title, artist, _ = extract_metadata_from_musescore(root) # Capture merge markers even if not used here
+    title, artist, _ = extract_metadata_from_musescore(root, mscz_path) # Capture merge markers even if not used here
     division_elem = root.find(".//Division")
     resolution = int(division_elem.text) if division_elem is not None else 480
     
