@@ -11,6 +11,7 @@ class Note:
     duration_ticks: int
     staff: int  # 1 = right hand, 2 = left hand
     group: int  # group ID for related notes
+    accent: int = 0  # Track whether the note has an accent articulation
 
 @dataclass
 class Track:

@@ -80,6 +80,7 @@ class PianoRollComparator(tk.Tk):
         times = []
         durations = []
         colors = []
+        accents = []  # Add accent tracking
         
         track_data = tracks_v2[hand]
         for measure in track_data:
@@ -89,8 +90,9 @@ class PianoRollComparator(tk.Tk):
                 times.append(note['start'])
                 durations.append(note['duration'])
                 colors.append('blue' if hand == "right" else 'red')
+                accents.append(bool(note.get('accent', 0)))  # Get accent status
         
-        return np.array(notes), np.array(times), np.array(durations), colors
+        return np.array(notes), np.array(times), np.array(durations), colors, np.array(accents)
 
     def zoom_in(self):
         self.zoom_level *= 0.8
@@ -155,9 +157,9 @@ class PianoRollComparator(tk.Tk):
 
         # Plot hands and find max time
         for hand in ['right', 'left']:
-            gen_notes, gen_times, _, _ = self.create_piano_roll_data(
+            gen_notes, gen_times, _, _, gen_accents = self.create_piano_roll_data(
                 self.generated_data['tracksV2'], hand)
-            ref_notes, ref_times, _, _ = self.create_piano_roll_data(
+            ref_notes, ref_times, _, _, ref_accents = self.create_piano_roll_data(
                 self.reference_data['tracksV2'], hand)
             
             # Update max_time
@@ -169,10 +171,22 @@ class PianoRollComparator(tk.Tk):
             color_gen = 'blue' if hand == 'right' else 'red'
             color_ref = 'green' if hand == 'right' else 'orange'
             
+            # Plot basic notes
             ax.scatter(ref_notes + REF_OFFSET, ref_times, c=color_ref, alpha=0.5,
                       label=f'Reference {hand.title()}', marker='|')
             ax.scatter(gen_notes + GEN_OFFSET, gen_times, c=color_gen, alpha=0.5,
                       label=f'Generated {hand.title()}', marker='|')
+            
+            # Plot accents as dots
+            if len(ref_accents) > 0:
+                accent_mask = ref_accents
+                ax.scatter(ref_notes[accent_mask] + REF_OFFSET, ref_times[accent_mask],
+                          c=color_ref, alpha=0.8, marker='.')
+            
+            if len(gen_accents) > 0:
+                accent_mask = gen_accents
+                ax.scatter(gen_notes[accent_mask] + GEN_OFFSET, gen_times[accent_mask],
+                          c=color_gen, alpha=0.8, marker='.')
 
         # Set limits and labels
         center = 44

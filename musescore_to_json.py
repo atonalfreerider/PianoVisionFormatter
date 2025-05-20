@@ -2,7 +2,7 @@ import xml.etree.ElementTree as ET
 import json
 import os
 from typing import Dict, Any, List
-from pv_util import format_output_filename, extract_metadata_from_musescore, extract_mscx_from_mscz, ticks_to_seconds, find_matching_midi
+from pv_util import format_output_filename, extract_metadata_from_musescore, extract_mscx_from_mscz, ticks_to_seconds, find_matching_midi, get_duration_ticks
 from notes import Note, Track
 from track_organizer import organize_tracks_v2
 from midi_to_json import extract_tempo_events
@@ -259,28 +259,6 @@ def extract_tempo_changes(root: ET.Element) -> List[Dict[str, Any]]:
     
     return all_tempos
 
-def get_duration_ticks(duration_type: str, dots_elements: list, resolution: int) -> int:
-    """Calculate duration in ticks based on note type and dots"""
-    duration_map = {
-        "whole": resolution * 4,
-        "half": resolution * 2,
-        "quarter": resolution,
-        "eighth": resolution // 2,
-        "16th": resolution // 4,
-        "32nd": resolution // 8,
-        "64th": resolution // 16,
-    }
-    
-    base_duration = duration_map.get(duration_type, resolution)
-    
-    # Handle dots
-    if dots_elements:
-        dot_count = len(dots_elements)
-        dot_factor = sum(0.5 ** (i + 1) for i in range(dot_count))
-        base_duration = int(base_duration * (1 + dot_factor))
-    
-    return base_duration
-
 def get_measure_ticks_from_midi(midi_path: str) -> Dict[int, Dict[int, int]]:
     """Extract measure tick positions from MIDI file"""
     import mido
@@ -420,7 +398,7 @@ def parse_musescore(mscx_content: str, mscz_path: str) -> Dict[str, Any]:
     root = ET.fromstring(mscx_content)
     
     # Extract metadata
-    title, artist = extract_metadata_from_musescore(root)
+    title, artist, _ = extract_metadata_from_musescore(root, mscz_path) # Capture merge markers even if not used here
     division_elem = root.find(".//Division")
     resolution = int(division_elem.text) if division_elem is not None else 480
     
@@ -569,11 +547,21 @@ def parse_musescore(mscx_content: str, mscz_path: str) -> Dict[str, Any]:
                         duration_elem = elem.find("durationType")
                         if duration_elem is None:
                             continue
-                        
+
+                        # Check if this chord has an accent articulation
+                        has_accent = False
+                        for articulation in elem.findall(".//Articulation"):
+                            subtype = articulation.find("subtype")
+                            if (subtype is not None and
+                                subtype.text and
+                                ("accent" in subtype.text.lower() or "marcato" in subtype.text.lower())): # Include marcato as accent
+                                has_accent = True
+                                break
+
                         duration_type = duration_elem.text
                         # Get base duration without tuplet adjustment
                         base_duration_ticks = get_duration_ticks(duration_type, elem.findall("dots"), resolution)
-                        
+
                         # Adjust duration if in tuplet (e.g., triplet eighth notes)
                         duration_ticks = base_duration_ticks
                         if active_tuplet:
@@ -601,12 +589,16 @@ def parse_musescore(mscx_content: str, mscz_path: str) -> Dict[str, Any]:
                                 pitch = int(pitch_elem.text)
                                 velocity_elem = note_elem.find("velocity")
                                 velocity = float(velocity_elem.text) / 127.0 if velocity_elem is not None else 0.8
-                                
+
+                                # Boost velocity for accented notes
+                                if has_accent and velocity < 0.9:
+                                    velocity = min(1.0, velocity * 1.25)  # Apply 25% boost but cap at 1.0
+
                                 # Calculate precise timing
                                 note_time = ticks_to_seconds(chord_start_tick, tempos, resolution)
                                 note_end_time = ticks_to_seconds(chord_start_tick + duration_ticks, tempos, resolution)
-                                
-                                # Create note with accurate timing
+
+                                # Create note with accurate timing and accent info
                                 note = Note(
                                     midi=pitch,
                                     time=note_time,
@@ -615,9 +607,10 @@ def parse_musescore(mscx_content: str, mscz_path: str) -> Dict[str, Any]:
                                     ticks=chord_start_tick,
                                     duration_ticks=duration_ticks,
                                     staff=staff_hand,
-                                    group=measure_idx
+                                    group=measure_idx,
+                                    accent=1 if has_accent else 0
                                 )
-                                
+
                                 all_notes.append(note)
                                 
                             except (ValueError, AttributeError, TypeError):
@@ -745,18 +738,27 @@ def parse_musescore(mscx_content: str, mscz_path: str) -> Dict[str, Any]:
 def main():
     import sys
     
-    # Handle command line arguments
-    if len(sys.argv) < 2 or len(sys.argv) > 3:
-        print("Usage: python musescore_to_json.py <input_file> [output_dir]")
+    # Handle command line arguments with optional output dir and feature flags
+    if len(sys.argv) < 2:
+        print("Usage: python musescore_to_json.py <input_file> [output_dir] [orchestra_mode] [simplified_mode]")
         sys.exit(1)
 
     mscz_path = sys.argv[1]
-
+    
     # If no output directory is specified, use the same directory as the input file
-    if len(sys.argv) == 3:
+    if len(sys.argv) >= 3:
         output_dir = sys.argv[2]
     else:
         output_dir = os.path.dirname(mscz_path)
+        
+    # Get optional flags with defaults
+    orchestra_mode = False
+    simplified_mode = False
+    
+    if len(sys.argv) > 3:
+        orchestra_mode = sys.argv[3].lower() == "true"
+    if len(sys.argv) > 4:
+        simplified_mode = sys.argv[4].lower() == "true"
 
     if not os.path.isfile(mscz_path):
         print(f"Error: {mscz_path} is not a file")

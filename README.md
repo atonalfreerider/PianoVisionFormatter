@@ -30,3 +30,18 @@ These jsons can be copied to
 `Internal shared storage/Android/data/com.ZarApps.PianoVision/files`
 
 Each script can be run with a single argument to the file to be converted to json  
+
+NOTE: Adding a track to MuseScore and renaming it still doesn't go deep enough. You need to rename within the MSCX itself. 
+https://musescore.org/en/node/341076
+1 - rename .mscz -> .zip
+2 - unzip
+3 - open .mscx in text editor
+4 - replace xml tag with the desired part name
+5 - select all files in folder, right click .mscx file -> .zip
+6 - rename zip -> .mscz
+
+Example CMDs:
+
+/home/john/Desktop/Piano/PianoVisionFormatter/convert_all.sh -m -o -s /home/john/Documents/MuseScore4/Scores
+
+/home/john/Desktop/Piano/PianoVisionFormatter/sync_pianovision_files.sh /home/john/Desktop/Piano/PianoVisionFormatter/PianoVision
