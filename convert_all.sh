@@ -54,126 +54,83 @@ output_dir="${script_dir}/PianoVision"
 mkdir -p "$output_dir"
 
 # --- Helper Function: Check if conversion is needed based on timestamps ---
-# Arguments: $1 = main_input_file, $2 = output_json_file, $3 = optional_companion_file
+# Now also considers optional companion MIDI (forces reconvert if MIDI regenerated)
 should_convert() {
-    local main_input_file="$1"
+    local input_file="$1"
     local output_json_file="$2"
-    local companion_file="${3:-}" # Default to empty string if not provided
-    local input_newer_threshold=180 # 3 minutes: input must be this much newer than JSON to trigger conversion
-
-    # 1. Output file doesn't exist, conversion needed
+    local companion_mid="$3"
+    local threshold=180
     if [ ! -f "$output_json_file" ]; then
-        return 0 # True (should convert)
+        return 0
     fi
-
-    # Get modification time of the output JSON file
-    local output_mtime
-    output_mtime=$(stat -c %Y "$output_json_file")
-    if [ $? -ne 0 ]; then # stat failed for output_json_file
-        echo "Warning: Could not stat output file $output_json_file. Assuming conversion is needed."
-        return 0 # True (should convert)
-    fi
-    
-    # Get modification time of the main input file
-    local main_input_mtime
-    main_input_mtime=$(stat -c %Y "$main_input_file")
-    if [ $? -ne 0 ]; then # stat failed for main_input_file
-         echo "Warning: Could not stat input file $main_input_file. Assuming conversion is needed."
-        return 0 # True (should convert)
-    fi
-
-    # 2. Check if main input file is significantly newer (by *more than* `input_newer_threshold`) than JSON
-    if [ $((main_input_mtime - output_mtime)) -gt $input_newer_threshold ]; then
-        # Main input is significantly newer, conversion needed
-        return 0 # True (should convert)
-    fi
-
-    # 3. If a companion file is provided and exists, check if it's significantly newer than JSON
-    if [ -n "$companion_file" ] && [ -f "$companion_file" ]; then
-        local companion_mtime
-        companion_mtime=$(stat -c %Y "$companion_file")
-        if [ $? -ne 0 ]; then # stat failed for companion_file
-            echo "Warning: Could not stat companion file $companion_file. Cannot check if it's significantly newer."
-        elif [ $((companion_mtime - output_mtime)) -gt $input_newer_threshold ]; then
-            # Companion input is significantly newer, conversion needed
-            return 0 # True (should convert)
+    local output_mtime input_mtime midi_mtime
+    output_mtime=$(stat -c %Y "$output_json_file" 2>/dev/null || echo 0)
+    input_mtime=$(stat -c %Y "$input_file" 2>/dev/null || echo 0)
+    if [ -n "$companion_mid" ] && [ -f "$companion_mid" ]; then
+        midi_mtime=$(stat -c %Y "$companion_mid" 2>/dev/null || echo 0)
+        # If MIDI newer than JSON by threshold -> reconvert
+        if [ $((midi_mtime - output_mtime)) -gt $threshold ]; then
+            return 0
+        fi
+        # Treat MIDI as authoritative over MSCZ for tempo layout freshness
+        if [ $midi_mtime -gt $input_mtime ]; then
+            input_mtime=$midi_mtime
         fi
     fi
-    
-    # 4. If none of the above conditions for conversion were met (JSON exists and no input file is significantly newer), DO NOT convert.
-    return 1 # False (should not convert)
+    if [ $((input_mtime - output_mtime)) -gt $threshold ]; then
+        return 0
+    fi
+    return 1
 }
 
-# Function to check if a MIDI file has a matching MuseScore file
-has_matching_companion() {
-    local midi_file="$1"
-    local midi_base="$(basename "$midi_file" .mid)"
-    local midi_dir="$(dirname "$midi_file")"
-    
-    # Check for .mscz extension
-    if [ -f "${midi_dir}/${midi_base}.mscz" ]; then
-        return 0  # Success - matching file found
-    else
-        return 1  # No matching file found
-    fi
-}
+# Ensure MIDIs are present/fresh for every MSCZ first
+echo "Ensuring MIDI companions are current (headless MuseScore export)..."
+python3 "${script_dir}/update_midis.py" "$input_dir"
 
 # Process files based on file type
 echo "Processing $FILE_TYPE files"
 if [ "$FILE_TYPE" = "mid" ]; then
-    # MIDI files need special processing (only those with matching MuseScore files)
+    # All .mid files must have a matching .mscz; orphan MIDIs are ignored.
     find "$input_dir" -type f -name "*.mid" -print0 | while IFS= read -r -d '' file; do
-        if has_matching_companion "$file"; then
-            # Get predicted JSON filename from pv_util.py
-            predicted_json_basename=$(python3 "${script_dir}/pv_util.py" --get-predicted-filename "$file" --file-type "mid")
-            
-            if [ -z "$predicted_json_basename" ]; then
-                echo "Warning: Could not predict JSON filename for $file. Skipping."
-                continue
-            fi
-            output_json="${output_dir}/${predicted_json_basename}"
-            
-            # Construct the path to the companion MuseScore file (name based on original MIDI)
-            input_base_for_companion="$(basename "$file" .mid)"
-            midi_dir="$(dirname "$file")"
-            companion_mscz_file="${midi_dir}/${input_base_for_companion}.mscz"
-
-            if should_convert "$file" "$output_json" "$companion_mscz_file"; then
-                 echo "Processing: $file (relevant input newer or JSON missing: $output_json)"
-                 python3 "${script_dir}/$CONVERTER" "$file" "$output_dir" $ORCHESTRA_MODE $SIMPLIFIED_MODE
-            else
-                 echo "Skipping: $file (JSON $output_json exists and is up-to-date relative to .mid and .mscz)"
-            fi
+        companion_mscz="${file%.*}.mscz"
+        if [ ! -f "$companion_mscz" ]; then
+            echo "Skipping (no matching MSCZ): $file"
+            continue
+        fi
+        # Predict output name (still based on MIDI + metadata extracted from companion MSCZ)
+        predicted_json_basename=$(python3 "${script_dir}/pv_util.py" --get-predicted-filename "$file" --file-type "mid")
+        [ -z "$predicted_json_basename" ] && { echo "Warning: Could not predict JSON filename for $file. Skipping."; continue; }
+        output_json="${output_dir}/${predicted_json_basename}"
+        # For staleness, treat MSCZ as primary source and MIDI as companion (so either changing forces reconvert)
+        if should_convert "$companion_mscz" "$output_json" "$file"; then
+            echo "Processing: $file (with $companion_mscz) -> $output_json"
+            python3 "${script_dir}/$CONVERTER" "$file" "$output_dir" $ORCHESTRA_MODE $SIMPLIFIED_MODE
         else
-            echo "Skipping: $file (no matching MuseScore file found)"
+            echo "Skipping (up-to-date): $file"
         fi
     done
 else
-    # Process MuseScore or MusicXML files directly
+    # MuseScore (mscz) or MusicXML
     extensions=("$FILE_TYPE")
-    # Add .mscz extension if processing MusicXML but no specific extension given
-    if [ "$FILE_TYPE" = "musicxml" ]; then 
+    if [ "$FILE_TYPE" = "musicxml" ]; then
         extensions=("xml" "musicxml")
     fi
-    
     for ext in "${extensions[@]}"; do
         find "$input_dir" -type f -name "*.$ext" -print0 | while IFS= read -r -d '' file; do
-            # Get predicted JSON filename from pv_util.py
-            # FILE_TYPE is already "mscz" or "musicxml" here
             predicted_json_basename=$(python3 "${script_dir}/pv_util.py" --get-predicted-filename "$file" --file-type "$FILE_TYPE")
-
-            if [ -z "$predicted_json_basename" ]; then
-                echo "Warning: Could not predict JSON filename for $file. Skipping."
+            [ -z "$predicted_json_basename" ] && { echo "Warning: Could not predict JSON filename for $file. Skipping."; continue; }
+            output_json="${output_dir}/${predicted_json_basename}"
+            companion_mid="${file%.*}.mid"
+            # For MuseScore mode require companion MIDI (should exist after update_midis)
+            if [ "$FILE_TYPE" = "mscz" ] && [ ! -f "$companion_mid" ]; then
+                echo "Warning: Missing companion MIDI for $file (expected $companion_mid). Skipping."
                 continue
             fi
-            output_json="${output_dir}/${predicted_json_basename}"
-
-            if should_convert "$file" "$output_json"; then
-                echo "Processing: $file (newer or JSON missing: $output_json)"
-                # Also pass orchestra and simplified mode flags to other converters
+            if should_convert "$file" "$output_json" "$companion_mid"; then
+                echo "Processing: $file -> $output_json"
                 python3 "${script_dir}/$CONVERTER" "$file" "$output_dir" $ORCHESTRA_MODE $SIMPLIFIED_MODE
             else
-                echo "Skipping: $file (JSON $output_json exists and is up-to-date)"
+                echo "Skipping (up-to-date): $file"
             fi
         done
     done
