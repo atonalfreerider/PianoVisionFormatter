@@ -1,6 +1,7 @@
 import xml.etree.ElementTree as ET
 import json
 import os
+import re
 from typing import Dict, Any, List
 from pv_util import format_output_filename, extract_metadata_from_musescore, extract_mscx_from_mscz, ticks_to_seconds, find_matching_midi, get_duration_ticks
 from notes import Note, Track
@@ -393,12 +394,13 @@ def create_measure_ticks_map(score: ET.Element, mscz_path: str, resolution: int)
     
     return staff_measure_ticks
 
+
 def parse_musescore(mscx_content: str, mscz_path: str) -> Dict[str, Any]:
     """Parse MuseScore file and convert to Piano Vision format"""
     root = ET.fromstring(mscx_content)
     
     # Extract metadata
-    title, artist, _ = extract_metadata_from_musescore(root, mscz_path) # Capture merge markers even if not used here
+    title, artist, _ = extract_metadata_from_musescore(root, mscz_path)  # previously ignored third value
     division_elem = root.find(".//Division")
     resolution = int(division_elem.text) if division_elem is not None else 480
     

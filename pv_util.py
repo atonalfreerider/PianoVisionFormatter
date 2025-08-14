@@ -79,6 +79,67 @@ def standardize_artist(artist: str) -> str:
     # Normalize spaces
     return re.sub(r'\s+', ' ', artist).strip()
 
+# Canonical composer variant mapping (substring -> canonical last name)
+_COMPOSER_VARIANTS = [
+    # Order matters: more specific / longer patterns first
+    (r'rachmaninov', 'Rachmaninoff'),
+    (r'rachmaninoff', 'Rachmaninoff'),
+    (r'\brach\b', 'Rachmaninoff'),
+    (r'chopin', 'Chopin'),
+    (r'beethoven', 'Beethoven'),
+    (r'bach', 'Bach'),
+    (r'mozart', 'Mozart'),
+    (r'schubert', 'Schubert'),
+    (r'schumann', 'Schumann'),
+    (r'liszt', 'Liszt'),
+    (r'debussy', 'Debussy'),
+    (r'ravel', 'Ravel'),
+    (r'prokofiev', 'Prokofiev'),
+    (r'scriabin', 'Scriabin'),
+    (r'shos|shostakovich', 'Shostakovich'),
+    (r'bartok', 'Bartok'),
+    (r'grieg', 'Grieg'),
+    (r'tchaikovsky|chaikovsky|tschaikowsky', 'Tchaikovsky'),
+]
+
+def standardize_composer_last_name(raw: str) -> str:
+    if not raw:
+        return ""
+    lower = raw.lower()
+    for pattern, canonical in _COMPOSER_VARIANTS:
+        if re.search(pattern, lower):
+            return canonical
+    # Fallback: take last token
+    parts = [p for p in re.split(r'\s+', raw.strip()) if p]
+    if not parts:
+        return ""
+    last = re.sub(r'[^a-zA-Z\-]+', '', parts[-1])
+    return last.capitalize() if last else ""
+
+_OPUS_RE = re.compile(r'\b(?:opus|op)\.?\s*(\d+)(?:\s*(no\.?\s*\d+))?', re.IGNORECASE)
+
+def normalize_opus_metadata(title: str, subtitle: str):
+    search_space = ' '.join(filter(None, [title, subtitle]))
+    m = _OPUS_RE.search(search_space)
+    if not m:
+        return title, subtitle
+    op_num = m.group(1)
+    no_part_raw = m.group(2) or ""
+    no_part = ""
+    if no_part_raw:
+        # Standardize "No." part
+        no_clean = re.sub(r'no\.?', 'No.', no_part_raw, flags=re.IGNORECASE)
+        no_part = f" {no_clean.strip()}"
+    opus_subtitle = f"Op. {op_num}{no_part}"
+    # Ensure subtitle begins with standardized opus info
+    if not subtitle or not subtitle.lower().startswith(f"op. {op_num}".lower()):
+        subtitle = opus_subtitle if not subtitle else f"{opus_subtitle} - {subtitle}"
+    else:
+        # Normalize existing subtitle's Op formatting
+        subtitle = re.sub(_OPUS_RE, opus_subtitle, subtitle)
+    return title, subtitle
+
+
 def extract_text_content(elem: ET.Element) -> str:
     """Extract text content from element, including all child text nodes"""
     text_parts = []
@@ -143,6 +204,13 @@ def extract_metadata_from_musescore(root: ET.Element, mscz_file_path: str) -> Tu
         
     # Extract merge markers
     merge_measures = extract_merge_markers_from_musescore(root)
+
+    # Standardize composer (artist) to canonical last name only
+    artist = standardize_composer_last_name(artist)
+    # Normalize Opus information -> ensure subtitle starts with standardized Op.
+    title, subtitle = normalize_opus_metadata(title, subtitle)
+    if subtitle:
+        title = f"{title} - {subtitle}"
 
     return title, artist, merge_measures
 
