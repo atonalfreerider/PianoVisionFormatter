@@ -1,47 +1,42 @@
 # PianoVisionFormatter
 
-Converts piano MuseScore .mscz MusicXML .musicxml or MIDI .mid files to PianoVision json format  
+Converts MuseScore (.mscz), MusicXML (.musicxml/.xml) or MIDI (.mid) files to PianoVision json format.
 
-BUG: MuseScore and MusicXML tempo interpretation and measure timing is not working. The tick conversion is very wrong.  
-BUG: The notes are also sometimes inaccurate.  
-BUG: midi is not distinguishing between main piano and other piano.  
-BUG: MuseScore does not handle pickup measures correctly.  
+Default mode (no -m flag):
+- update_midis.py is run first to (re)generate companion .mid files for every .mscz (missing or outdated).
+- musescore_to_json.py then converts each .mscz and uses its companion .mid for tempo and measure timing.
+- Only if the companion .mid is absent (unexpected) will it fall back to (less accurate) direct MuseScore timing.
 
-Reference:  
+-m flag (MIDI mode):
+- Skips .mscz parsing and converts the .mid directly with midi_to_json.py.
 
-https://github.com/musescore/MuseScore/tree/master/src/engraving/compat/midi  
+-x flag:
+- Processes MusicXML files (no automatic MIDI generation).
 
-Tempo extraction:  
-- If a MIDI file with the same name exists in the same folder as the MuseScore file, tempo will be extracted from the MIDI file instead  
-- Otherwise, will attempt to extract tempo from MuseScore  
-- For best results, use MIDI files for accurate tempo information  
+Current known issues:
+- MuseScore / MusicXML direct tempo & measure derivation (fallback path) is still inaccurate.
+- Some note parsing edge cases remain.
+- Pickup measures need better handling when no MIDI is available.
 
-## Usage
+Tempo extraction priority:
+1. Companion MIDI (always present in default flow due to pre-generation).
+2. Fallback MuseScore tempo parsing (only if MIDI missing).
 
-Process all MuseScore files in a directory (and subdirectories):  
-`convert_all.sh path/to/Documents/MuseScore4/Scores`  
+Usage examples:
+convert_all.sh /path/to/MuseScore4/Scores
+convert_all.sh -m /path/to/MuseScore4/Scores
+convert_all.sh -x /path/to/xml/library
+convert_all.sh -m -o -s /home/john/Documents/MuseScore4/Scores
 
-run with `-m` to process midi instead (more reliable tempo interpretation)  
-run with '-x' to process musicxml  
+After generation, copy JSONs to:
+Internal shared storage/Android/data/com.ZarApps.PianoVision/files
 
-output jsons to ./PianoVision folder
+Manual MuseScore part renaming inside MSCX (if needed):
+1. Rename .mscz -> .zip
+2. Unzip
+3. Edit .mscx
+4. Re-zip contents (ensure directory structure intact)
+5. Rename back to .mscz
 
-These jsons can be copied to
-`Internal shared storage/Android/data/com.ZarApps.PianoVision/files`
-
-Each script can be run with a single argument to the file to be converted to json  
-
-NOTE: Adding a track to MuseScore and renaming it still doesn't go deep enough. You need to rename within the MSCX itself. 
-https://musescore.org/en/node/341076
-1 - rename .mscz -> .zip
-2 - unzip
-3 - open .mscx in text editor
-4 - replace xml tag with the desired part name
-5 - select all files in folder, right click .mscx file -> .zip
-6 - rename zip -> .mscz
-
-Example CMDs:
-
-/home/john/Desktop/Piano/PianoVisionFormatter/convert_all.sh -m -o -s /home/john/Documents/MuseScore4/Scores
-
-/home/john/Desktop/Piano/PianoVisionFormatter/sync_pianovision_files.sh /home/john/Desktop/Piano/PianoVisionFormatter/PianoVision
+Sync to device:
+sync_pianovision_files.sh /home/john/Desktop/Piano/PianoVisionFormatter/PianoVision

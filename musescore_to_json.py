@@ -1,7 +1,6 @@
 import xml.etree.ElementTree as ET
 import json
 import os
-import re
 from typing import Dict, Any, List
 from pv_util import format_output_filename, extract_metadata_from_musescore, extract_mscx_from_mscz, ticks_to_seconds, find_matching_midi, get_duration_ticks
 from notes import Note, Track
@@ -319,7 +318,10 @@ def get_measure_ticks_from_midi(midi_path: str) -> Dict[int, Dict[int, int]]:
         return None
 
 def create_measure_ticks_map(score: ET.Element, mscz_path: str, resolution: int) -> Dict[int, Dict[int, int]]:
-    """Create a mapping from (staff_id, measure_idx) to absolute tick position"""
+    """Create a mapping from (staff_id, measure_idx) to absolute tick position.
+    Primary source: companion MIDI (authoritative for tempo & measure starts).
+    Fallback: rough estimation from MuseScore XML when MIDI missing (less accurate).
+    """
     # BUG this currently does not handle pickup measures correctly
 
     if mscz_path:
@@ -330,7 +332,7 @@ def create_measure_ticks_map(score: ET.Element, mscz_path: str, resolution: int)
             if midi_measure_ticks:
                 return midi_measure_ticks
             
-    print("No MIDI timing available, using MuseScore timing. This is not acurate")
+    print("WARNING: No companion MIDI timing available; falling back to approximate MuseScore-derived measure timing (may be inaccurate)")
     
     # Original MuseScore timing logic as fallback
     staff_measure_ticks = {}
@@ -396,7 +398,9 @@ def create_measure_ticks_map(score: ET.Element, mscz_path: str, resolution: int)
 
 
 def parse_musescore(mscx_content: str, mscz_path: str) -> Dict[str, Any]:
-    """Parse MuseScore file and convert to Piano Vision format"""
+    """Parse MuseScore file and convert to Piano Vision format.
+    Relies on companion MIDI for tempo & measure accuracy if present.
+    """
     root = ET.fromstring(mscx_content)
     
     # Extract metadata
@@ -412,13 +416,12 @@ def parse_musescore(mscx_content: str, mscz_path: str) -> Dict[str, Any]:
     # Check for matching MIDI file to extract tempos
     matching_midi = find_matching_midi(mscz_path)
     if matching_midi:
-        print(f"Found matching MIDI file: {matching_midi}")
-        print(f"Using tempo from MIDI file instead of MuseScore")
+        print(f"Found companion MIDI: {matching_midi} (authoritative tempo source).")
         import mido
         midi_file = mido.MidiFile(matching_midi)
         tempos = extract_tempo_events(midi_file)
     else:
-        # Use MuseScore tempo markings (currently not working
+        print("WARNING: Companion MIDI missing. Falling back to embedded MuseScore tempo parsing (less accurate).")
         tempos = extract_tempo_changes(root)
 
     # Create tick mapping for measures across staves

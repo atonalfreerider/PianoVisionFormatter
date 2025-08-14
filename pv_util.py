@@ -105,52 +105,71 @@ _COMPOSER_VARIANTS = [
 def standardize_composer_last_name(raw: str) -> str:
     if not raw:
         return ""
-    lower = raw.lower()
+    original = raw.strip()
+    lower = original.lower()
     for pattern, canonical in _COMPOSER_VARIANTS:
         if re.search(pattern, lower):
             return canonical
-    # Fallback: take last token
-    parts = [p for p in re.split(r'\s+', raw.strip()) if p]
-    if not parts:
+    # Unknown composer: reorder to "Lastname Firstname Othernames"
+    tokens = [re.sub(r'[^a-zA-ZÀ-ÿ\-]', '', t) for t in original.split() if re.sub(r'[^a-zA-ZÀ-ÿ\-]', '', t)]
+    if not tokens:
         return ""
-    last = re.sub(r'[^a-zA-Z\-]+', '', parts[-1])
-    return last.capitalize() if last else ""
+    if len(tokens) == 1:
+        return tokens[0].capitalize()
+    last = tokens[-1].capitalize()
+    rest = ' '.join(t.capitalize() for t in tokens[:-1])
+    return f"{last} {rest}"
 
-_OPUS_RE = re.compile(r'\b(?:opus|op)\.?\s*(\d+)(?:\s*(no\.?\s*\d+))?', re.IGNORECASE)
+_OPUS_RE = re.compile(r'\b(?:opus|op)\.?\s*(\d+)\s*(no\.?\s*\d+)?', re.IGNORECASE)
 
 def normalize_opus_metadata(title: str, subtitle: str):
+    """
+    Standardize any Op/Opus patterns:
+      - Detect first occurrence anywhere (title or subtitle)
+      - Remove all raw Op/Opus patterns from both fields
+      - Create a clean subtitle starting with 'Op. <n>' (+ ' No. <m>' if present)
+      - Avoid duplication
+    """
     search_space = ' '.join(filter(None, [title, subtitle]))
     m = _OPUS_RE.search(search_space)
     if not m:
         return title, subtitle
     op_num = m.group(1)
-    no_part_raw = m.group(2) or ""
+    no_raw = m.group(2) or ""
     no_part = ""
-    if no_part_raw:
-        # Standardize "No." part
-        no_clean = re.sub(r'no\.?', 'No.', no_part_raw, flags=re.IGNORECASE)
+    if no_raw:
+        no_clean = re.sub(r'no\.?', 'No.', no_raw, flags=re.IGNORECASE)
         no_part = f" {no_clean.strip()}"
-    opus_subtitle = f"Op. {op_num}{no_part}"
-    # Ensure subtitle begins with standardized opus info
-    if not subtitle or not subtitle.lower().startswith(f"op. {op_num}".lower()):
-        subtitle = opus_subtitle if not subtitle else f"{opus_subtitle} - {subtitle}"
-    else:
-        # Normalize existing subtitle's Op formatting
-        subtitle = re.sub(_OPUS_RE, opus_subtitle, subtitle)
-    return title, subtitle
+    standardized = f"Op. {op_num}{no_part}"
 
+    # Strip all existing opus patterns from title & subtitle
+    def _clean(s: str) -> str:
+        if not s:
+            return ""
+        s = _OPUS_RE.sub('', s)
+        s = re.sub(r'\s{2,}', ' ', s).strip()
+        s = re.sub(r'^[\-\:\s]+', '', s)
+        return s
+
+    clean_title = _clean(title)
+    clean_sub = _clean(subtitle)
+
+    # Build new subtitle
+    new_sub = standardized if not clean_sub else f"{standardized} - {clean_sub}"
+
+    return clean_title, new_sub
 
 def extract_text_content(elem: ET.Element) -> str:
-    """Extract text content from element, including all child text nodes"""
-    text_parts = []
+    """Safely extract all text (including child text and tails) from a MuseScore Text node."""
+    parts = []
     if elem.text:
-        text_parts.append(elem.text)
+        parts.append(elem.text)
     for child in elem:
         if child.text:
-            text_parts.append(child.text)
+            parts.append(child.text)
         if child.tail:
-            text_parts.append(child.tail)
-    return ''.join(text_parts)
+            parts.append(child.tail)
+    return ''.join(parts)
 
 def extract_metadata_from_musescore(root: ET.Element, mscz_file_path: str) -> Tuple[str, str, Dict[str, Set[int]]]:
     """Extract title and artist from MuseScore file"""
@@ -173,10 +192,6 @@ def extract_metadata_from_musescore(root: ET.Element, mscz_file_path: str) -> Tu
                     subtitle = standardize_title(content)
                 elif style.text == "composer":
                     artist = standardize_artist(content)
-    
-    # Combine title and subtitle if both exist
-    if title and subtitle:
-        title = f"{title} - {subtitle}"
     
     # Create fallback metadata dictionary
     fallback_metadata = {
@@ -209,10 +224,13 @@ def extract_metadata_from_musescore(root: ET.Element, mscz_file_path: str) -> Tu
     artist = standardize_composer_last_name(artist)
     # Normalize Opus information -> ensure subtitle starts with standardized Op.
     title, subtitle = normalize_opus_metadata(title, subtitle)
+    # Final combined title (only append subtitle once if present)
     if subtitle:
-        title = f"{title} - {subtitle}"
+        combined_title = f"{title} - {subtitle}"
+    else:
+        combined_title = title
 
-    return title, artist, merge_measures
+    return combined_title, artist, merge_measures
 
 def extract_merge_markers_from_musescore(root: ET.Element) -> Dict[str, Set[int]]:
     """Extract merge markers from MuseScore staff text
