@@ -483,22 +483,23 @@ def format_output_filename(title: str, artist: str, file_path: str) -> str:
     
     # Format artist (first 4 letters of last name)
     if not artist or artist.isspace():
-        # Use parent folder only if no artist found
         artist = os.path.basename(os.path.dirname(file_path))
     
-    # Get last word and clean it
-    last_name = artist.strip().split()[-1]
+    # After standardization, artist is either:
+    #  - Canonical single last name (e.g., "Chopin")
+    #  - Or "Lastname Firstname Othernames" (we constructed this for unknown composers)
+    # So the LAST NAME we want is ALWAYS the FIRST token, not the last.
+    tokens = [t for t in artist.strip().split() if t]
+    if tokens:
+        last_name = tokens[0]  # Use first token (the true last name)
+    else:
+        last_name = artist.strip()
     auth = re.sub(r'[^a-zA-Z]', '', last_name)[:4].lower()
     
-    # Format title
     if not title or title.isspace():
-        # Use original filename only if no title found
         title = os.path.splitext(os.path.basename(file_path))[0]
     
-    # Remove non-alphanumeric (except spaces), then replace spaces with underscores
-    formatted_title = re.sub(r'[^a-zA-Z0-9\s]', '', title)
-    formatted_title = formatted_title.strip().replace(' ', '_')
-    
+    formatted_title = re.sub(r'[^a-zA-Z0-9\s]', '', title).strip().replace(' ', '_')
     return f"{auth}_{formatted_title}.json"
 
 def find_matching_musescore(midi_path: str) -> str:
