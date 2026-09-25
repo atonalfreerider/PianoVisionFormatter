@@ -1,0 +1,15 @@
+# pianovision configuration (python -m pianovision ...)
+# Relative paths are relative to this file.
+
+[library]
+scores = "/home/john/Documents/MuseScore4/Scores"   # *.mscz sources; rename a score to .zip to exclude it
+output = "PianoVision"                              # JSON library + .manifest.json + .attic/
+
+[convert]
+orchestra = true      # the old convert_all.sh -o
+simplified = true     # the old convert_all.sh -s
+jobs = 0              # parallel renders, 0 = one per CPU
+
+[device]
+dir = "/sdcard/Android/data/com.ZarApps.PianoVision/files"
+serial = ""           # empty = the attached Quest
