@@ -60,11 +60,12 @@ def text_tempo_candidates(mscz_path: str) -> List[int]:
 
 
 def calibrate(mscz_path: str, target: bytes, orchestra: bool = True, simplified: bool = True,
-              budget: float = 180.0) -> Optional[Compat]:
+              budget: float = 180.0, metadata: str = "v2") -> Optional[Compat]:
     """Knobs under which ``mscz_path`` renders to exactly ``target`` (None if not found in ``budget`` s)."""
     deadline = time.monotonic() + budget
 
     def render(c: Compat) -> bytes:
+        c.metadata = metadata
         return convert_mscz(mscz_path, c, orchestra, simplified).data
 
     for c in knob_combinations():
@@ -95,5 +96,5 @@ def calibrate(mscz_path: str, target: bytes, orchestra: bool = True, simplified:
                 chosen.append(t)
                 best, data = s, d
         if data == target:
-            return Compat(dynamics=dyn, text_tempo_ticks=tuple(sorted(chosen)))
+            return Compat(dynamics=dyn, text_tempo_ticks=tuple(sorted(chosen)), metadata=metadata)
     return None

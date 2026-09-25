@@ -209,10 +209,11 @@ class Manifest:
 # ------------------------------------------------------------------------------
 
 def _job_render(path: str, compat: Optional[dict], orchestra: bool, simplified: bool) -> dict:
-    from .convert import convert_mscz
+    from .convert import convert_mscz, output_name
     try:
         c = convert_mscz(path, Compat.from_dict(compat), orchestra, simplified)
-        return {"title": c.title, "artist": c.artist, "name": c.name, "data": c.data}
+        return {"title": c.title, "artist": c.artist, "name": c.name, "data": c.data,
+                "legacy_name": output_name(path, legacy=True)}
     except Exception as e:                                   # a broken score must not stop the build
         return {"error": f"{type(e).__name__}: {e}"}
 
@@ -229,7 +230,7 @@ def _job_verify(path: str, compat: Optional[dict], target: str, orchestra: bool,
             return {"status": "identical"}
         same_notes = note_signature(got) == note_signature(want)
         if do_calibrate:
-            c = calibrate(path, want, orchestra, simplified)
+            c = calibrate(path, want, orchestra, simplified, metadata=(compat or {}).get("metadata", "v2"))
             if c is not None:
                 return {"status": "calibrated", "compat": c.to_dict()}
         return {"status": "differs", "same_notes": same_notes}
@@ -443,9 +444,12 @@ class Library:
         # New scores: adopt an existing (legacy) output of the same name when it still shows the
         # same notes; resolve name collisions between scores.
         for name, group in sorted(new_by_name.items()):
-            existing = self.out_path(name)
+            # an existing output may carry the old-rules name (MuseScore 3 scores)
+            found = next((n for n in [name] + sorted({g[1]["legacy_name"] for g in group})
+                          if n not in taken and os.path.exists(self.out_path(n))), None)
+            existing = self.out_path(found or name)
             owner_rel = None
-            if name not in taken and os.path.exists(existing):
+            if found:
                 with open(existing, "rb") as f:
                     have = f.read()
                 sig = note_signature(have)
@@ -457,10 +461,10 @@ class Library:
                     a, r = (exact or close or legacy)[0]
                     how = ("identical to render" if exact else "same notes as render (pinned as is)" if close
                            else "matches the companion .mid export (pinned as is)")
-                    self._adopt(a.rel, scan.sources[a.rel], name, r, have, how, reproducible=bool(exact),
+                    self._adopt(a.rel, scan.sources[a.rel], found, r, have, how, reproducible=bool(exact),
                                 report=report)
                     owner_rel = a.rel
-                    taken.add(name)
+                    taken.add(found)
                     group = [g for g in group if g[0].rel != a.rel]
             # the score with the plainest file name gets the plain output name
             for a, r in sorted(group, key=lambda g: (len(_stem_tokens(g[0].rel)), g[0].rel)):
@@ -500,6 +504,14 @@ class Library:
         self.manifest.entries[rel] = e
         report.written.append((rel, name, why))
 
+    @staticmethod
+    def _verify_compat(e: dict) -> Optional[dict]:
+        """Knobs that reproduce an entry; outputs adopted from the old scripts used the old title rules."""
+        c = dict(e.get("compat") or {})
+        if e.get("origin") == "legacy" or e.get("metadata") == "legacy":
+            c.setdefault("metadata", "legacy")
+        return c or None
+
     def _legacy_midi_matches(self, src: Source, have: bytes) -> bool:
         """The old workflow's output: JSON converted from a MuseScore-exported .mid next to the
         score.  Trusted only when that .mid is not older than the score."""
@@ -534,17 +546,27 @@ class Library:
         raise KeyError(f"no single score matches {s!r}" + (f" ({len(hits)} matches)" if hits else ""))
 
     # -- renaming -------------------------------------------------------------------
-    def rename(self, dry_run: bool = False) -> List[Tuple[str, str, str]]:
-        """Give outputs the name their score's current title implies (after title edits)."""
+    def rename(self, only: Optional[List[str]] = None, dry_run: bool = False) -> List[Tuple[str, str, str]]:
+        """Give outputs the name their score's current title implies (after title edits).
+
+        Outputs adopted from the old scripts keep the old naming rules unless their
+        scores are named explicitly in ``only``: renaming shows up on the headset as a
+        new song, so it is never done wholesale because the rules improved."""
         from .convert import output_name
         m = self.manifest
+        rels = sorted(m.entries)
+        if only:
+            scan = scan_library(self.cfg.scores)
+            rels = [self._resolve_rel(o, scan) for o in only]
         taken = set(m.outputs()) | set(self.output_files())
         done = []
-        for rel, e in sorted(m.entries.items()):
+        for rel in rels:
+            e = m.entries[rel]
             path = os.path.join(self.cfg.scores, rel)
             if not os.path.exists(path):
                 continue
-            want = output_name(path)
+            legacy = not only and (self._verify_compat(e) or {}).get("metadata") == "legacy"
+            want = output_name(path, legacy=legacy)
             if want == e["output"] or want in taken:
                 continue
             done.append((rel, e["output"], want))
@@ -566,7 +588,7 @@ class Library:
         if only:
             scan = scan_library(self.cfg.scores)
             rels = [self._resolve_rel(o, scan) for o in only]
-        args = [(os.path.join(self.cfg.scores, rel), m.entries[rel].get("compat"),
+        args = [(os.path.join(self.cfg.scores, rel), self._verify_compat(m.entries[rel]),
                  self.out_path(m.entries[rel]["output"]), self.cfg.orchestra, self.cfg.simplified, calibrate)
                 for rel in rels]
         results = self._pool_map(_job_verify, args, jobs, "verifying")

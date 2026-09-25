@@ -562,15 +562,17 @@ def create_measure_data(time_sigs, right_notes, left_notes, tempos):
 # --------------------------------------------------------------------------
 
 def build_song(mid: MidiFile, mscx_root: Optional[ET.Element], source_path: str,
-               orchestra_mode: bool = True, simplified_mode: bool = True) -> Dict[str, Any]:
+               orchestra_mode: bool = True, simplified_mode: bool = True,
+               legacy_metadata: bool = True) -> Dict[str, Any]:
     """Assemble the PianoVision JSON document.
 
     ``mscx_root`` supplies title/composer, merge markers and accents; without
-    it the file name and folder are used for metadata.
+    it the file name and folder are used for metadata.  ``legacy_metadata``
+    selects the old title rules (see metadata.extract_title_artist).
     """
     tempos = extract_tempo_events(mid)
     if mscx_root is not None:
-        title, artist = extract_title_artist(mscx_root, source_path)
+        title, artist = extract_title_artist(mscx_root, source_path, legacy=legacy_metadata)
         merge_markers = extract_merge_markers(mscx_root)
         accents = extract_accented_notes(mscx_root)
     else:

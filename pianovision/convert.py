@@ -45,31 +45,34 @@ def score_root(mscz_path: str) -> ET.Element:
 def convert_mscz(mscz_path: str, compat: Optional[Compat] = None, orchestra: bool = True,
                  simplified: bool = True, keep_midi: bool = False) -> Converted:
     """Render ``mscz_path`` directly to PianoVision JSON."""
+    compat = compat or Compat()
     root = score_root(mscz_path)
-    midi = render_score(read_score(mscz_path), compat or Compat())
-    return _finish(midi, root, mscz_path, orchestra, simplified, keep_midi)
+    midi = render_score(read_score(mscz_path), compat)
+    return _finish(midi, root, mscz_path, orchestra, simplified, keep_midi, compat.metadata == "legacy")
 
 
 def convert_midi(midi_path: str, mscz_path: Optional[str] = None, orchestra: bool = True,
                  simplified: bool = True) -> Converted:
-    """Legacy path: JSON from a MuseScore-exported .mid (metadata from the .mscz when given)."""
+    """Legacy path: JSON from a MuseScore-exported .mid (metadata from the .mscz when given),
+    exactly as the old midi_to_json.py made it."""
     root = score_root(mscz_path) if mscz_path else None
-    return _finish(read_midi(midi_path), root, mscz_path or midi_path, orchestra, simplified, False)
+    return _finish(read_midi(midi_path), root, mscz_path or midi_path, orchestra, simplified, False, True)
 
 
 def _finish(midi: MidiFile, root: Optional[ET.Element], path: str, orchestra: bool, simplified: bool,
-            keep_midi: bool) -> Converted:
-    song = build_song(midi, root, path, orchestra_mode=orchestra, simplified_mode=simplified)
+            keep_midi: bool, legacy_metadata: bool) -> Converted:
+    song = build_song(midi, root, path, orchestra_mode=orchestra, simplified_mode=simplified,
+                      legacy_metadata=legacy_metadata)
     title, artist = song["name"], song["artist"]
     if root is not None:
-        title, artist = extract_title_artist(root, path)
+        title, artist = extract_title_artist(root, path, legacy=legacy_metadata)
     return Converted(title=title, artist=artist, name=format_output_filename(title, artist, path),
                      data=song_bytes(song), midi=midi if keep_midi else None)
 
 
-def output_name(mscz_path: str) -> str:
+def output_name(mscz_path: str, legacy: bool = False) -> str:
     """The default output file name without rendering the score."""
-    title, artist = extract_title_artist(score_root(mscz_path), mscz_path)
+    title, artist = extract_title_artist(score_root(mscz_path), mscz_path, legacy=legacy)
     return format_output_filename(title, artist, mscz_path)
 
 

@@ -128,21 +128,42 @@ def _text_content(elem: ET.Element) -> str:
     return ''.join(parts)
 
 
-def extract_title_artist(root: ET.Element, mscz_path: str) -> Tuple[str, str]:
-    """Title (with normalised subtitle/opus) and composer last name."""
+def extract_title_artist(root: ET.Element, mscz_path: str, legacy: bool = False) -> Tuple[str, str]:
+    """Title (with normalised subtitle/opus) and composer last name.
+
+    ``legacy`` reproduces pv_util exactly: only lower-case style names (MuseScore 4)
+    are recognised and the last subtitle wins.  Otherwise MuseScore 3's capitalised
+    style names count too, the first title/subtitle/composer wins (later subtitles
+    are usually arranger credits), and the score properties workTitle/composer are
+    tried before falling back to the file and folder name.
+    """
     title = subtitle = artist = ""
     for vbox in root.findall(".//VBox"):
         for text_elem in vbox.findall("Text"):
             style = text_elem.find("style")
             text = text_elem.find("text")
-            if style is not None and text is not None:
-                content = _text_content(text)
-                if style.text == "title":
+            if style is None or text is None or not style.text:
+                continue
+            content = _text_content(text)
+            kind = style.text if legacy else style.text.lower()
+            if legacy:
+                if kind == "title":
                     title = standardize_title(content)
-                elif style.text == "subtitle":
+                elif kind == "subtitle":
                     subtitle = standardize_title(content)
-                elif style.text == "composer":
+                elif kind == "composer":
                     artist = standardize_artist(content)
+            elif kind == "title" and not title:
+                title = standardize_title(content)
+            elif kind == "subtitle" and not subtitle:
+                subtitle = standardize_title(content)
+            elif kind == "composer" and not artist:
+                artist = standardize_artist(content)
+
+    if not legacy and (not title or not artist):
+        tags = {t.get("name"): (t.text or "").strip() for t in root.iter("metaTag")}
+        title = title or standardize_title(tags.get("workTitle", ""))
+        artist = artist or standardize_artist(tags.get("composer", ""))
 
     if not title or not artist:
         fallback_title = os.path.splitext(os.path.basename(mscz_path))[0].replace('_', ' ')

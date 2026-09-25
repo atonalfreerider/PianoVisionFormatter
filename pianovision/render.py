@@ -206,6 +206,7 @@ class Compat:
     dynamics      "4.6" (per-voice assignment) or "4.5" (per-staff DynamicRange)
     tempo_text    recompute text-following tempos from their text (GUI-session exports)
     text_tempo_ticks  score ticks of individual tempo markings recomputed from their text
+    metadata      "v2" (default) or "legacy" title/composer rules (metadata.extract_title_artist)
     tempo_model   "auto" (command-line export rules), "read" or "layout" (post-layout tempo rebuild)
     volta_tempo   None = follow tempo_model; True/False forces Volta::setTempo entries
     """
@@ -214,11 +215,14 @@ class Compat:
     tempo_model: str = "auto"
     volta_tempo: Optional[bool] = None
     text_tempo_ticks: Tuple[int, ...] = ()
+    metadata: str = "v2"
 
     def key(self) -> str:
         k = f"dyn={self.dynamics},text={int(self.tempo_text)},model={self.tempo_model},volta={self.volta_tempo}"
         if self.text_tempo_ticks:
             k += ",ticks=" + ":".join(str(t) for t in self.text_tempo_ticks)
+        if self.metadata != "v2":
+            k += f",meta={self.metadata}"
         return k
 
     def to_dict(self) -> dict:
@@ -233,6 +237,8 @@ class Compat:
             d["volta_tempo"] = self.volta_tempo
         if self.text_tempo_ticks:
             d["text_tempo_ticks"] = list(self.text_tempo_ticks)
+        if self.metadata != "v2":
+            d["metadata"] = self.metadata
         return d
 
     @classmethod

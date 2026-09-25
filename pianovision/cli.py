@@ -234,7 +234,7 @@ def cmd_verify(args) -> int:
 
 def cmd_rename(args) -> int:
     lib = _library(args)
-    done = lib.rename(dry_run=args.dry_run)
+    done = lib.rename(only=args.scores_ or None, dry_run=args.dry_run)
     for rel, old, new in done:
         _p(f"  {old} -> {new}   ({rel})")
     _p(f"{len(done)} {'would be ' if args.dry_run else ''}renamed")
@@ -314,6 +314,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.set_defaults(fn=cmd_verify)
 
     p = sub.add_parser("rename", help="re-name outputs whose score title changed")
+    p.add_argument("scores_", nargs="*", metavar="SCORE",
+                   help="also apply the current naming rules to these (e.g. MuseScore 3 scores)")
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(fn=cmd_rename)
 

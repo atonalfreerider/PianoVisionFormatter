@@ -135,6 +135,19 @@ class LibraryTest(Base):
         rep = self.lib().build(force=True)
         self.assertEqual([w[2] for w in rep.written], ["forced"])
 
+    def test_rename_leaves_adopted_outputs_alone_unless_named(self):
+        # an output adopted from the old scripts, which named MuseScore 3 scores after the file
+        p = self.score("Pop/old-song.mscz", title="Old Song", ms3_styles=True)
+        os.makedirs(self.out)
+        with open(os.path.join(self.out, "pop_oldsong.json"), "wb") as f:
+            f.write(convert_mscz(p).data)
+        lib = self.lib()
+        rep = lib.build()
+        self.assertEqual([a[1] for a in rep.adopted], ["pop_oldsong.json"])
+        self.assertEqual(lib.rename(), [])
+        self.assertEqual(lib.rename(only=["Pop/old-song.mscz"]),
+                         [("Pop/old-song.mscz", "pop_oldsong.json", "test_Old_Song.json")])
+
     def test_non_scores_are_reported_not_rendered(self):
         with open(os.path.join(self.scores, "fake.mscz"), "wb") as f:
             f.write(b"MThd\x00\x00\x00\x06")
