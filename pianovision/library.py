@@ -462,7 +462,8 @@ class Library:
                     owner_rel = a.rel
                     taken.add(name)
                     group = [g for g in group if g[0].rel != a.rel]
-            for a, r in sorted(group, key=lambda g: g[0].rel):
+            # the score with the plainest file name gets the plain output name
+            for a, r in sorted(group, key=lambda g: (len(_stem_tokens(g[0].rel)), g[0].rel)):
                 target = name
                 if target in taken:
                     rival = owner_rel or m.owner_of(target) or ""
