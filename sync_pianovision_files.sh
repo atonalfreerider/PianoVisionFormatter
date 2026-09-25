@@ -53,6 +53,16 @@ done
 echo "Push/Update phase complete."
 
 # --- Handle Removals (Remove files on Target not in Source) ---
+# The PianoVision app keeps its own JSON data in the same folder
+# (e.g. finger_position_recordings.json), so removal is opt-in: pass --delete
+# as the second argument. Prefer `python3 -m pianovision deploy --prune`, which
+# only removes files it deployed itself.
+if [ "$2" != "--delete" ]; then
+    echo "Skipping removals (pass --delete as the second argument to remove device files not in the source)."
+    echo "Sync finished."
+    exit 0
+fi
+PROTECTED_FILES=("finger_position_recordings.json")
 echo "Checking for files to remove from device..."
 
 # Get source filenames (basename only)
@@ -81,6 +91,11 @@ for target_file in "${target_files[@]}"; do
     fi
 
     found=0
+    for protected in "${PROTECTED_FILES[@]}"; do
+        if [[ "$protected" == "$target_file_clean" ]]; then
+            found=1
+        fi
+    done
     for source_file in "${source_files[@]}"; do
         if [[ "$source_file" == "$target_file_clean" ]]; then
             found=1
