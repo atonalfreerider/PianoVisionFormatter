@@ -31,7 +31,7 @@ orchestra/simplified options). This replaces
 | `sync` | `build` then `deploy` (accepts the deploy options) |
 | `watch [--deploy] [--interval S]` | poll the scores folder and run `build` (and `deploy`) after each save |
 | `verify [SCORE…] [--calibrate]` | re-render and compare with the files in `PianoVision/` |
-| `rename [--dry-run]` | rename outputs after a score's title/composer was edited |
+| `rename [SCORE…] [--dry-run]` | rename outputs after a score's title/composer was edited; named scores also get the current naming rules (e.g. MuseScore 3 scores that the old scripts named after the file) |
 | `convert SCORE.mscz [-o out.json] [--midi out.mid]` | one-off conversion, no library bookkeeping |
 
 ## How the library is kept organised
