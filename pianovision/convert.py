@@ -81,6 +81,11 @@ class Converted:
     # with provenance=True: the score model that was rendered and the source of every tracksV2 note
     score: Any = None
     provenance: Optional[Dict[str, List[NoteSource]]] = None
+    # with parts=True: Note Waterfall's parts (pianovision.parts; the document without song/songMd5/scoreContent)
+    parts: Optional[dict] = None
+    # with parts=True and provenance=True: {part: {hand: [NoteSource per note of the parts document]}}, plus
+    # "simplified_staff": the simplified part's notes written on the simplified staves (the hand-edit identity)
+    parts_provenance: Optional[Dict[str, Dict[str, List[NoteSource]]]] = None
 
 
 def song_bytes(song: dict) -> bytes:
@@ -94,22 +99,41 @@ def score_root(mscz_path: str) -> ET.Element:
 
 
 def convert_mscz(mscz_path: str, compat: Optional[Compat] = None, orchestra: bool = True,
-                 simplified: bool = True, keep_midi: bool = False, provenance: bool = False) -> Converted:
+                 simplified: bool = True, keep_midi: bool = False, provenance: bool = False,
+                 parts: bool = False) -> Converted:
     """Render ``mscz_path`` directly to PianoVision JSON.
 
     ``provenance`` also returns the score model and, for every tracksV2 note, the
-    score note it comes from (:class:`NoteSource`); the JSON is the same either way."""
+    score note it comes from (:class:`NoteSource`); ``parts`` also returns Note Waterfall's
+    parts of the song (:mod:`pianovision.parts`).  The JSON is the same either way."""
     compat = compat or Compat()
     root = score_root(mscz_path)
     score = read_score(mscz_path)
     midi = render_score(score, compat, provenance=provenance)
     prov: Optional[Dict[str, list]] = {} if provenance else None
-    c = _finish(midi, root, mscz_path, orchestra, simplified, keep_midi, compat.metadata == "legacy", prov)
+    parts_out: Optional[dict] = {} if parts else None
+    c = _finish(midi, root, mscz_path, orchestra, simplified, keep_midi, compat.metadata == "legacy", prov,
+                parts_out)
     if provenance:
         c.score = score
         c.provenance = {hand: [note_source(hand, i, n) for i, n in enumerate(prov[hand])]
                         for hand in ("right", "left")}
+    if parts:
+        c.parts = parts_out["doc"]
+        if provenance:
+            c.parts_provenance = _parts_provenance(parts_out)
     return c
+
+
+def _parts_provenance(parts_out: dict) -> Dict[str, Dict[str, List[NoteSource]]]:
+    hands = ("right", "left")
+    out = {name: {hand: [note_source(hand, i, n) for i, n in enumerate(notes[h])] for h, hand in enumerate(hands)}
+           for name, notes in parts_out["notes"].items()}
+    staff = parts_out["simplified_staff"]
+    simp = parts_out["notes"].get("simplified")
+    out["simplified_staff"] = {hand: [out["simplified"][hand][i] for i, n in enumerate(simp[h]) if id(n) in staff]
+                               if simp is not None else [] for h, hand in enumerate(hands)}
+    return out
 
 
 def convert_midi(midi_path: str, mscz_path: Optional[str] = None, orchestra: bool = True,
@@ -121,9 +145,10 @@ def convert_midi(midi_path: str, mscz_path: Optional[str] = None, orchestra: boo
 
 
 def _finish(midi: MidiFile, root: Optional[ET.Element], path: str, orchestra: bool, simplified: bool,
-            keep_midi: bool, legacy_metadata: bool, provenance: Optional[dict] = None) -> Converted:
+            keep_midi: bool, legacy_metadata: bool, provenance: Optional[dict] = None,
+            parts: Optional[dict] = None) -> Converted:
     song = build_song(midi, root, path, orchestra_mode=orchestra, simplified_mode=simplified,
-                      legacy_metadata=legacy_metadata, provenance=provenance)
+                      legacy_metadata=legacy_metadata, provenance=provenance, parts=parts)
     title, artist = song["name"], song["artist"]
     if root is not None:
         title, artist = extract_title_artist(root, path, legacy=legacy_metadata)

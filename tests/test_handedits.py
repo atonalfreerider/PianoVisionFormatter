@@ -70,8 +70,8 @@ class Base(unittest.TestCase):
     def sidecar(self, lib, edits, md5=None, name=None):
         with open(lib.out_path(self.name), "rb") as f:
             data = f.read()
-        doc = {"format": 1, "song": self.name, "songMd5": md5 or H._md5(data), "updated": "2026-09-27T21:04:05Z",
-               "edits": edits}
+        doc = {"format": 2 if any("part" in e for e in edits) else 1, "song": self.name,
+               "songMd5": md5 or H._md5(data), "updated": "2026-09-27T21:04:05Z", "edits": edits}
         path = os.path.join(self.tmp, name or H.sidecar_name(self.name))
         with open(path, "w") as f:
             json.dump(doc, f)
@@ -110,7 +110,7 @@ class SidecarTest(unittest.TestCase):
         self.assertEqual((sc.edits[1].start, sc.edits[1].measure, sc.edits[1].votes), (2.0, 0, 2))
 
     def test_newer_format_is_not_read(self):
-        sc = H.parse_sidecar(b'{"format": 2, "edits": [{"from": "left"}]}', "a.hands.json")
+        sc = H.parse_sidecar(b'{"format": 3, "edits": [{"from": "left"}]}', "a.hands.json")
         self.assertIn("newer", sc.error)
         self.assertEqual(sc.edits, [])
 
@@ -352,6 +352,105 @@ class RepeatAndIdentityTest(Base):
         rv = H.review_song(lib, "nope.json", [H.parse_sidecar(json.dumps({"format": 1, "edits": [
             edit("left", 0, 48)]}).encode(), "nope.hands.json")])
         self.assertIn("not in the library", rv.error)
+
+
+class PartsEditTest(Base):
+    """Format 2: edits of the original or the simplified piano part (Note Waterfall's parts file)."""
+    RH = [[[chord("quarter", p) for p in SCALE]], [[chord("whole", 79)]]]
+    LH = [[[chord("half", 48), chord("half", 43)]], [[chord("whole", 36)]]]
+    # the simplified right hand replaces the piano's first measure; the simplified left staff is empty
+    SIMPLE_RH = ("Piano-simplified", 0, [[[[chord("whole", 72)]], [[rest("whole")]]],
+                                         [[[rest("whole")]], [[rest("whole")]]]])
+    # both simplified staves have notes in the first measure
+    SIMPLE = ("Piano-simplified", 0, [[[[chord("half", 72), chord("half", 76)]], [[rest("whole")]]],
+                                      [[[chord("whole", 48)]], [[rest("whole")]]]])
+
+    def parts(self, rv) -> dict:
+        folder = os.path.join(self.tmp, "check-parts", os.path.basename(os.path.dirname(self.path)))
+        os.makedirs(folder, exist_ok=True)
+        p = os.path.join(folder, os.path.basename(self.path))
+        with open(p, "wb") as f:
+            f.write(rv.new_mscz)
+        return convert_mscz(p, parts=True).parts["parts"]
+
+    @staticmethod
+    def at(part_hand):
+        return sorted((n["ticksStart"], n["note"]) for n in part_hand)
+
+    def test_format_2_reads_the_part(self):
+        sc = H.parse_sidecar(json.dumps({"format": 2, "edits": [
+            edit("left", 0, 48, part="original"), edit("left", 0, 48, part="simplified"), edit("left", 0, 48),
+            edit("left", 0, 50, part="orchestra")]}).encode(), "a.hands.json")
+        self.assertEqual(sc.error, "")
+        self.assertEqual(sorted(e.part or "" for e in sc.edits), ["", "original", "simplified"])
+        self.assertEqual(len(sc.warnings), 1)                   # the orchestra is not a hand part
+
+    def test_a_hidden_note_of_the_original_part_moves_and_stays_hidden(self):
+        lib = self.song(self.RH, self.LH, parts=(self.SIMPLE,))
+        before = self.library_song(lib)
+        rv = self.review(lib, [edit("right", Q, 74, part="original")])
+        self.assertTrue(rv.ready, H.format_review(rv))
+        self.assertEqual([r.status for r in rv.results], ["move"])
+        self.assertEqual((rv.moved_notes, rv.to_left), (1, 1))
+        after = json.loads(rv.new_json)
+        for hand in H.HANDS:                     # both hands of the first measure are simplified: the song is the same
+            self.assertEqual(notes(rv.new_json, hand), notes(json.dumps(before).encode(), hand))
+        P = self.parts(rv)
+        self.assertEqual(self.at(P["original"]["right"]), [(0, 72), (2 * Q, 76), (3 * Q, 77), (4 * Q, 79)])
+        self.assertEqual(self.at(P["original"]["left"]), [(0, 48), (Q, 74), (2 * Q, 43), (4 * Q, 36)])
+        self.assertIsNotNone(after)
+
+    def test_a_hidden_note_of_the_original_part_comes_into_view_in_the_other_hand(self):
+        lib = self.song(self.RH, self.LH, parts=(self.SIMPLE_RH,))
+        self.assertEqual(notes(json.dumps(self.library_song(lib)).encode(), "right"), [(0, 72), (4 * Q, 79)])
+        rv = self.review(lib, [edit("right", Q, 74, part="original")])
+        self.assertTrue(rv.ready, H.format_review(rv))
+        # the left hand's first measure is not simplified: the song now shows the note there
+        self.assertEqual(notes(rv.new_json, "right"), [(0, 72), (4 * Q, 79)])
+        self.assertEqual(notes(rv.new_json, "left"), [(0, 48), (Q, 74), (2 * Q, 43), (4 * Q, 36)])
+        self.assertIn((Q, 74), self.at(self.parts(rv)["original"]["left"]))
+
+    def test_a_note_of_the_simplified_staves_moves_between_them(self):
+        lib = self.song(self.RH, self.LH, parts=(self.SIMPLE,))
+        rv = self.review(lib, [edit("right", 2 * Q, 76, part="simplified")])
+        self.assertTrue(rv.ready, H.format_review(rv))
+        self.assertEqual(notes(rv.new_json, "right"), [(0, 72), (4 * Q, 79)])
+        self.assertEqual(notes(rv.new_json, "left"), [(0, 48), (2 * Q, 76), (4 * Q, 36)])
+        P = self.parts(rv)
+        self.assertEqual([(n["ticksStart"], n["note"]) for n in P["simplified"]["left"] if n.get("simplified")],
+                         [(0, 48), (2 * Q, 76)])
+        self.assertIn((2 * Q, 76), self.at(P["original"]["right"]))           # the piano's own 76 stays
+
+    def test_a_move_that_would_change_which_staves_the_song_shows_is_refused(self):
+        # the only simplified note of the right hand's first measure: moving it would bring the piano part back there
+        lib = self.song(self.RH, self.LH, parts=(self.SIMPLE_RH,))
+        rv = self.review(lib, [edit("right", 0, 72, part="simplified")])
+        self.assertFalse(rv.ready)
+        self.assertIn("the re-rendered song would change", rv.results[0].reason)
+
+    def test_a_format_1_edit_of_a_simplified_note_is_found_in_the_song(self):
+        lib = self.song(self.RH, self.LH, parts=(self.SIMPLE,))
+        rv = self.review(lib, [edit("right", 2 * Q, 76)])
+        self.assertTrue(rv.ready, H.format_review(rv))
+        self.assertEqual(notes(rv.new_json, "left"), [(0, 48), (2 * Q, 76), (4 * Q, 36)])
+        self.assertIn((2 * Q, 76), self.at(self.parts(rv)["original"]["right"]))
+
+    def test_the_same_identity_in_two_parts_is_two_notes(self):
+        lib = self.song(self.RH, self.LH, parts=(self.SIMPLE,))
+        rv = self.review(lib, [edit("right", 0, 72, part="original")])
+        self.assertTrue(rv.ready, H.format_review(rv))
+        self.assertEqual(notes(rv.new_json, "right"), [(0, 72), (2 * Q, 76), (4 * Q, 79)])   # the simplified 72 stays
+        P = self.parts(rv)
+        self.assertIn((0, 72), self.at(P["original"]["left"]))
+        self.assertIn((0, 72), self.at(P["simplified"]["right"]))
+
+    def test_already_in_the_score_and_stale(self):
+        lh = [[[chord("half", 48), chord("half", 43)], [rest("quarter"), chord("quarter", 74), rest("half")]],
+              [[chord("whole", 36)]]]
+        lib = self.song([[[chord("quarter", 72), rest("quarter"), chord("half", 76)]], [[chord("whole", 79)]]], lh,
+                        parts=(self.SIMPLE,))
+        rv = self.review(lib, [edit("right", Q, 74, part="original"), edit("right", 3 * Q, 75, part="original")])
+        self.assertEqual([r.status for r in rv.results], ["already", "stale"])
 
 
 class ApplyTest(Base):

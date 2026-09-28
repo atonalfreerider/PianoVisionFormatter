@@ -217,29 +217,42 @@ class Manifest:
 def _job_render(path: str, compat: Optional[dict], orchestra: bool, simplified: bool) -> dict:
     from .convert import convert_mscz, output_name
     try:
-        c = convert_mscz(path, Compat.from_dict(compat), orchestra, simplified)
+        c = convert_mscz(path, Compat.from_dict(compat), orchestra, simplified, parts=True)
         return {"title": c.title, "artist": c.artist, "name": c.name, "data": c.data,
-                "legacy_name": output_name(path, legacy=True)}
+                "legacy_name": output_name(path, legacy=True), "parts": c.parts}
     except Exception as e:                                   # a broken score must not stop the build
         return {"error": f"{type(e).__name__}: {e}"}
 
 
 def _job_verify(path: str, compat: Optional[dict], target: str, orchestra: bool, simplified: bool,
-                do_calibrate: bool) -> dict:
+                do_calibrate: bool, parts_target: Optional[str] = None, content: str = "") -> dict:
+    """Re-render and compare with the pinned output; with ``parts_target`` also with the parts file there
+    (``parts``: identical | differs | missing)."""
     from .calibrate import calibrate, note_signature
     from .convert import convert_mscz
+    from .parts import parts_bytes
     try:
         with open(target, "rb") as f:
             want = f.read()
-        got = convert_mscz(path, Compat.from_dict(compat), orchestra, simplified).data
+        c = convert_mscz(path, Compat.from_dict(compat), orchestra, simplified, parts=parts_target is not None)
+        got = c.data
+        extra = {}
+        if parts_target is not None:
+            if not os.path.exists(parts_target):
+                extra["parts"] = "missing"
+            else:
+                with open(parts_target, "rb") as f:
+                    have = f.read()
+                same = parts_bytes(c.parts, os.path.basename(target), want, content) == have
+                extra["parts"] = "identical" if same else "differs"
         if got == want:
-            return {"status": "identical"}
+            return {"status": "identical", **extra}
         same_notes = note_signature(got) == note_signature(want)
         if do_calibrate:
-            c = calibrate(path, want, orchestra, simplified, metadata=(compat or {}).get("metadata", "v2"))
-            if c is not None:
-                return {"status": "calibrated", "compat": c.to_dict()}
-        return {"status": "differs", "same_notes": same_notes}
+            cal = calibrate(path, want, orchestra, simplified, metadata=(compat or {}).get("metadata", "v2"))
+            if cal is not None:
+                return {"status": "calibrated", "compat": cal.to_dict(), **extra}
+        return {"status": "differs", "same_notes": same_notes, **extra}
     except Exception as e:
         return {"status": "error", "error": f"{type(e).__name__}: {e}"}
 
@@ -250,7 +263,7 @@ def _job_verify(path: str, compat: Optional[dict], target: str, orchestra: bool,
 
 @dataclass
 class Action:
-    kind: str                 # keep | render | move | retire | conflict
+    kind: str                 # keep | render | parts | move | retire | conflict  (parts: only the parts file)
     rel: str
     reason: str = ""
     old_rel: str = ""
@@ -269,6 +282,7 @@ class Report:
     failed: List[Tuple[str, str]] = field(default_factory=list)
     attic: List[str] = field(default_factory=list)
     planned: List[Action] = field(default_factory=list)
+    parts: List[str] = field(default_factory=list)       # Note Waterfall parts files written (NoteWaterfall/...)
 
 
 def _stem_tokens(rel: str) -> List[str]:
@@ -309,8 +323,58 @@ class Library:
         while os.path.exists(dst):
             dst = os.path.join(self._attic_dir, f"{name[:-5]}.{n}.json")
             n += 1
+        os.makedirs(os.path.dirname(dst), exist_ok=True)       # parts files: NoteWaterfall/<stem>.parts.json
         shutil.move(src, dst)
         report.attic.append(os.path.relpath(dst, self.out))
+
+    # -- Note Waterfall's parts files (pianovision.parts) ------------------------------
+    def parts_path(self, output: str) -> str:
+        from .parts import parts_rel
+        return self.out_path(parts_rel(output))
+
+    def _parts_current(self, e: dict) -> bool:
+        """The entry's parts file is there, of the current format, for the current score and output."""
+        from .convert import file_hash
+        from .parts import PARTS_FORMAT
+        p = e.get("parts")
+        path = self.parts_path(e["output"])
+        return (bool(p) and p.get("format") == PARTS_FORMAT and p.get("content") == e.get("content")
+                and p.get("output_sha256") == e.get("output_sha256") and os.path.exists(path)
+                and file_hash(path) == p.get("sha256"))
+
+    def _write_parts(self, rel: str, doc: Optional[dict], song_data: bytes, report: Report) -> None:
+        """Writes the parts file of the entry ``rel`` (after its output was stored) and records it."""
+        from .convert import bytes_hash
+        from .parts import parts_bytes, parts_rel, parts_stats
+        e = self.manifest.entries[rel]
+        if doc is None:
+            return
+        data = parts_bytes(doc, e["output"], song_data, e.get("content") or "")
+        path = self.parts_path(e["output"])
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                same = f.read() == data
+            if same:
+                path = None
+            else:
+                self.to_attic(parts_rel(e["output"]), report)     # nothing is overwritten unseen
+        if path is not None:
+            atomic_write(path, data)
+            report.parts.append(parts_rel(e["output"]))
+        e["parts"] = {"format": doc["format"], "sha256": bytes_hash(data), "content": e.get("content"),
+                      "output_sha256": e.get("output_sha256"), **parts_stats(doc)}
+
+    def parts_summary(self) -> dict:
+        """Counts over the manifest: scores with parts, with a simplified part, with orchestra notes."""
+        ps = [e["parts"] for e in self.manifest.entries.values() if e.get("parts")]
+        with_orch = [p for p in ps if p.get("notes", {}).get("orchestra", 0) > 0]
+        return {"scores": len(self.manifest.entries), "parts": len(ps),
+                "simplified": sum(1 for p in ps if p.get("simplified")),
+                "orchestra": len(with_orch),
+                "piano_orchestral": sum(1 for p in with_orch if p.get("orchestra") == "piano-orchestral"),
+                "instruments": sum(1 for p in with_orch if p.get("orchestra") == "instruments"),
+                "orchestra_notes": sum(p.get("notes", {}).get("orchestra", 0) for p in ps)}
 
     def _jobs(self, jobs: Optional[int]) -> int:
         return max(1, jobs or self.cfg.jobs or os.cpu_count() or 1)
@@ -397,6 +461,10 @@ class Library:
                 actions.append(Action("render", rel, "output missing", compat=e.get("compat")))
             elif file_hash(out) != e["output_sha256"]:
                 actions.append(Action("conflict", rel, "output was changed outside the pipeline"))
+            elif not self._parts_current(e):
+                # the output stays byte for byte; only Note Waterfall's parts file is (re)written
+                actions.append(Action("parts", rel, "Note Waterfall parts file missing or out of date",
+                                      compat=self._verify_compat(e)))
             else:
                 actions.append(Action("keep", rel))
         for rel in sorted(gone):
@@ -437,13 +505,15 @@ class Library:
             elif a.kind == "retire":
                 e = m.entries.pop(a.rel)
                 self.to_attic(e["output"], report)
+                from .parts import parts_rel
+                self.to_attic(parts_rel(e["output"]), report)
                 m.retired.append({"source": a.rel, "output": e["output"], "date": _now(), "reason": a.reason})
                 report.retired.append((a.rel, e["output"], a.reason))
-            elif a.kind == "keep":
+            elif a.kind in ("keep", "parts"):
                 src, e = scan.sources[a.rel], m.entries[a.rel]
                 e.update(mtime=src.mtime, size=src.size)
 
-        todo = [a for a in actions if a.kind == "render"]
+        todo = [a for a in actions if a.kind in ("render", "parts")]
         results = self._pool_map(_job_render, [(scan.sources[a.rel].path, a.compat, self.cfg.orchestra,
                                                 self.cfg.simplified) for a in todo], jobs, "rendering")
         taken = set(m.outputs())
@@ -451,6 +521,11 @@ class Library:
         for a, r in zip(todo, results):
             if "error" in r:
                 report.failed.append((a.rel, r["error"]))
+                continue
+            if a.kind == "parts":
+                # the song's JSON is kept as it is; its parts go with those bytes
+                with open(self.out_path(m.entries[a.rel]["output"]), "rb") as f:
+                    self._write_parts(a.rel, r.get("parts"), f.read(), report)
                 continue
             if a.rel in m.entries:
                 self._store(a.rel, scan.sources[a.rel], m.entries[a.rel]["output"], r, "rendered", a.reason,
@@ -520,6 +595,7 @@ class Library:
             e["compat"] = compat
         self.manifest.entries[rel] = e
         report.written.append((rel, name, why))
+        self._write_parts(rel, r.get("parts"), data, report)
 
     @staticmethod
     def _verify_compat(e: dict) -> Optional[dict]:
@@ -549,6 +625,7 @@ class Library:
             "output_sha256": bytes_hash(have), "title": r["title"], "artist": r["artist"], "default_name": r["name"],
             "origin": "legacy", "reproducible": reproducible, "updated": _now()}
         report.adopted.append((rel, name, how))
+        self._write_parts(rel, r.get("parts"), have, report)
 
     def _resolve_rel(self, s: str, scan: ScanResult) -> str:
         if s in scan.sources:
@@ -589,6 +666,10 @@ class Library:
             done.append((rel, e["output"], want))
             if not dry_run:
                 os.replace(self.out_path(e["output"]), self.out_path(want))
+                old_parts = self.parts_path(e["output"])
+                if os.path.exists(old_parts):
+                    os.replace(old_parts, self.parts_path(want))
+                e.pop("parts", None)          # it names the song: the next build writes it again
                 taken.discard(e["output"])
                 taken.add(want)
                 e["output"], e["default_name"] = want, want
@@ -599,14 +680,16 @@ class Library:
     # -- verification -----------------------------------------------------------------
     def verify(self, only: Optional[List[str]] = None, calibrate: bool = False,
                jobs: Optional[int] = None) -> List[Tuple[str, str, dict]]:
-        """Re-render every managed score and compare with its pinned output."""
+        """Re-render every managed score and compare with its pinned output, and its Note Waterfall
+        parts file (result ``"parts"``: identical | differs | missing) with the parts of that render."""
         m = self.manifest
         rels = sorted(m.entries)
         if only:
             scan = scan_library(self.cfg.scores)
             rels = [self._resolve_rel(o, scan) for o in only]
         args = [(os.path.join(self.cfg.scores, rel), self._verify_compat(m.entries[rel]),
-                 self.out_path(m.entries[rel]["output"]), self.cfg.orchestra, self.cfg.simplified, calibrate)
+                 self.out_path(m.entries[rel]["output"]), self.cfg.orchestra, self.cfg.simplified, calibrate,
+                 self.parts_path(m.entries[rel]["output"]), m.entries[rel].get("content") or "")
                 for rel in rels]
         results = self._pool_map(_job_verify, args, jobs, "verifying")
         out = []
@@ -646,4 +729,5 @@ class Library:
                             and len(names.get(e["default_name"], [])) == 1),
             "pinned": sorted(rel for rel, e in m.entries.items() if e.get("reproducible") is False),
             "calibrated": sorted(rel for rel, e in m.entries.items() if e.get("compat")),
+            "parts": self.parts_summary(),
         }
