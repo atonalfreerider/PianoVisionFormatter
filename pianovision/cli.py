@@ -8,6 +8,7 @@
     verify    re-render everything and compare with the pinned outputs
     rename    re-name outputs after score titles were edited
     convert   one .mscz -> .json (no library, no manifest)
+    hands     hand edits recorded on the headset -> the scores (pull | review | apply)
 """
 
 from __future__ import annotations
@@ -246,14 +247,121 @@ def cmd_convert(args) -> int:
     from .render import Compat
     from .smf import write_midi
     compat = Compat(dynamics=args.dynamics)
-    c = convert_mscz(args.score, compat, not args.no_orchestra, not args.no_simplified, keep_midi=bool(args.midi))
+    c = convert_mscz(args.score, compat, not args.no_orchestra, not args.no_simplified, keep_midi=bool(args.midi),
+                     provenance=bool(args.provenance))
     out = args.out or os.path.join(os.getcwd(), c.name)
     with open(out, "wb") as f:
         f.write(c.data)
     if args.midi:
         write_midi(c.midi, args.midi)
+    if args.provenance:
+        import json
+        with open(args.provenance, "w", encoding="utf-8") as f:
+            for hand in ("right", "left"):
+                for ns in c.provenance[hand]:
+                    f.write(json.dumps(ns.to_dict()) + "\n")
     _p(f"{out}  ({c.title} / {c.artist})")
     return 0
+
+
+def cmd_hands(args) -> int:
+    import glob
+    import posixpath
+    import shlex
+    import subprocess
+    from . import handedits as H
+    from .device import Adb, DeviceError, execute_deploy, plan_deploy
+    lib = _library(args)
+    serial = args.serial or lib.cfg.serial
+    device_dir = args.device_dir or lib.cfg.hands_dir
+    inbox = args.inbox or os.path.join(lib.out, ".hands", "inbox")
+    adb = Adb(lib.cfg.adb, serial)
+
+    if args.action == "pull" or args.pull:
+        try:
+            names = H.pull(adb, device_dir, inbox)
+        except DeviceError as e:
+            _p(f"pull: {e}")
+            return 2
+        _p(f"pulled {len(names)} hand-edit file(s) from {adb.serial}:{device_dir} into {inbox}")
+        for n in names:
+            _p(f"  {n}")
+        if args.action == "pull":
+            return 0
+
+    files = args.sidecars or sorted(glob.glob(os.path.join(inbox, "*" + H.SIDECAR_EXT)))
+    if not files:
+        _p(f"no hand-edit files in {inbox} (run `hands pull` with the headset attached)")
+        return 0
+    _p(f"reviewing {len(files)} hand-edit file(s) ...")
+    reviews = H.review_all(lib, files, all_repeats=args.all_repeats, log=_p if args.verbose else (lambda s: None))
+    for rv in reviews:
+        _p("")
+        for line in H.format_review(rv):
+            _p(line)
+    ready = [rv for rv in reviews if rv.ready]
+    _p("")
+    _p(f"{len(ready)} score(s) can be updated, "
+       f"{sum(rv.moved_notes for rv in ready)} note(s) change hands")
+    if args.action == "review" or not ready:
+        return 0
+
+    if not args.yes and not sys.stdin.isatty():
+        _p("refusing to overwrite scores without a terminal to ask; pass --yes")
+        return 1
+    stamp = time.strftime("%Y-%m-%d_%H%M%S")
+    deploy_pv = deploy_nw = archive = None
+    if not args.no_deploy:
+        def deploy_pv(outs):
+            import dataclasses
+            plan = plan_deploy(lib, adb)
+            plan = dataclasses.replace(plan, push=[n for n in plan.push if n in outs],
+                                       local={n: h for n, h in plan.local.items() if n in outs})
+            execute_deploy(lib, adb, plan)
+            _p(f"  PianoVision: {len(plan.push)} song(s) pushed")
+
+        cmd = args.waterfall_deploy if args.waterfall_deploy is not None else lib.cfg.waterfall_deploy
+        if cmd:
+            def deploy_nw(outs):
+                argv = shlex.split(cmd) + ["--library", lib.out]
+                if adb.serial:
+                    argv += ["--serial", adb.serial]
+                for n in outs:
+                    argv += ["--only", H.glob_literal(n)]          # --only takes a glob
+                r = subprocess.run(argv)
+                if r.returncode != 0:
+                    raise RuntimeError(f"{' '.join(argv[:2])} exited with {r.returncode}")
+        else:
+            _p("  (no [hands] waterfall_deploy command configured: Note Waterfall is not deployed)")
+        if not args.no_archive and deploy_nw is not None:
+            by_name = {sc.name: sc for rv in reviews for sc in rv.sidecars}
+            songs_dir = posixpath.join(posixpath.dirname(device_dir.rstrip("/")), "Songs")
+
+            def archive(names):           # only once Note Waterfall has the rebuilt songs
+                md5 = {}
+                for n in names:
+                    song = by_name[n].song
+                    with open(lib.out_path(song), "rb") as f:
+                        md5[song] = H._md5(f.read())
+                ok = H.archivable(adb, device_dir, songs_dir, [by_name[n] for n in names], md5, log=_p)
+                return H.archive_on_device(adb, device_dir, ok, stamp)
+    rep = H.apply_reviews(lib, reviews, yes=args.yes, deploy_pianovision=deploy_pv, deploy_waterfall=deploy_nw,
+                          archive=archive)
+    _list("declined", rep.declined)
+    _list("scores overwritten", rep.written)
+    _list("backups", rep.backups)
+    _list("songs rebuilt", rep.built)
+    _list("hand-edit files moved to applied/ on the headset", rep.archived)
+    if rep.archived:                          # the local copies follow
+        done = os.path.join(lib.out, ".hands", "applied", stamp)
+        os.makedirs(done, exist_ok=True)
+        for n in rep.archived:
+            if os.path.exists(os.path.join(inbox, n)):
+                os.replace(os.path.join(inbox, n), os.path.join(done, n))
+    _list("FAILED", [f"{r}: {e}" for r, e in rep.failed], 50)
+    for m in rep.messages:
+        _p(m)
+    return 1 if rep.failed else 0
 
 
 # ------------------------------------------------------------------------------
@@ -326,7 +434,29 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--dynamics", choices=("4.6", "4.5"), default="4.6", help="MuseScore dynamics model")
     p.add_argument("--no-orchestra", action="store_true")
     p.add_argument("--no-simplified", action="store_true")
+    p.add_argument("--provenance", metavar="FILE",
+                   help="also write, per tracksV2 note, its source measure/staff/voice/chord/note (JSON lines)")
     p.set_defaults(fn=cmd_convert)
+
+    p = sub.add_parser("hands", help="hand edits recorded on the headset -> the scores (pull | review | apply)")
+    p.add_argument("action", choices=("pull", "review", "apply"),
+                   help="pull: copy the sidecars from the headset; review: show what would change (writes "
+                        "nothing); apply: review, then per score y/N, back up, overwrite, build, deploy")
+    p.add_argument("sidecars", nargs="*", metavar="FILE", help="*.hands.json files (default: the inbox)")
+    p.add_argument("--pull", action="store_true", help="pull from the headset first (review/apply)")
+    p.add_argument("--inbox", help="folder for pulled sidecars (default: <output>/.hands/inbox)")
+    p.add_argument("--device-dir", help="sidecar folder on the headset (default: [hands] device_dir)")
+    p.add_argument("--serial", help="adb device serial (default: the attached Quest)")
+    p.add_argument("--all-repeats", action="store_true",
+                   help="a note recorded on only some passes of a repeat changes hands on all of them")
+    p.add_argument("-y", "--yes", action="store_true", help="apply without asking per score")
+    p.add_argument("--no-deploy", action="store_true", help="apply: do not deploy or archive (build only)")
+    p.add_argument("--no-archive", action="store_true",
+                   help="apply: leave the sidecars on the headset (they are archived to applied/ otherwise)")
+    p.add_argument("--waterfall-deploy", metavar="CMD",
+                   help="command that deploys songs to Note Waterfall (default: [hands] waterfall_deploy)")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p.set_defaults(fn=cmd_hands)
 
     args = ap.parse_args(argv)
     try:

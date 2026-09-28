@@ -13,3 +13,8 @@ jobs = 0              # parallel renders, 0 = one per CPU
 [device]
 dir = "/sdcard/Android/data/com.ZarApps.PianoVision/files"
 serial = ""           # empty = the attached Quest
+
+[hands]
+# hand edits recorded with Note Waterfall's HAND REC (python -m pianovision hands pull|review|apply)
+device_dir = "/sdcard/Android/data/com.atonalfreerider.notewaterfall/files/HandEdits"
+waterfall_deploy = "python3 /home/john/Desktop/Note-Waterfall/Tools/deploy_songs.py"   # run with --only <song>... after apply

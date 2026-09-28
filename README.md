@@ -19,7 +19,7 @@ python3 -m pianovision watch --deploy   # keep going: rebuild on every save, dep
 ```
 
 Settings live in `pianovision.toml` (scores folder, output folder, device folder,
-orchestra/simplified options). This replaces
+orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits). This replaces
 `convert_all.sh -m -o -s ~/Documents/MuseScore4/Scores/` followed by
 `sync_pianovision_files.sh`: orchestra and simplified modes are on by default.
 
@@ -32,7 +32,8 @@ orchestra/simplified options). This replaces
 | `watch [--deploy] [--interval S]` | poll the scores folder and run `build` (and `deploy`) after each save |
 | `verify [SCORE…] [--calibrate]` | re-render and compare with the files in `PianoVision/` |
 | `rename [SCORE…] [--dry-run]` | rename outputs after a score's title/composer was edited; named scores also get the current naming rules (e.g. MuseScore 3 scores that the old scripts named after the file) |
-| `convert SCORE.mscz [-o out.json] [--midi out.mid]` | one-off conversion, no library bookkeeping |
+| `convert SCORE.mscz [-o out.json] [--midi out.mid] [--provenance notes.jsonl]` | one-off conversion, no library bookkeeping; `--provenance` also writes, per note of the song, the measure, staff, voice, chord and note element it comes from |
+| `hands pull\|review\|apply [FILE…]` | hand edits recorded with Note Waterfall's HAND REC → the scores, after approval (see below) |
 
 ## How the library is kept organised
 
@@ -66,6 +67,76 @@ deployed itself and that have since left the library, and only with `--prune`
 the headset and allowing the prompt is enough. `adb connect <ip>` works for
 wireless.
 
+## Hand edits from Note Waterfall
+
+Note Waterfall's **HAND REC** mode watches which hand plays each note and saves the
+notes that belong to the other hand in a sidecar on the headset
+(`…/com.atonalfreerider.notewaterfall/files/HandEdits/<song>.hands.json`). The `hands`
+command writes those changes into the MuseScore scores:
+
+```bash
+python3 -m pianovision hands pull      # copy the sidecars from the Quest into PianoVision/.hands/inbox
+                                       # (the inbox is replaced only once every file arrived)
+python3 -m pianovision hands review    # what would change, per score (writes nothing)
+python3 -m pianovision hands apply     # the same, then a y/N per score
+```
+
+`apply` asks before every score (`--yes` skips the question; without a terminal it
+refuses). For each approved score it
+
+1. copies the original `.mscz` to `PianoVision/.attic/<date>/scores/<score path>`,
+2. overwrites the score (only if it has not changed since the review),
+3. runs the incremental build for that score (a calibrated score keeps its settings),
+   and checks that the new JSON is exactly the one the review verified,
+4. deploys the song to PianoVision and to Note Waterfall (`[hands] waterfall_deploy`,
+   run as `<command> --library … --only <song>…`), and
+5. moves the sidecar to `HandEdits/applied/` on the headset, once every edit in it is
+   in the score, the copy on the headset is still the one that was pulled (HAND REC saved
+   nothing new since: those edits would be lost) and Note Waterfall's copy of the song is
+   the rebuilt one (md5 over adb). Any other sidecar stays where it is, so the app keeps
+   playing those notes in the recorded hand; `pull` and `apply` again.
+
+`--no-deploy` stops after the build; `--no-archive` leaves the sidecars on the headset.
+Close the scores in MuseScore before `apply`, or a later save there overwrites the edit.
+
+**How a hand change is written.** The PianoVision hands are the piano part's staves:
+the first staff is the right hand, the second the left. A note belongs to the staff whose
+*voice* holds its chord; MuseScore's cross-staff `<staffMove>` only draws a chord on the
+other staff (MuseScore's own MIDI export keeps it in its staff's track). So:
+
+* a chord whose notes all change hands moves, with its grace notes, into a free voice
+  (2-4) of the other staff at the same beat; its old place becomes an invisible rest;
+* a chord where only some notes change hands is split: those notes go into a new chord
+  (same duration and articulations) in a free voice of the other staff;
+* the moved chord gets a `<staffMove>` back to where it was drawn, so the page looks as
+  before, and a chord that was already drawn on the other staff loses its staffMove;
+* tied notes move with their continuations, a tuplet is rebuilt in the new voice (with
+  invisible rests), ties/slurs touching a moved note are re-linked;
+* a moved note keeps its velocity (`<velocity>`) when the dynamics on the two staves
+  differ, and its play events (`<Events>`) when its length or timing would change
+  (legato lines, swing, grace-note timing are per staff in MuseScore's playback).
+
+Everything else in the score file stays byte for byte. Before anything is written, the
+edited copy is rendered and compared with the original render: only the recorded notes
+(and what goes along with them: tie continuations, grace notes) may change hands; times,
+pitches, durations and velocities must be identical. Edits that fail that check, or that
+cannot be written safely, are reported and skipped, for example:
+
+* a note under an 8va/8vb line, in a nested tuplet, a two-chord tremolo, with lyrics;
+* grace notes on their own, or an arpeggiated chord that would be split;
+* no free voice (2-4) on the other staff at that beat;
+* PianoVision's accent matching changes (accents are matched per chord and hand);
+* a repeated passage recorded on only some of its passes: the score has one note for
+  all passes (`--all-repeats` moves it anyway);
+* songs whose library JSON is not what the score renders to now (a pinned output, or
+  a score edited since the last build), MuseScore 3 files, scores with parts or linked
+  staves.
+
+The sidecar format (version 1) is shared with Note Waterfall: a note is identified by its
+original hand, `ticksStart`, MIDI number and `occurrence` (the how-manieth note of that
+hand with the same tick and pitch); an edit whose note is already in the other hand is
+reported as already in the score.
+
 ## Fidelity
 
 Checked against the 140 existing outputs, which the old scripts made from
@@ -91,6 +162,7 @@ pianovision/        the package (stdlib only)
   library.py          manifest, incremental build, adoption of existing outputs
   device.py           adb deploy
   calibrate.py        compatibility-knob search used by verify --calibrate
+  handedits.py        hand edits from Note Waterfall -> the scores (hands pull/review/apply)
   cli.py              python -m pianovision
 pianovision.toml    settings
 PianoVision/        generated library (git-ignored): *.json, .manifest.json, .attic/

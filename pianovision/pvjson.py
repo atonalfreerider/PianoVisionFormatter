@@ -14,7 +14,7 @@ from __future__ import annotations
 import bisect
 import os
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .metadata import extract_accented_notes, extract_merge_markers, extract_title_artist
@@ -32,6 +32,9 @@ class Note:
     staff: int
     group: int
     accent: int = 0
+    # provenance (build_song(provenance=...)): the score Note played and the note_on velocity
+    src: Any = field(default=None, repr=False, compare=False)
+    raw_velocity: int = field(default=0, repr=False, compare=False)
 
 
 @dataclass
@@ -254,21 +257,9 @@ TRACK_PRIMARY, TRACK_SIMPLIFIED, TRACK_ORCHESTRAL = 1, 2, 3
 # notes
 # --------------------------------------------------------------------------
 
-def get_notes(mid: MidiFile, orchestra_mode: bool, simplified_mode: bool,
-              merge_measures: Dict[str, Set[int]],
-              accented_notes: Dict[Tuple[int, int, int, Tuple[int, ...]], List[int]]) -> Tuple[List[Track], float]:
-    primary: List[List[Note]] = [[], []]
-    simplified: List[List[Note]] = [[], []]
-    orchestral: List[List[Note]] = [[], []]
-    other_orchestra: List[List[Note]] = [[], []]
-    tempos = extract_tempo_events(mid)
-    tpb = mid.ticks_per_beat
-    seconds = TempoIndex(tempos, tpb)
-    max_time = 0.0
-
-    measure_map = calculate_measure_map(mid)
-    get_measure_for_tick = _measure_lookup(measure_map, tpb)
-
+def classify_tracks(mid: MidiFile, orchestra_mode: bool) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
+    """(piano tracks as (track index, TRACK_* type), orchestra tracks as (track index, program)); the
+    MIDI tracks are the score's staves in order."""
     piano_tracks: List[Tuple[int, int]] = []
     orchestra_tracks: List[Tuple[int, int]] = []
     for track_idx, track in enumerate(mid.tracks):
@@ -297,12 +288,36 @@ def get_notes(mid: MidiFile, orchestra_mode: bool, simplified_mode: bool,
         piano_tracks = [(0, TRACK_PRIMARY)]
         if len(mid.tracks) > 1:
             piano_tracks.append((1, TRACK_PRIMARY))
+    return piano_tracks, orchestra_tracks
+
+
+def piano_hand(piano_tracks: List[Tuple[int, int]], track_idx: int, track_type: int) -> int:
+    """Hand of a piano track, 0 = right, 1 = left: the first track of its type plays the right hand."""
+    same_type = [t[0] for t in piano_tracks if t[1] == track_type]
+    return (0 if same_type.index(track_idx) == 0 else 1) if len(same_type) >= 2 else 0
+
+
+def get_notes(mid: MidiFile, orchestra_mode: bool, simplified_mode: bool,
+              merge_measures: Dict[str, Set[int]],
+              accented_notes: Dict[Tuple[int, int, int, Tuple[int, ...]], List[int]]) -> Tuple[List[Track], float]:
+    primary: List[List[Note]] = [[], []]
+    simplified: List[List[Note]] = [[], []]
+    orchestral: List[List[Note]] = [[], []]
+    other_orchestra: List[List[Note]] = [[], []]
+    tempos = extract_tempo_events(mid)
+    tpb = mid.ticks_per_beat
+    seconds = TempoIndex(tempos, tpb)
+    max_time = 0.0
+
+    measure_map = calculate_measure_map(mid)
+    get_measure_for_tick = _measure_lookup(measure_map, tpb)
+
+    piano_tracks, orchestra_tracks = classify_tracks(mid, orchestra_mode)
 
     # LEGACY: one active-note table shared by all piano tracks.
     active: Dict[Tuple[int, int], Note] = {}
     for track_idx, track_type in piano_tracks:
-        same_type = [t[0] for t in piano_tracks if t[1] == track_type]
-        hand_idx = (0 if same_type.index(track_idx) == 0 else 1) if len(same_type) >= 2 else 0
+        hand_idx = piano_hand(piano_tracks, track_idx, track_type)
         target = {TRACK_PRIMARY: primary, TRACK_SIMPLIFIED: simplified,
                   TRACK_ORCHESTRAL: orchestral}[track_type][hand_idx]
         ticks = 0
@@ -315,7 +330,8 @@ def get_notes(mid: MidiFile, orchestra_mode: bool, simplified_mode: bool,
             if msg.type == 'note_on' and msg.velocity > 0:
                 note = Note(midi=msg.note, time=t, velocity=msg.velocity / 127.0, duration=0, ticks=ticks,
                             duration_ticks=0, staff=hand_idx + 1,
-                            group=get_measure_for_tick(ticks) - 1)
+                            group=get_measure_for_tick(ticks) - 1,
+                            src=getattr(msg, "src", None), raw_velocity=msg.velocity)
                 target.append(note)
                 active[(msg.channel, msg.note)] = note
             elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
@@ -338,7 +354,8 @@ def get_notes(mid: MidiFile, orchestra_mode: bool, simplified_mode: bool,
                     hand_idx = 0 if msg.note >= 60 else 1
                     note = Note(midi=msg.note, time=t, velocity=msg.velocity / 127.0, duration=0, ticks=ticks,
                                 duration_ticks=0, staff=hand_idx + 1,
-                                group=get_measure_for_tick(ticks) - 1)
+                                group=get_measure_for_tick(ticks) - 1,
+                                src=getattr(msg, "src", None), raw_velocity=msg.velocity)
                     other_orchestra[hand_idx].append(note)
                     active_orch[(msg.channel, msg.note)] = note
                 elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
@@ -563,12 +580,16 @@ def create_measure_data(time_sigs, right_notes, left_notes, tempos):
 
 def build_song(mid: MidiFile, mscx_root: Optional[ET.Element], source_path: str,
                orchestra_mode: bool = True, simplified_mode: bool = True,
-               legacy_metadata: bool = True) -> Dict[str, Any]:
+               legacy_metadata: bool = True,
+               provenance: Optional[Dict[str, List[Note]]] = None) -> Dict[str, Any]:
     """Assemble the PianoVision JSON document.
 
     ``mscx_root`` supplies title/composer, merge markers and accents; without
     it the file name and folder are used for metadata.  ``legacy_metadata``
     selects the old title rules (see metadata.extract_title_artist).
+    ``provenance``, when given, receives ``"right"`` and ``"left"``: the
+    :class:`Note` behind every ``tracksV2`` note of that hand, in file order
+    (``src`` is the score note when the MIDI came from the renderer with provenance).
     """
     tempos = extract_tempo_events(mid)
     if mscx_root is not None:
@@ -585,6 +606,9 @@ def build_song(mid: MidiFile, mscx_root: Optional[ET.Element], source_path: str,
     time_sigs = extract_time_signatures(mid)
     key_sigs = extract_key_signatures(mid)
     tracks_v2 = organize_tracks_v2(tracks, time_sigs, tempos, mid.ticks_per_beat)
+    if provenance is not None:
+        provenance["right"] = list(tracks[0].notes)
+        provenance["left"] = list(tracks[1].notes) if len(tracks) > 1 else []
 
     tpb = mid.ticks_per_beat
     seconds = TempoIndex(tempos, tpb)

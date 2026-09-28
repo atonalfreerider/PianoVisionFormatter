@@ -992,10 +992,11 @@ def _segment_ticks_simple(seg) -> Fraction:
 # ------------------------------------------------------------------------------
 
 class Renderer:
-    def __init__(self, score: Score, compat: Optional["Compat"] = None):
+    def __init__(self, score: Score, compat: Optional["Compat"] = None, provenance: bool = False):
         if isinstance(compat, str):
             compat = Compat(dynamics=compat)
         self.compat = compat or Compat()
+        self.provenance = provenance      # note_on messages carry ``src``: the score Note they play
         self.score = score
         self.profile = self.compat.dynamics
         self.tempomap, self.sigmap = build_maps(score, self.compat)
@@ -1398,8 +1399,10 @@ class Renderer:
                             if port != eport or channel != echan:
                                 continue
                             if ev.type == ME_NOTEON:
-                                ins(ti, pm.tick_with_pauses(tick),
-                                    Msg("note_on", channel=channel, note=ev.pitch, velocity=ev.velo))
+                                msg = Msg("note_on", channel=channel, note=ev.pitch, velocity=ev.velo)
+                                if self.provenance and ev.velo > 0:
+                                    msg.src = ev.note
+                                ins(ti, pm.tick_with_pauses(tick), msg)
                             elif ev.type == ME_CONTROLLER:
                                 ins(ti, pm.tick_with_pauses(tick),
                                     Msg("control_change", channel=channel, control=ev.controller, value=ev.value))
@@ -1484,6 +1487,9 @@ def _lyric_text(lyr) -> str:
     return text
 
 
-def render_score(score: Score, compat=None) -> MidiFile:
-    """Render a score; ``compat`` is a :class:`Compat` (or a dynamics profile string)."""
-    return Renderer(score, compat).render()
+def render_score(score: Score, compat=None, provenance: bool = False) -> MidiFile:
+    """Render a score; ``compat`` is a :class:`Compat` (or a dynamics profile string).
+
+    With ``provenance`` every sounding note_on message also carries ``src``, the
+    :class:`~pianovision.score.Note` it plays (None for chord-symbol playback)."""
+    return Renderer(score, compat, provenance).render()

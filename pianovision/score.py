@@ -166,6 +166,8 @@ class ChordRest(Element):
     segment: Optional["Segment"] = None
     staff_move: int = 0
     lyrics: List[str] = field(default_factory=list)
+    # (content staff, Nth <Measure> of that staff, Nth <voice>, Nth child of the voice) in the .mscx
+    xml_path: Optional[tuple] = None
 
     @property
     def is_chord(self) -> bool:
@@ -245,6 +247,7 @@ class Note(Element):
     spanner_back: List["Spanner"] = field(default_factory=list)
     play_events: List[NoteEvent] = field(default_factory=list)
     user_events: Optional[List[NoteEvent]] = None
+    xml_index: int = -1                 # Nth child element of its <Chord> in the .mscx
 
     @property
     def tick(self) -> Fraction:
