@@ -13,8 +13,9 @@ import hashlib
 import json
 import xml.etree.ElementTree as ET
 import zipfile
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from fractions import Fraction
+from typing import Any, Dict, List, Optional
 
 from .metadata import extract_title_artist, format_output_filename
 from .mscx import load_mscx_bytes, read_score
@@ -24,12 +25,62 @@ from .smf import MidiFile, read_midi
 
 
 @dataclass
+class NoteSource:
+    """Where one ``tracksV2`` note of the output comes from (``convert_mscz(provenance=True)``).
+
+    ``staff`` is the content staff (0-based), ``measure`` the Nth ``<Measure>`` of that staff,
+    ``voice`` the Nth ``<voice>`` of the measure, ``chord`` the Nth child element of the voice
+    (the grace chord's own element for a grace note, ``grace`` then being its index before or
+    after the main chord) and ``element`` the Nth child element of the ``<Chord>`` (the ``<Note>``).
+    Repeats and voltas emit one source note several times.  ``note`` is None for chord-symbol
+    playback, which has no note in the score."""
+    hand: str                      # "right" | "left": the tracksV2 key
+    index: int                     # position in tracksV2[hand], measures and their notes in order
+    ticks: int                     # ticksStart
+    midi: int
+    velocity: int                  # note_on velocity (before PianoVision's accent boost)
+    note: Any = field(default=None, repr=False, compare=False)   # pianovision.score.Note
+    staff: int = -1
+    measure: int = -1
+    voice: int = -1
+    chord: int = -1
+    element: int = -1
+    grace: Optional[int] = None
+    tick: Optional[Fraction] = None   # score position (whole notes) of the chord
+
+    def to_dict(self) -> dict:
+        d = {"hand": self.hand, "index": self.index, "ticksStart": self.ticks, "midi": self.midi,
+             "velocity": self.velocity}
+        if self.note is not None:
+            d.update(staff=self.staff, measure=self.measure, voice=self.voice, chord=self.chord,
+                     element=self.element, tick=str(self.tick))
+            if self.grace is not None:
+                d["grace"] = self.grace
+        return d
+
+
+def note_source(hand: str, index: int, n) -> NoteSource:
+    """NoteSource of a pvjson Note built from a provenance render."""
+    src = n.src
+    ns = NoteSource(hand=hand, index=index, ticks=n.ticks, midi=n.midi, velocity=n.raw_velocity, note=src)
+    if src is not None and src.chord is not None and src.chord.xml_path is not None:
+        ns.staff, ns.measure, ns.voice, ns.chord = src.chord.xml_path
+        ns.element = src.xml_index
+        ns.grace = src.chord.grace_index if src.chord.is_grace else None
+        ns.tick = src.chord.tick
+    return ns
+
+
+@dataclass
 class Converted:
     title: str
     artist: str
     name: str              # default output file name (<auth>_<title>.json)
     data: bytes            # the JSON document, exactly as written to disk
     midi: Optional[MidiFile] = None
+    # with provenance=True: the score model that was rendered and the source of every tracksV2 note
+    score: Any = None
+    provenance: Optional[Dict[str, List[NoteSource]]] = None
 
 
 def song_bytes(song: dict) -> bytes:
@@ -43,12 +94,22 @@ def score_root(mscz_path: str) -> ET.Element:
 
 
 def convert_mscz(mscz_path: str, compat: Optional[Compat] = None, orchestra: bool = True,
-                 simplified: bool = True, keep_midi: bool = False) -> Converted:
-    """Render ``mscz_path`` directly to PianoVision JSON."""
+                 simplified: bool = True, keep_midi: bool = False, provenance: bool = False) -> Converted:
+    """Render ``mscz_path`` directly to PianoVision JSON.
+
+    ``provenance`` also returns the score model and, for every tracksV2 note, the
+    score note it comes from (:class:`NoteSource`); the JSON is the same either way."""
     compat = compat or Compat()
     root = score_root(mscz_path)
-    midi = render_score(read_score(mscz_path), compat)
-    return _finish(midi, root, mscz_path, orchestra, simplified, keep_midi, compat.metadata == "legacy")
+    score = read_score(mscz_path)
+    midi = render_score(score, compat, provenance=provenance)
+    prov: Optional[Dict[str, list]] = {} if provenance else None
+    c = _finish(midi, root, mscz_path, orchestra, simplified, keep_midi, compat.metadata == "legacy", prov)
+    if provenance:
+        c.score = score
+        c.provenance = {hand: [note_source(hand, i, n) for i, n in enumerate(prov[hand])]
+                        for hand in ("right", "left")}
+    return c
 
 
 def convert_midi(midi_path: str, mscz_path: Optional[str] = None, orchestra: bool = True,
@@ -60,9 +121,9 @@ def convert_midi(midi_path: str, mscz_path: Optional[str] = None, orchestra: boo
 
 
 def _finish(midi: MidiFile, root: Optional[ET.Element], path: str, orchestra: bool, simplified: bool,
-            keep_midi: bool, legacy_metadata: bool) -> Converted:
+            keep_midi: bool, legacy_metadata: bool, provenance: Optional[dict] = None) -> Converted:
     song = build_song(midi, root, path, orchestra_mode=orchestra, simplified_mode=simplified,
-                      legacy_metadata=legacy_metadata)
+                      legacy_metadata=legacy_metadata, provenance=provenance)
     title, artist = song["name"], song["artist"]
     if root is not None:
         title, artist = extract_title_artist(root, path, legacy=legacy_metadata)

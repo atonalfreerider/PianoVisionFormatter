@@ -339,6 +339,7 @@ class MscxReader:
         self.spanner_seq = 0
         self.staff_defs: Dict[str, Staff] = {}
         self.element_order = 0
+        self.staff_xml = self.measure_xml = self.voice_xml = -1     # where the reader is in the .mscx
 
     # ------------------------------------------------------------------
     def read(self) -> Score:
@@ -530,6 +531,7 @@ class MscxReader:
                     m.timesig, m.timesig_nd = f, nd
                     self.timesig_next = Fraction(0)
                     self.timesig_next_nd = (0, 1)
+                    self.measure_xml = m.index
                     self._read_measure(m, c, staff_idx)
                     score.measure_bases.append(m)
                     score.measures.append(m)
@@ -550,6 +552,7 @@ class MscxReader:
                     m = score.measures[mi]
                     self._set_tick(m.tick)
                     self.measure_index = mi
+                    self.measure_xml = mi
                     self._read_measure(m, c, staff_idx)
                     self.last_measure = m
                     mi += 1
@@ -609,6 +612,8 @@ class MscxReader:
         next_track = staff_idx * VOICES
         self.track = next_track
         self.has_voices = False
+        self.staff_xml = staff_idx
+        self.voice_xml = -1
         irregular = False
         if el.get("len"):
             m.len = _fraction(el.get("len"))
@@ -620,6 +625,7 @@ class MscxReader:
             if t == "voice":
                 self.track = next_track
                 next_track += 1
+                self.voice_xml += 1
                 self._set_tick(m.tick)
                 self._read_voice(m, c, staff_idx, irregular)
             elif t in ("Marker", "Jump"):
@@ -722,7 +728,7 @@ class MscxReader:
         grace_notes: List[Chord] = []
         tuplet: Optional[Tuplet] = None
         fermata: Optional[Element] = None
-        for c in el:
+        for ci, c in enumerate(el):
             t = c.tag
             if t == "location":
                 self._set_location(_read_location(c))
@@ -742,6 +748,7 @@ class MscxReader:
                     fermata = None
             elif t == "Chord":
                 chord = self._read_chord(c)
+                chord.xml_path = (self.staff_xml, self.measure_xml, self.voice_xml, ci)
                 segment = m.get_segment(SEG_CHORDREST, self.tick)
                 if chord.note_type != "NORMAL":
                     grace_notes.append(chord)
@@ -769,6 +776,7 @@ class MscxReader:
             elif t == "Rest":
                 segment = m.get_segment(SEG_CHORDREST, self.tick)
                 rest = self._read_rest(c, m)
+                rest.xml_path = (self.staff_xml, self.measure_xml, self.voice_xml, ci)
                 rest.segment = segment
                 segment.elements[self.track] = rest
                 if self.track % VOICES and rest.props.get("visible", True):
@@ -886,10 +894,11 @@ class MscxReader:
     def _read_chord(self, el: ET.Element) -> Chord:
         chord = Chord("Chord", track=self.track)
         self._duration(chord, el)
-        for c in el:
+        for ci, c in enumerate(el):
             t = c.tag
             if t == "Note":
                 note = self._read_note(c, chord)
+                note.xml_index = ci
                 chord.notes.append(note)
             elif t in GRACE_TAGS:
                 chord.note_type = GRACE_TAGS[t]

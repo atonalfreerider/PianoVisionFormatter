@@ -32,6 +32,7 @@ MANIFEST_NAME = ".manifest.json"
 ATTIC_NAME = ".attic"
 CONFIG_NAME = "pianovision.toml"
 DEFAULT_DEVICE_DIR = "/sdcard/Android/data/com.ZarApps.PianoVision/files"
+DEFAULT_HANDS_DIR = "/sdcard/Android/data/com.atonalfreerider.notewaterfall/files/HandEdits"
 
 
 # ------------------------------------------------------------------------------
@@ -49,6 +50,8 @@ class Config:
     simplified: bool = True
     jobs: int = 0                      # 0 = one per CPU
     path: str = ""                     # the config file this came from
+    hands_dir: str = DEFAULT_HANDS_DIR # Note Waterfall's hand-edit sidecars on the headset
+    waterfall_deploy: str = ""         # command that deploys songs to Note Waterfall (given --only NAME...)
 
 
 def find_config(explicit: Optional[str] = None) -> Optional[str]:
@@ -76,10 +79,13 @@ def load_config(path: Optional[str] = None, **overrides) -> Config:
         return os.path.normpath(os.path.join(base, os.path.expanduser(v))) if v else v
 
     lib, dev, conv = raw.get("library", {}), raw.get("device", {}), raw.get("convert", {})
+    hands = raw.get("hands", {})
     cfg = Config(scores=p(lib.get("scores", "")), output=p(lib.get("output", "PianoVision")),
                  device_dir=dev.get("dir", DEFAULT_DEVICE_DIR), serial=dev.get("serial", ""),
                  adb=dev.get("adb", "adb"), orchestra=conv.get("orchestra", True),
-                 simplified=conv.get("simplified", True), jobs=int(conv.get("jobs", 0)), path=cfg_path or "")
+                 simplified=conv.get("simplified", True), jobs=int(conv.get("jobs", 0)), path=cfg_path or "",
+                 hands_dir=hands.get("device_dir", DEFAULT_HANDS_DIR),
+                 waterfall_deploy=hands.get("waterfall_deploy", ""))
     for k, v in overrides.items():
         if v is not None:
             setattr(cfg, k, os.path.abspath(os.path.expanduser(v)) if k in ("scores", "output") else v)
@@ -351,7 +357,10 @@ class Library:
         return f"{base}_{n}.json"
 
     # -- planning ---------------------------------------------------------------
-    def plan(self, scan: ScanResult, force: bool = False, only: Optional[List[str]] = None) -> List[Action]:
+    def plan(self, scan: ScanResult, force: bool = False, only: Optional[List[str]] = None,
+             compat_for: Optional[Dict[str, dict]] = None) -> List[Action]:
+        """``compat_for``: scores whose edit keeps their compatibility settings (hand edits:
+        the edit does not touch what the settings model)."""
         from .convert import content_hash, file_hash
         entries = self.manifest.entries
         actions: List[Action] = []
@@ -380,7 +389,10 @@ class Library:
             if force and selected:
                 actions.append(Action("render", rel, "forced"))
             elif not unchanged:
-                actions.append(Action("render", rel, "score changed"))
+                if compat_for is not None and rel in compat_for:
+                    actions.append(Action("render", rel, "hand edits", compat=compat_for[rel] or None))
+                else:
+                    actions.append(Action("render", rel, "score changed"))
             elif not os.path.exists(out):
                 actions.append(Action("render", rel, "output missing", compat=e.get("compat")))
             elif file_hash(out) != e["output_sha256"]:
@@ -395,13 +407,18 @@ class Library:
 
     # -- build --------------------------------------------------------------------
     def build(self, force: bool = False, only: Optional[List[str]] = None, dry_run: bool = False,
-              prune_orphans: bool = False, jobs: Optional[int] = None) -> Report:
+              prune_orphans: bool = False, jobs: Optional[int] = None, restrict: Optional[set] = None,
+              compat_for: Optional[Dict[str, dict]] = None) -> Report:
+        """``restrict`` limits the build to these scores (others are left for the next build);
+        ``compat_for`` is passed to :meth:`plan`."""
         from .calibrate import note_signature
         from .convert import bytes_hash, file_hash
         scan = scan_library(self.cfg.scores)
         if only:
             only = [self._resolve_rel(o, scan) for o in only]
-        actions = self.plan(scan, force=force, only=only)
+        actions = self.plan(scan, force=force, only=only, compat_for=compat_for)
+        if restrict is not None:
+            actions = [a for a in actions if a.rel in restrict]
         report = Report(planned=actions)
         report.kept = sum(a.kind == "keep" for a in actions)
         report.conflicts = [(a.rel, a.reason) for a in actions if a.kind == "conflict"]
