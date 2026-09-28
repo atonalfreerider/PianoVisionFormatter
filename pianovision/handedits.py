@@ -57,7 +57,8 @@ from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tupl
 
 from .score import VOICES, Chord, ChordRest, Note, NoteEvent, Score, ticks
 
-SIDECAR_FORMAT = 1
+SIDECAR_FORMAT = 2
+PARTS = ("original", "simplified")       # HandEdit.part: the piano part whose staves the note is written on
 SIDECAR_EXT = ".hands.json"
 APPLIED_DIR = "applied"
 DEFAULT_DEVICE_DIR = "/sdcard/Android/data/com.atonalfreerider.notewaterfall/files/HandEdits"
@@ -71,13 +72,18 @@ class PlanError(Exception):
 
 
 # ==============================================================================
-# the sidecar (shared with Note Waterfall, format 1)
+# the sidecar (shared with Note Waterfall, formats 1 and 2)
 # ==============================================================================
 
 @dataclass
 class HandEdit:
     """One note that changes hands: identified by its ORIGINAL hand, ticksStart, MIDI number and
-    occurrence (how many notes of that hand with the same ticksStart and note come before it)."""
+    occurrence (how many notes of that hand with the same ticksStart and note come before it).
+
+    ``part`` (format 2) says which notes that identity is counted among: "original" = the original
+    piano part of the song's Note Waterfall parts file, "simplified" = the notes written on the
+    simplified staves (the simplified part's notes marked "simplified"), see :mod:`pianovision.parts`.
+    None (format 1, or a song without parts): the notes of the song JSON's tracksV2."""
     from_hand: str
     to_hand: str
     ticks: int
@@ -87,9 +93,10 @@ class HandEdit:
     measure: Optional[int] = None        # measureInd (informational)
     votes: int = 0
     against: int = 0
+    part: Optional[str] = None
 
-    def key(self) -> Tuple[str, int, int, int]:
-        return (self.from_hand, self.ticks, self.midi, self.occurrence)
+    def key(self) -> Tuple[str, int, int, int, str]:
+        return (self.from_hand, self.ticks, self.midi, self.occurrence, self.part or "")
 
 
 @dataclass
@@ -170,8 +177,9 @@ def parse_sidecar(data: bytes, name: str = "") -> Sidecar:
         # as the app reads it: a missing (or null) occurrence is the first, a negative measureInd is unknown
         occ = 0 if e.get("occurrence") is None else _int(e.get("occurrence"))
         tk, midi = _int(e.get("ticksStart")), _int(e.get("midi"))
+        part = e.get("part")
         if fr is None or to is None or tk is None or midi is None or occ is None or not 0 <= midi <= 127 \
-                or occ < 0:
+                or occ < 0 or (part is not None and part not in PARTS):
             sc.warnings.append(f"edit {i}: unreadable ({json.dumps(e)[:80]})")
             continue
         start = e.get("start")
@@ -179,7 +187,7 @@ def parse_sidecar(data: bytes, name: str = "") -> Sidecar:
         he = HandEdit(fr, to, tk, midi, occ,
                       start=float(start) if isinstance(start, (int, float)) and not isinstance(start, bool) else None,
                       measure=measure if measure is not None and measure >= 0 else None, votes=_int(e.get("votes")) or 0,
-                      against=_int(e.get("against")) or 0)
+                      against=_int(e.get("against")) or 0, part=part)
         if he.key() in latest:
             sc.warnings.append(f"edit {i}: the note is listed twice; the later edit wins")
         latest[he.key()] = he
@@ -188,7 +196,7 @@ def parse_sidecar(data: bytes, name: str = "") -> Sidecar:
             sc.warnings.append(f"edit {he.midi}@{he.ticks}: from = to (a revert), ignored")
             continue
         sc.edits.append(he)
-    sc.edits.sort(key=lambda h: (h.ticks, h.midi, h.from_hand, h.occurrence))
+    sc.edits.sort(key=lambda h: (h.ticks, h.midi, h.from_hand, h.occurrence, h.part or ""))
     return sc
 
 
@@ -1395,6 +1403,24 @@ def _fmt_value(v) -> str:
     return f"{v:.3f}".rstrip("0").rstrip(".") if isinstance(v, float) else str(v)
 
 
+def _pv_note(d: dict, tpb: int) -> dict:
+    """A parts note as PianoVision's tracksV2 writes it (pvjson.organize_tracks_v2; noteMeasureInd and id are
+    left out: they depend on the hand's other notes and compare_songs ignores them)."""
+    from .pvjson import get_note_length_type, get_note_name
+    name = get_note_name(d["note"])
+    return {"note": d["note"], "durationTicks": d["durationTicks"], "noteOffVelocity": 0, "ticksStart": d["ticksStart"],
+            "velocity": d["velocity"], "measureBars": (d["ticksStart"] / tpb) / 4, "duration": d["duration"],
+            "noteName": name, "octave": (d["note"] // 12) - 1, "notePitch": name.rstrip("0123456789"),
+            "start": d["start"], "end": d["start"] + d["duration"], "noteLengthType": get_note_length_type(d["durationTicks"]),
+            "group": -1, "measureInd": d["measureInd"], "accent": d["accent"]}
+
+
+def _pseudo_doc(part: Optional[dict]) -> dict:
+    """A parts stream ({hand: [notes]}) in the shape of a song (tracksV2, one measure per hand) for compare_songs."""
+    part = part or {}
+    return {"tracksV2": {h: [{"notes": list(part.get(h, []))}] for h in HANDS}}
+
+
 def _describe_diff(missing: Counter, extra: Counter, limit: int = 3) -> str:
     """"C5 at tick 960: accent 1 -> 0, velocity 0.567 -> 0.472; E4 at tick 0 is gone"."""
     miss = [json.loads(k) for k in missing.elements()]
@@ -1523,9 +1549,11 @@ def _sha256(data: bytes) -> str:
 
 
 def _hands_of(midi, orchestra: bool) -> Dict[int, int]:
-    from .pvjson import TRACK_PRIMARY, classify_tracks, piano_hand
+    """Content staff -> hand (0 right, 1 left) of the staves a hand edit may move notes between: the piano
+    part's and the simplified piano part's (the 'piano-orchestral' staves are the orchestra)."""
+    from .pvjson import TRACK_PRIMARY, TRACK_SIMPLIFIED, classify_tracks, piano_hand
     piano, _orch = classify_tracks(midi, orchestra)
-    return {t: piano_hand(piano, t, tt) for t, tt in piano if tt == TRACK_PRIMARY}
+    return {t: piano_hand(piano, t, tt) for t, tt in piano if tt in (TRACK_PRIMARY, TRACK_SIMPLIFIED)}
 
 
 def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = False,
@@ -1573,7 +1601,8 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
         rv.error = "the score has parts (excerpts); edit it in MuseScore"
         return rv
     try:
-        base = convert_mscz(rv.score_path, compat, orchestra, simplified, keep_midi=True, provenance=True)
+        base = convert_mscz(rv.score_path, compat, orchestra, simplified, keep_midi=True, provenance=True,
+                            parts=True)
     except Exception as e:                                   # a broken score must not stop the others
         rv.error = f"render failed: {type(e).__name__}: {e}"
         return rv
@@ -1597,43 +1626,63 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
         return rv
 
     # -- map every edit to its source note
+    # An edit's note is counted among the notes of a view: "pv" = the song's tracksV2 (format 1),
+    # "original" / "simplified" = the parts' original part / the notes on the simplified staves (format 2).
     lib_flat = {h: _flat(lib_doc, h) for h in HANDS}
-    index: Dict[str, Dict[tuple, int]] = {}
-    present: Dict[str, Set[tuple]] = {}
-    for h in HANDS:
-        seen: Counter = Counter()
-        index[h] = {}
-        present[h] = set()
-        for i, n in enumerate(lib_flat[h]):
-            k = (n["ticksStart"], n["note"])
-            index[h][k + (seen[k],)] = i
-            seen[k] += 1
-            present[h].add(k)
     prov = base.provenance
+    part_docs = base.parts["parts"]
+    pprov = base.parts_provenance
+    views: Dict[str, Dict[str, List[dict]]] = {
+        "pv": lib_flat,
+        "original": {h: part_docs["original"][h] for h in HANDS},
+        "simplified": {h: [n for n in part_docs.get("simplified", {}).get(h, []) if n.get("simplified")]
+                       for h in HANDS}}
+    view_prov = {"pv": prov, "original": pprov["original"], "simplified": pprov["simplified_staff"]}
+    index: Dict[str, Dict[str, Dict[tuple, int]]] = {v: {} for v in views}
+    present: Dict[str, Dict[str, Set[tuple]]] = {v: {} for v in views}
+    for v, flat in views.items():
+        for h in HANDS:
+            seen: Counter = Counter()
+            index[v][h] = {}
+            present[v][h] = set()
+            for i, n in enumerate(flat[h]):
+                k = (n["ticksStart"], n["note"])
+                index[v][h][k + (seen[k],)] = i
+                seen[k] += 1
+                present[v][h].add(k)
     instances: Dict[int, List[Tuple[str, int]]] = {}
     for h in HANDS:
         for i, ns in enumerate(prov[h]):
             if ns.note is not None:
                 instances.setdefault(id(ns.note), []).append((h, i))
+    # where each score note plays in the parts' original and simplified streams (the whole streams)
+    part_instances: Dict[str, Dict[int, List[Tuple[str, int]]]] = {}
+    for part in ("original", "simplified"):
+        part_instances[part] = {}
+        for h in HANDS:
+            for i, ns in enumerate(pprov.get(part, {}).get(h, [])):
+                if ns.note is not None:
+                    part_instances[part].setdefault(id(ns.note), []).append((h, i))
     reqs: Dict[int, _Req] = {}
     results: Dict[int, EditResult] = {}
     for sc, e in edits:
         r = EditResult(sc.name, e, "skip")
         results[id(e)] = r
-        pos = index[e.from_hand].get((e.ticks, e.midi, e.occurrence))
+        v = e.part or "pv"
+        pos = index[v][e.from_hand].get((e.ticks, e.midi, e.occurrence))
         if pos is None:
-            if (e.ticks, e.midi) in present[e.to_hand]:
+            if (e.ticks, e.midi) in present[v][e.to_hand]:
                 r.status, r.reason = "already", "already in the score"
             else:
                 r.status, r.reason = "stale", "the note is not in the song any more"
             continue
-        n = lib_flat[e.from_hand][pos]
+        n = views[v][e.from_hand][pos]
         if sc.song_md5 and sc.song_md5 != lib_md5:
             if (e.start is not None and abs(n.get("start", 0) - e.start) > 0.002) or \
                     (e.measure is not None and n.get("measureInd") != e.measure):
                 r.status, r.reason = "stale", "the song changed since this was recorded"
                 continue
-        src = prov[e.from_hand][pos].note
+        src = view_prov[v][e.from_hand][pos].note
         if src is None:
             r.reason = "chord-symbol playback, not a note of the score"
             continue
@@ -1644,12 +1693,16 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
         q.edits.append((sc, e))
     for q in list(reqs.values()):
         rs = [results[id(e)] for _sc, e in q.edits]
-        passes = len(q.instances)
+        # the note's passes (repeats) in every stream it plays in, told apart by hand and tick
+        plays = {(h, prov[h][i].ticks) for h, i in q.instances}
+        for part in ("original", "simplified"):
+            plays |= {(h, pprov[part][h][i].ticks) for h, i in part_instances[part].get(id(q.src), [])}
+        passes = len(plays)
         for r in rs:
             r.passes = passes
         tos = {e.to_hand for _sc, e in q.edits}
-        hands = {h for h, _i in q.instances}
-        edited = {(e.from_hand, index[e.from_hand][(e.ticks, e.midi, e.occurrence)]) for _sc, e in q.edits}
+        hands = {h for h, _t in plays}
+        edited = {(e.from_hand, e.ticks) for _sc, e in q.edits}
         reason = ""
         if len(tos) > 1:
             reason = "the passes of this note were recorded in different hands"
@@ -1674,7 +1727,8 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
     tmpdir = tempfile.mkdtemp(prefix="pv-hands-")
     try:
         attempt = _Attempt(planner, requests, base_doc, prov, instances, rv.score_path, doc, compat, orchestra,
-                           simplified, tmpdir, log)
+                           simplified, tmpdir, log, base_parts=base.parts, part_instances=part_instances,
+                           part_prov=pprov, midi=base.midi)
         final = attempt.run()
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -1700,7 +1754,9 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
                 if id(n) in cl.carried:
                     rv.carried.append(f"{where(score, n.chord)}  {note_name(n.pitch)}  (goes along: "
                                       f"{cl.carried[id(n)]})")
-        moved = final.moves
+        # the notes that change hands, in the song and in the parts (a note of the original part under a
+        # simplified one is not in the song's tracksV2), each (hand, tick, pitch) once
+        moved = final.note_moves or final.moves
         rv.moved_notes = len(moved)
         rv.to_right = sum(1 for h in moved.values() if h == "right")
         rv.to_left = rv.moved_notes - rv.to_right
@@ -1722,6 +1778,8 @@ class _Outcome:
     new: Optional[bytes] = None
     pins: Pins = field(default_factory=Pins)
     moves: Dict[Tuple[str, int], str] = field(default_factory=dict)
+    # every note that changes hands, in the song and in the parts: (from hand, tick, pitch) -> new hand
+    note_moves: Dict[Tuple[str, int, int], str] = field(default_factory=dict)
     accepted: Set[int] = field(default_factory=set)
     rejected: Dict[int, str] = field(default_factory=dict)
     reason: str = ""
@@ -1733,11 +1791,105 @@ class _Attempt:
     """Plan -> temporary .mscz -> render -> compare, narrowing down to the clusters that verify."""
 
     def __init__(self, planner: Planner, requests, base_doc, prov, instances, score_path, doc, compat, orchestra,
-                 simplified, tmpdir, log):
+                 simplified, tmpdir, log, base_parts: Optional[dict] = None,
+                 part_instances: Optional[Dict[str, Dict[int, List[Tuple[str, int]]]]] = None,
+                 part_prov: Optional[dict] = None, midi=None):
         self.planner, self.requests, self.base_doc, self.prov = planner, requests, base_doc, prov
         self.instances, self.score_path, self.doc, self.compat = instances, score_path, doc, compat
         self.orchestra, self.simplified, self.tmpdir, self.log = orchestra, simplified, tmpdir, log
+        # Note Waterfall's parts of the original render: the edited render must have the same parts with only
+        # the moved notes in the other hand (original and simplified part)
+        self.base_parts = base_parts
+        self.part_instances = part_instances or {}
+        self.part_prov = part_prov or {}
+        # which staves the song shows per (hand, measure): the simplified staff's where it has notes (simplified
+        # mode), else the piano part's; a moved note shows in the song only where its staves are shown
+        self._measure_of = None
+        self._simplified_shown: Set[Tuple[str, int]] = set()
+        self._simplified_notes: Set[int] = set()
+        if base_parts is not None and midi is not None:
+            from .pvjson import _measure_lookup, calculate_measure_map
+            self._measure_of = _measure_lookup(calculate_measure_map(midi), midi.ticks_per_beat)
+            for h in HANDS:
+                for ns in self.part_prov.get("simplified_staff", {}).get(h, []):
+                    self._simplified_shown.add((h, self._measure_of(ns.ticks)))
+                    if ns.note is not None:
+                        self._simplified_notes.add(id(ns.note))
         self.runs = 0
+
+    def _shown(self, note: Note, hand: str, tick: int, simplified: bool) -> bool:
+        """Whether a stream built in simplified mode (``simplified``) or not shows this piano note in ``hand`` at
+        ``tick``: in simplified mode a (hand, measure) shows the simplified staff's notes where it has any."""
+        simplified_staff = id(note) in self._simplified_notes
+        if not simplified or self._measure_of is None:
+            return not simplified_staff
+        return ((hand, self._measure_of(tick)) in self._simplified_shown) == simplified_staff
+
+    def _expected_view(self, plan: PlanResult, base_doc: dict, instances, prov, simplified: bool,
+                       supporting: bool) -> Tuple[dict, Dict[Tuple[str, int], str]]:
+        """What a stream of the edited render must be, as (a base document, moves) for :func:`compare_songs`:
+        a moved note leaves its hand and shows in the other one only where the stream shows its staves there
+        ("hidden" otherwise); a note of the original part that the simplified part hides may come into view in
+        the other hand (it is added to the base document as a note of its old hand that moves)."""
+        moves: Dict[Tuple[str, int], str] = {}
+        extra: Dict[str, List[Tuple[dict, str]]] = {h: [] for h in HANDS}
+        for cl in plan.clusters:
+            if cl.error:
+                continue
+            for n in cl.notes:
+                shown = set()
+                for h, i in instances.get(id(n), []):
+                    to = HANDS[1 - HANDS.index(h)]
+                    tick = prov[h][i].ticks
+                    shown.add((h, tick))
+                    moves[(h, i)] = to if self._shown(n, to, tick, simplified) else "hidden"
+                if not simplified:
+                    continue
+                orig = self.part_prov.get("original", {})
+                for h, i in self.part_instances.get("original", {}).get(id(n), []):
+                    to = HANDS[1 - HANDS.index(h)]
+                    tick = orig[h][i].ticks
+                    if (h, tick) not in shown and self._shown(n, to, tick, simplified):
+                        shown.add((h, tick))
+                        extra[h].append((self.base_parts["parts"]["original"][h][i], to))
+        if not any(extra.values()):
+            return base_doc, moves
+        base = json.loads(json.dumps(base_doc))
+        tpb = self.base_parts.get("resolution", 480)
+        for h, notes in extra.items():
+            if not notes:
+                continue
+            hi = HANDS.index(h)
+            flat = _flat(base, h)
+            base["tracksV2"].setdefault(h, []).append(
+                {"notes": [_pv_note(d, tpb) if supporting else dict(d) for d, _to in notes]})
+            sup = base.get("supportingTracks", []) if supporting else []
+            for k, (d, to) in enumerate(notes):
+                moves[(h, len(flat) + k)] = to
+                if len(sup) == 2:
+                    sup[hi]["notes"].append({"midi": d["note"], "time": d["start"], "velocity": d["velocity"],
+                                             "duration": d["duration"]})
+        return base, moves
+
+    def _expected(self, plan: PlanResult) -> Tuple[dict, Dict[Tuple[str, int], str], Dict[Tuple[str, int, int], str]]:
+        """The song the edited score must render to (:meth:`_expected_view` of its tracksV2) and every note that
+        changes hands, in the song and in the parts ((hand, tick, pitch) -> new hand)."""
+        note_moves: Dict[Tuple[str, int, int], str] = {}
+        for cl in plan.clusters:
+            if cl.error:
+                continue
+            for n in cl.notes:
+                for h, i in self.instances.get(id(n), []):
+                    note_moves[(h, self.prov[h][i].ticks, n.pitch)] = HANDS[1 - HANDS.index(h)]
+                for part, inst in self.part_instances.items():
+                    for h, i in inst.get(id(n), []):
+                        note_moves[(h, self.part_prov[part][h][i].ticks, n.pitch)] = HANDS[1 - HANDS.index(h)]
+        if self.base_parts is None:
+            moves = {(h, i): HANDS[1 - HANDS.index(h)] for cl in plan.clusters if not cl.error for n in cl.notes
+                     for h, i in self.instances.get(id(n), [])}
+            return self.base_doc, moves, note_moves
+        base, moves = self._expected_view(plan, self.base_doc, self.instances, self.prov, self.simplified, True)
+        return base, moves, note_moves
 
     def _try(self, clusters: Optional[Set[int]], pins: Pins, full_plan: PlanResult) -> _Outcome:
         from .convert import convert_mscz
@@ -1760,41 +1912,66 @@ class _Attempt:
         self.runs += 1
         with open(path, "wb") as f:
             f.write(replace_mscx(self.doc.mscz, self.doc.member, plan.data))
-        moves: Dict[Tuple[str, int], str] = {}
-        for cl in plan.clusters:
-            if cl.error:
-                continue
-            for n in cl.notes:
-                for h, i in self.instances.get(id(n), []):
-                    moves[(h, i)] = HANDS[1 - HANDS.index(h)]
-        o.moves = moves
-        self.log(f"    render {self.runs}: {len(moves)} note(s) changing hands")
+        base_doc, moves, note_moves = self._expected(plan)
+        o.moves = {k: v for k, v in moves.items() if v in HANDS}
+        o.note_moves = note_moves
+        self.log(f"    render {self.runs}: {len(note_moves)} note(s) changing hands")
         try:
-            new = convert_mscz(path, self.compat, self.orchestra, self.simplified, provenance=True)
+            new = convert_mscz(path, self.compat, self.orchestra, self.simplified, provenance=True,
+                               parts=self.base_parts is not None)
         except Exception as e:
             o.problems = [f"the edited score does not render: {type(e).__name__}: {e}"]
             return o
         o.new = new.data
         problems = _structure_problems(self.doc.score, new.score)
-        p2, missing = compare_songs(self.base_doc, json.loads(new.data), moves)
+        p2, missing = compare_songs(base_doc, json.loads(new.data), moves)
         o.problems = problems + p2
         o._missing = missing
         o._new_doc = json.loads(new.data)
+        o._part_views = []
+        if self.base_parts is not None:
+            o.problems += self._compare_parts(plan, new.parts, o)
         o.accepted = {cl.id for cl in plan.clusters if not cl.error}
         return o
 
+    def _compare_parts(self, plan: PlanResult, new_parts: dict, o: _Outcome) -> List[str]:
+        """Problems when the edited render's parts are not the song's with the moved notes in the other hand
+        (original and simplified part); the orchestra must not change at all."""
+        problems: List[str] = []
+        base, new = self.base_parts, new_parts
+        for k in ("simplified", "orchestra"):
+            if base.get(k) != new.get(k):
+                problems.append(f"parts: {k} changed")
+        if base["parts"].get("orchestra") != new["parts"].get("orchestra"):
+            problems.append("parts: the orchestra changed")
+        for part in ("original", "simplified"):
+            if part not in base["parts"] and part not in new["parts"]:
+                continue
+            bdoc0 = _pseudo_doc(base["parts"].get(part))
+            ndoc = _pseudo_doc(new["parts"].get(part))
+            bdoc, moves = self._expected_view(plan, bdoc0, self.part_instances.get(part, {}),
+                                              self.part_prov.get(part), part == "simplified", False)
+            p, missing = compare_songs(bdoc, ndoc, moves)
+            problems += [f"{part} part: {x}" for x in p]
+            o._part_views.append((self.part_instances.get(part, {}), bdoc, ndoc, self.part_prov.get(part), missing))
+        return problems
+
     def _pins_for(self, o: _Outcome, plan: PlanResult) -> Pins:
         """Moved notes that differ only in velocity or length: pin what they had (all passes alike)."""
-        new_doc = o._new_doc
         pins = o.pins.copy()
         moving = {id(n): n for cl in plan.clusters if not cl.error for n in cl.notes}
+        # the song's tracksV2 first; a note it does not show (the original part under a simplified one) is
+        # judged in the parts
+        views = [(self.instances, self.base_doc, o._new_doc, self.prov, o._missing)] + list(o._part_views)
         for n in list(moving.values()):
-            inst = self.instances.get(id(n), [])
-            if not inst:
+            view = next((vw for vw in views if vw[0].get(id(n))), None)
+            if view is None:
                 continue
+            instances, base_doc, new_doc, prov, missing = view
+            inst = instances[id(n)]
             to = HANDS[1 - HANDS.index(inst[0][0])]
-            want = [_flat(self.base_doc, h)[i] for h, i in inst]
-            if not any(o._missing[to].get(_nkey(w)) for w in want):
+            want = [_flat(base_doc, h)[i] for h, i in inst]
+            if not any(missing[to].get(_nkey(w)) for w in want):
                 continue
             diffs: Set[str] = set()
             for w in want:
@@ -1807,7 +1984,7 @@ class _Attempt:
             if "other" in diffs or not diffs:
                 continue
             if "velocity" in diffs:
-                velos = {self.prov[h][i].velocity for h, i in inst}
+                velos = {prov[h][i].velocity for h, i in inst}
                 if len(velos) == 1 and n.user_velocity == 0:
                     pins.velocity[id(n)] = velos.pop()
             if diffs & _LENGTH_FIELDS:

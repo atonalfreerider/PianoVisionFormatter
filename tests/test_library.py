@@ -1,5 +1,6 @@
 """Library pipeline rules, on throwaway score folders."""
 
+import hashlib
 import json
 import os
 import shutil
@@ -62,7 +63,7 @@ class LibraryTest(Base):
         make_score(p, pitches=(60, 60, 60, 60))
         rep = self.lib().build()
         self.assertEqual([(w[1], w[2]) for w in rep.written], [("test_Test_Song.json", "score changed")])
-        self.assertEqual(self.attic(), ["test_Test_Song.json"])
+        self.assertEqual(self.attic(), ["test_Test_Song.json", "test_Test_Song.parts.json"])
 
     def test_moved_score_keeps_its_output(self):
         p = self.score("a.mscz")
@@ -81,7 +82,7 @@ class LibraryTest(Base):
         rep = self.lib().build()
         self.assertEqual(rep.retired, [("a.mscz", "test_Test_Song.json", "excluded (renamed to .zip)")])
         self.assertEqual(self.outputs(), [])
-        self.assertEqual(self.attic(), ["test_Test_Song.json"])
+        self.assertEqual(self.attic(), ["test_Test_Song.json", "test_Test_Song.parts.json"])
 
     def test_title_collision_gets_suffix(self):
         self.score("Film/Song-Composer.mscz")
@@ -169,6 +170,106 @@ class LibraryTest(Base):
         lib.build(prune_orphans=True)
         self.assertEqual(self.outputs(), ["test_Test_Song.json"])
         self.assertEqual(self.attic(), ["zzzz_Old.json"])
+
+
+class PartsLibraryTest(Base):
+    """Note Waterfall's parts files (NoteWaterfall/<song stem>.parts.json) next to the library."""
+
+    def read(self, name):
+        with open(os.path.join(self.out, name), "rb") as f:
+            return f.read()
+
+    def parts_file(self, name="test_Test_Song.parts.json"):
+        return os.path.join(self.out, "NoteWaterfall", name)
+
+    def test_build_writes_the_parts_of_every_song(self):
+        self.score("a.mscz")
+        lib = self.lib()
+        rep = lib.build()
+        self.assertEqual(rep.parts, ["NoteWaterfall/test_Test_Song.parts.json"])
+        with open(self.parts_file(), "rb") as f:
+            doc = json.loads(f.read())
+        with open(os.path.join(self.out, "test_Test_Song.json"), "rb") as f:
+            song = f.read()
+        e = lib.manifest.entries["a.mscz"]
+        self.assertEqual((doc["song"], doc["songMd5"], doc["scoreContent"]),
+                         ("test_Test_Song.json", hashlib.md5(song).hexdigest(), e["content"]))
+        self.assertEqual((e["parts"]["simplified"], e["parts"]["orchestra"], e["parts"]["notes"]["original"]),
+                         (False, "none", 8))
+        self.assertEqual(self.outputs(), ["test_Test_Song.json"])       # not a song, not an orphan
+        self.assertEqual(lib.orphans(), [])
+        self.assertEqual(self.lib().build().parts, [])                   # up to date
+
+    def test_a_library_without_parts_gets_them_and_keeps_its_json(self):
+        self.score("a.mscz")
+        self.score("b.mscz", title="Other")
+        lib = self.lib()
+        lib.build()
+        for e in lib.manifest.entries.values():                         # a library built before parts existed
+            e.pop("parts")
+        lib.manifest.save()
+        shutil.rmtree(os.path.join(self.out, "NoteWaterfall"))
+        before = {f: self.read(f) for f in self.outputs()}
+        mtimes = {f: os.path.getmtime(os.path.join(self.out, f)) for f in self.outputs()}
+        lib = self.lib()
+        self.assertEqual([a.kind for a in lib.build(dry_run=True).planned], ["parts", "parts"])
+        rep = lib.build()
+        self.assertEqual((rep.written, len(rep.parts)), ([], 2))
+        self.assertEqual({f: self.read(f) for f in self.outputs()}, before)
+        self.assertEqual({f: os.path.getmtime(os.path.join(self.out, f)) for f in self.outputs()}, mtimes)
+        self.assertTrue(os.path.exists(self.parts_file("test_Other.parts.json")))
+        self.assertEqual(lib.parts_summary()["parts"], 2)
+
+    def test_parts_of_a_pinned_output_go_with_the_file_kept(self):
+        self.score("a.mscz")
+        lib = self.lib()
+        lib.build()
+        path = os.path.join(self.out, "test_Test_Song.json")
+        with open(path, "rb") as f:
+            data = f.read()
+        pinned = data.replace(b'"name": "Test Song"', b'"name": "Test Song (pinned)"')
+        with open(path, "wb") as f:
+            f.write(pinned)
+        e = lib.manifest.entries["a.mscz"]
+        from pianovision.convert import bytes_hash
+        e["output_sha256"], e["reproducible"] = bytes_hash(pinned), False
+        lib.manifest.save()
+        lib = self.lib()
+        self.assertEqual([a.kind for a in lib.build(dry_run=True).planned], ["parts"])
+        lib.build()
+        with open(path, "rb") as f:
+            self.assertEqual(f.read(), pinned)
+        with open(self.parts_file(), "rb") as f:
+            self.assertEqual(json.loads(f.read())["songMd5"], hashlib.md5(pinned).hexdigest())
+
+    def test_verify_compares_the_parts_too(self):
+        self.score("a.mscz")
+        lib = self.lib()
+        lib.build()
+        self.assertEqual([(s, r.get("parts")) for _rel, s, r in lib.verify()], [("identical", "identical")])
+        with open(self.parts_file(), "ab") as f:
+            f.write(b" ")
+        self.assertEqual([r.get("parts") for _rel, _s, r in lib.verify()], ["differs"])
+        rep = self.lib().build()                                         # written again, the old one kept
+        self.assertEqual(rep.parts, ["NoteWaterfall/test_Test_Song.parts.json"])
+        self.assertEqual(self.attic(), ["test_Test_Song.parts.json"])
+        os.remove(self.parts_file())
+        self.assertEqual([r.get("parts") for _rel, _s, r in self.lib().verify()], ["missing"])
+
+    def test_rename_takes_the_parts_along(self):
+        p = self.score("a.mscz")
+        lib = self.lib()
+        lib.build()
+        make_score(p, title="New Title")
+        lib = self.lib()
+        lib.build()                                    # the score changed: same output name, new parts
+        self.assertEqual(lib.rename(), [("a.mscz", "test_Test_Song.json", "test_New_Title.json")])
+        self.assertTrue(os.path.exists(self.parts_file("test_New_Title.parts.json")))
+        self.assertFalse(os.path.exists(self.parts_file()))
+        rep = self.lib().build()                       # the parts name the song: written again
+        self.assertEqual(rep.parts, ["NoteWaterfall/test_New_Title.parts.json"])
+        with open(self.parts_file("test_New_Title.parts.json"), "rb") as f:
+            self.assertEqual(json.loads(f.read())["song"], "test_New_Title.json")
 
 
 class FakeAdb:

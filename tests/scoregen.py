@@ -127,9 +127,11 @@ def dynamic(subtype, velocity, staff_only=True):
     return E("Dynamic", *kids)
 
 
-def make_piano_score(path, rh, lh, title="Hands", composer="Jane Tester", repeat=None):
+def make_piano_score(path, rh, lh, title="Hands", composer="Jane Tester", repeat=None, parts=()):
     """``rh``/``lh``: one entry per measure, each a list of voices, each a list of elements (4/4, C major).
-    ``repeat``: (first measure, last measure) of a repeated section, 0-based."""
+    ``repeat``: (first measure, last measure) of a repeated section, 0-based.  ``parts``: more parts after
+    the piano, each ``(track name, program, [staff, ...])`` with a staff as ``rh``/``lh`` (for example
+    ``("Piano-simplified", 0, [rh2, lh2])`` or ``("Violin", 40, [vln])``)."""
     def staff(sid, measures, top):
         kids = []
         if top:
@@ -158,7 +160,20 @@ def make_piano_score(path, rh, lh, title="Hands", composer="Jane Tester", repeat
              E("Instrument", E("longName", text="Piano"), E("trackName", text="Piano"),
                E("instrumentId", text="keyboard.piano"), E("Channel", E("program", value="0"))),
              id="1")
-    score = E("Score", E("Division", text="480"), part, staff(1, rh, True), staff(2, lh, False))
+    extra_parts, extra_staves = [], []
+    sid = 3
+    for pi, (name, program, staves) in enumerate(parts):
+        defs = [E("Staff", E("StaffType", E("name", text="stdNormal"), group="pitched"), id=str(sid + k))
+                for k in range(len(staves))]
+        extra_parts.append(E("Part", *defs, E("trackName", text=name),
+                             E("Instrument", E("longName", text=name), E("trackName", text=name),
+                               E("instrumentId", text="keyboard.piano" if program < 8 else "strings.violin"),
+                               E("Channel", E("program", value=str(program)))), id=str(pi + 2)))
+        for k, measures in enumerate(staves):
+            extra_staves.append(staff(sid + k, measures, False))
+        sid += len(staves)
+    score = E("Score", E("Division", text="480"), part, *extra_parts, staff(1, rh, True), staff(2, lh, False),
+              *extra_staves)
     root = E("museScore", E("programVersion", text="4.6.0"), score, version="4.60")
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + "\n".join(root.lines()) + "\n"
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:

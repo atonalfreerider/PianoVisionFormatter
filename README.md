@@ -32,7 +32,7 @@ orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits). Th
 | `watch [--deploy] [--interval S]` | poll the scores folder and run `build` (and `deploy`) after each save |
 | `verify [SCORE…] [--calibrate]` | re-render and compare with the files in `PianoVision/` |
 | `rename [SCORE…] [--dry-run]` | rename outputs after a score's title/composer was edited; named scores also get the current naming rules (e.g. MuseScore 3 scores that the old scripts named after the file) |
-| `convert SCORE.mscz [-o out.json] [--midi out.mid] [--provenance notes.jsonl]` | one-off conversion, no library bookkeeping; `--provenance` also writes, per note of the song, the measure, staff, voice, chord and note element it comes from |
+| `convert SCORE.mscz [-o out.json] [--midi out.mid] [--provenance notes.jsonl] [--parts out.parts.json]` | one-off conversion, no library bookkeeping; `--provenance` also writes, per note of the song, the measure, staff, voice, chord and note element it comes from; `--parts` writes Note Waterfall's parts file |
 | `hands pull\|review\|apply [FILE…]` | hand edits recorded with Note Waterfall's HAND REC → the scores, after approval (see below) |
 
 ## How the library is kept organised
@@ -132,10 +132,50 @@ cannot be written safely, are reported and skipped, for example:
   a score edited since the last build), MuseScore 3 files, scores with parts or linked
   staves.
 
-The sidecar format (version 1) is shared with Note Waterfall: a note is identified by its
+The sidecar format is shared with Note Waterfall: a note is identified by its
 original hand, `ticksStart`, MIDI number and `occurrence` (the how-manieth note of that
 hand with the same tick and pitch); an edit whose note is already in the other hand is
-reported as already in the score.
+reported as already in the score. Version 1 counts the notes of the song JSON's `tracksV2`.
+Version 2 adds `"part"` to an edit: `"original"` counts the notes of the parts file's
+original piano part, `"simplified"` the notes written on the simplified staves (see below);
+an edit without it is read as in version 1. Notes of the simplified staves can change hands
+too (between the two simplified staves); the orchestra cannot. A change is verified on the
+song and on both piano parts. A note moves only where the song still shows the same staves
+afterwards: moving the last simplified note of a hand's measure out of it (which would bring
+the piano part back there) is refused; a note of the piano part hidden under a simplified
+measure may come into view in the other hand where that hand is not simplified.
+
+## Note Waterfall's parts files
+
+PianoVision's JSON merges everything into one stream per hand: with `simplified` the
+'piano-simplified' staves replace the piano part in the measures where they have notes,
+and with `orchestra` the 'piano-orchestral' staves (or, without them, the orchestra
+instruments) fill measures marked with 'merge' / 'end merge' and measures where the piano
+rests. Note Waterfall shows the original or the simplified piano part and draws the
+orchestra on its own, so `build` also writes, for every song, a parts file:
+`PianoVision/NoteWaterfall/<song name>.parts.json`. It never changes the PianoVision JSON
+(same notes, same bytes), and PianoVision's `deploy` does not push it.
+
+```
+{"format": 1, "song": "<song>.json", "songMd5": "<md5 of that file>", "scoreContent": "<sha256>",
+ "resolution": 480, "simplified": true, "orchestra": "piano-orchestral",
+ "parts": {"original":   {"right": [NOTE…], "left": [NOTE…]},
+           "simplified": {"right": […], "left": […]},      # only when the score has simplified staves
+           "orchestra":  {"right": […], "left": […]}}}
+```
+
+A NOTE has the `tracksV2` fields Note Waterfall reads, with PianoVision's values: `note`,
+`ticksStart`, `durationTicks`, `start`, `duration`, `velocity`, `measureInd`, `accent`.
+Simplified-part notes written on the simplified staves carry `"simplified": 1`; orchestra
+notes carry `"staff"` (the score staff), `"program"` (instruments only) and `"merged": 1`
+where PianoVision's JSON merges them into the hands. The orchestra is the 'piano-orchestral'
+staves (first staff right hand) when the score has any, else the orchestra instruments
+PianoVision's orchestra mode takes, split at middle C. `songMd5` ties the parts to one
+version of the song (the app ignores stale parts); `scoreContent` is the manifest's hash of
+the score. A library built before parts existed gets them on the next `build` without any
+JSON being rewritten; `status` and `build` print how many scores have a simplified part and
+orchestra notes, `verify` also compares the parts files, `convert --parts FILE` writes one.
+Note Waterfall's `Tools/deploy_songs.py` pushes them next to the songs.
 
 ## Fidelity
 
@@ -158,6 +198,7 @@ pianovision/        the package (stdlib only)
   playevents.py       note play events (gate time, ornaments, tremolo, arpeggio, glissando, swing)
   repeats.py tempo.py velocity.py harmony.py rhythm.py navigate.py cxxsort.py
   pvjson.py           PianoVision JSON builder (port of midi_to_json.py, output byte-identical)
+  parts.py            Note Waterfall's parts files (original / simplified piano part, orchestra)
   convert.py          one score -> JSON
   library.py          manifest, incremental build, adoption of existing outputs
   device.py           adb deploy
@@ -165,7 +206,7 @@ pianovision/        the package (stdlib only)
   handedits.py        hand edits from Note Waterfall -> the scores (hands pull/review/apply)
   cli.py              python -m pianovision
 pianovision.toml    settings
-PianoVision/        generated library (git-ignored): *.json, .manifest.json, .attic/
+PianoVision/        generated library (git-ignored): *.json, .manifest.json, .attic/, NoteWaterfall/*.parts.json
 ```
 
 ## Legacy scripts

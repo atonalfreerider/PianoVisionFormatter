@@ -54,7 +54,9 @@ def cmd_status(args) -> int:
     _p(f"scores:  {lib.cfg.scores}")
     _p(f"output:  {lib.cfg.output}")
     _p(f"{len(scan.sources)} scores; {c.get('keep', 0)} up to date, {c.get('render', 0)} to render, "
+       f"{c.get('parts', 0)} Note Waterfall parts files to write, "
        f"{c.get('move', 0)} moved, {c.get('retire', 0)} to retire, {c.get('conflict', 0)} conflicts")
+    _print_parts_summary(st["parts"])
     _list("to render", [f"{a.rel}  ({a.reason})" for a in st["actions"] if a.kind == "render"])
     _list("moved", [f"{a.old_rel} -> {a.rel}" for a in st["actions"] if a.kind == "move"])
     _list("to retire", [f"{a.rel}  ({a.reason})" for a in st["actions"] if a.kind == "retire"])
@@ -85,13 +87,21 @@ def _device_status(lib: Library, args) -> int:
     return 0
 
 
-def _print_build(rep, dry: bool) -> None:
+def _print_parts_summary(s: dict) -> None:
+    _p(f"Note Waterfall parts (NoteWaterfall/*.parts.json): {s['parts']} of {s['scores']} scores; "
+       f"{s['simplified']} with a simplified part, {s['orchestra']} with orchestra notes "
+       f"({s['piano_orchestral']} piano-orchestral staves, {s['instruments']} orchestra instruments; "
+       f"{s['orchestra_notes']} notes)")
+
+
+def _print_build(rep, dry: bool, lib: Optional[Library] = None) -> None:
     if dry:
         kinds = {}
         for a in rep.planned:
             kinds.setdefault(a.kind, []).append(a)
         _p(f"dry run: {len(kinds.get('keep', []))} up to date")
         _list("would render", [f"{a.rel}  ({a.reason})" for a in kinds.get("render", [])])
+        _list("would write Note Waterfall parts", [f"{a.rel}  ({a.reason})" for a in kinds.get("parts", [])])
         _list("would move", [f"{a.old_rel} -> {a.rel}" for a in kinds.get("move", [])])
         _list("would retire", [f"{a.rel}  ({a.reason})" for a in kinds.get("retire", [])])
         _list("conflicts", [f"{r}: {w}" for r, w in rep.conflicts])
@@ -103,15 +113,18 @@ def _print_build(rep, dry: bool) -> None:
     _list("conflicts (not overwritten; use --force)", [f"{r}: {w}" for r, w in rep.conflicts])
     _list("FAILED", [f"{r}: {e}" for r, e in rep.failed], 50)
     _list("moved aside to the attic", rep.attic)
+    _list("Note Waterfall parts written", rep.parts, 8)
     _p(f"{rep.kept} up to date, {len(rep.written)} written, {len(rep.adopted)} adopted, "
-       f"{len(rep.retired)} retired, {len(rep.failed)} failed")
+       f"{len(rep.retired)} retired, {len(rep.parts)} parts files written, {len(rep.failed)} failed")
+    if lib is not None:
+        _print_parts_summary(lib.parts_summary())
 
 
 def cmd_build(args) -> int:
     lib = _library(args)
     rep = lib.build(force=args.force is not None, only=args.force or None, dry_run=args.dry_run,
                     prune_orphans=args.prune_orphans, jobs=args.jobs)
-    _print_build(rep, args.dry_run)
+    _print_build(rep, args.dry_run, lib)
     return 1 if rep.failed else 0
 
 
@@ -160,7 +173,7 @@ def cmd_deploy(args) -> int:
 def cmd_sync(args) -> int:
     lib = _library(args)
     rep = lib.build(jobs=args.jobs)
-    _print_build(rep, False)
+    _print_build(rep, False, lib)
     rc = _deploy(lib, args)
     return rc or (1 if rep.failed else 0)
 
@@ -224,12 +237,19 @@ def cmd_verify(args) -> int:
     lib = _library(args)
     res = lib.verify(only=args.scores_ or None, calibrate=args.calibrate, jobs=args.jobs)
     counts = {}
+    parts = {}
     for rel, status, r in res:
         counts[status] = counts.get(status, 0) + 1
+        if "parts" in r:
+            parts[r["parts"]] = parts.get(r["parts"], 0) + 1
         if status != "identical":
             extra = r.get("error") or r.get("compat") or ("same notes" if r.get("same_notes") else "notes differ")
             _p(f"  {status:10} {rel}  {extra}")
+        if r.get("parts") == "differs":
+            _p(f"  parts differ {rel}  (NoteWaterfall/ file; `build` rewrites it)")
     _p(", ".join(f"{v} {k}" for k, v in sorted(counts.items())))
+    if parts:
+        _p("Note Waterfall parts files: " + ", ".join(f"{v} {k}" for k, v in sorted(parts.items())))
     return 0 if counts.get("error", 0) == 0 else 1
 
 
@@ -248,10 +268,15 @@ def cmd_convert(args) -> int:
     from .smf import write_midi
     compat = Compat(dynamics=args.dynamics)
     c = convert_mscz(args.score, compat, not args.no_orchestra, not args.no_simplified, keep_midi=bool(args.midi),
-                     provenance=bool(args.provenance))
+                     provenance=bool(args.provenance), parts=bool(args.parts))
     out = args.out or os.path.join(os.getcwd(), c.name)
     with open(out, "wb") as f:
         f.write(c.data)
+    if args.parts:
+        from .convert import content_hash
+        from .parts import parts_bytes
+        with open(args.parts, "wb") as f:
+            f.write(parts_bytes(c.parts, os.path.basename(out), c.data, content_hash(args.score)))
     if args.midi:
         write_midi(c.midi, args.midi)
     if args.provenance:
@@ -436,6 +461,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--no-simplified", action="store_true")
     p.add_argument("--provenance", metavar="FILE",
                    help="also write, per tracksV2 note, its source measure/staff/voice/chord/note (JSON lines)")
+    p.add_argument("--parts", metavar="FILE",
+                   help="also write Note Waterfall's parts file (original / simplified piano part, orchestra)")
     p.set_defaults(fn=cmd_convert)
 
     p = sub.add_parser("hands", help="hand edits recorded on the headset -> the scores (pull | review | apply)")

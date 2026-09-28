@@ -12,6 +12,7 @@ are preserved on purpose are marked ``LEGACY``.
 from __future__ import annotations
 
 import bisect
+import dataclasses
 import os
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -35,6 +36,7 @@ class Note:
     # provenance (build_song(provenance=...)): the score Note played and the note_on velocity
     src: Any = field(default=None, repr=False, compare=False)
     raw_velocity: int = field(default=0, repr=False, compare=False)
+    track: int = field(default=-1, repr=False, compare=False)     # MIDI track = content staff of the score
 
 
 @dataclass
@@ -297,9 +299,28 @@ def piano_hand(piano_tracks: List[Tuple[int, int]], track_idx: int, track_type: 
     return (0 if same_type.index(track_idx) == 0 else 1) if len(same_type) >= 2 else 0
 
 
-def get_notes(mid: MidiFile, orchestra_mode: bool, simplified_mode: bool,
-              merge_measures: Dict[str, Set[int]],
-              accented_notes: Dict[Tuple[int, int, int, Tuple[int, ...]], List[int]]) -> Tuple[List[Track], float]:
+@dataclass
+class NoteStreams:
+    """The notes of a render, per source, before PianoVision merges them into two hands.
+
+    ``primary`` / ``simplified`` / ``orchestral``: the piano staves named 'piano', 'piano-simplified' and
+    'piano-orchestral' ([right, left]); ``other_orchestra``: the other orchestra instruments, split into the
+    hands at middle C (collected even when orchestra mode is off: PianoVision's JSON then ignores them).
+    The Note objects are the ones PianoVision's JSON is built from."""
+    primary: List[List[Note]]
+    simplified: List[List[Note]]
+    orchestral: List[List[Note]]
+    other_orchestra: List[List[Note]]
+    measure_map: List[Dict[str, Any]]
+    get_measure_for_tick: Any
+    piano_tracks: List[Tuple[int, int]]
+    orchestra_tracks: List[Tuple[int, int]]     # (track index, program)
+    max_time_piano: float
+    max_time_orchestra: float
+    ticks_per_beat: int
+
+
+def note_streams(mid: MidiFile) -> NoteStreams:
     primary: List[List[Note]] = [[], []]
     simplified: List[List[Note]] = [[], []]
     orchestral: List[List[Note]] = [[], []]
@@ -312,7 +333,8 @@ def get_notes(mid: MidiFile, orchestra_mode: bool, simplified_mode: bool,
     measure_map = calculate_measure_map(mid)
     get_measure_for_tick = _measure_lookup(measure_map, tpb)
 
-    piano_tracks, orchestra_tracks = classify_tracks(mid, orchestra_mode)
+    # the piano tracks do not depend on orchestra mode; the orchestra tracks are all collected
+    piano_tracks, orchestra_tracks = classify_tracks(mid, True)
 
     # LEGACY: one active-note table shared by all piano tracks.
     active: Dict[Tuple[int, int], Note] = {}
@@ -331,7 +353,7 @@ def get_notes(mid: MidiFile, orchestra_mode: bool, simplified_mode: bool,
                 note = Note(midi=msg.note, time=t, velocity=msg.velocity / 127.0, duration=0, ticks=ticks,
                             duration_ticks=0, staff=hand_idx + 1,
                             group=get_measure_for_tick(ticks) - 1,
-                            src=getattr(msg, "src", None), raw_velocity=msg.velocity)
+                            src=getattr(msg, "src", None), raw_velocity=msg.velocity, track=track_idx)
                 target.append(note)
                 active[(msg.channel, msg.note)] = note
             elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
@@ -340,36 +362,53 @@ def get_notes(mid: MidiFile, orchestra_mode: bool, simplified_mode: bool,
                     note.duration = max(t - note.time, 0)
                     note.duration_ticks = max(ticks - note.ticks, 0)
 
-    if orchestra_mode:
-        active_orch: Dict[Tuple[int, int], Note] = {}
-        for track_idx, _ in orchestra_tracks:
-            ticks = 0
-            for msg in mid.tracks[track_idx]:
-                ticks += msg.time
-                t = seconds(ticks)
-                max_time = max(max_time, t)
-                if msg.channel is None:
-                    continue
-                if msg.type == 'note_on' and msg.velocity > 0:
-                    hand_idx = 0 if msg.note >= 60 else 1
-                    note = Note(midi=msg.note, time=t, velocity=msg.velocity / 127.0, duration=0, ticks=ticks,
-                                duration_ticks=0, staff=hand_idx + 1,
-                                group=get_measure_for_tick(ticks) - 1,
-                                src=getattr(msg, "src", None), raw_velocity=msg.velocity)
-                    other_orchestra[hand_idx].append(note)
-                    active_orch[(msg.channel, msg.note)] = note
-                elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
-                    note = active_orch.pop((msg.channel, msg.note), None)
-                    if note is not None:
-                        # LEGACY: no clamping of negative durations for orchestra notes
-                        note.duration = t - note.time
-                        note.duration_ticks = ticks - note.ticks
+    max_time_orch = 0.0
+    active_orch: Dict[Tuple[int, int], Note] = {}
+    for track_idx, _ in orchestra_tracks:
+        ticks = 0
+        for msg in mid.tracks[track_idx]:
+            ticks += msg.time
+            t = seconds(ticks)
+            max_time_orch = max(max_time_orch, t)
+            if msg.channel is None:
+                continue
+            if msg.type == 'note_on' and msg.velocity > 0:
+                hand_idx = 0 if msg.note >= 60 else 1
+                note = Note(midi=msg.note, time=t, velocity=msg.velocity / 127.0, duration=0, ticks=ticks,
+                            duration_ticks=0, staff=hand_idx + 1,
+                            group=get_measure_for_tick(ticks) - 1,
+                            src=getattr(msg, "src", None), raw_velocity=msg.velocity, track=track_idx)
+                other_orchestra[hand_idx].append(note)
+                active_orch[(msg.channel, msg.note)] = note
+            elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
+                note = active_orch.pop((msg.channel, msg.note), None)
+                if note is not None:
+                    # LEGACY: no clamping of negative durations for orchestra notes
+                    note.duration = t - note.time
+                    note.duration_ticks = ticks - note.ticks
 
-    result = merge_tracks(primary, simplified, orchestral, other_orchestra, measure_map, tpb,
+    return NoteStreams(primary, simplified, orchestral, other_orchestra, measure_map, get_measure_for_tick,
+                       piano_tracks, orchestra_tracks, max_time, max_time_orch, tpb)
+
+
+def _copy_hands(hands: List[List[Note]]) -> List[List[Note]]:
+    return [[dataclasses.replace(n) for n in hand] for hand in hands]
+
+
+def get_notes(mid: MidiFile, orchestra_mode: bool, simplified_mode: bool,
+              merge_measures: Dict[str, Set[int]],
+              accented_notes: Dict[Tuple[int, int, int, Tuple[int, ...]], List[int]],
+              streams: Optional[NoteStreams] = None) -> Tuple[List[Track], float]:
+    """The two hands of PianoVision's JSON (``streams``: :func:`note_streams` of ``mid``, when already made)."""
+    s = streams or note_streams(mid)
+    max_time = max(s.max_time_piano, s.max_time_orchestra) if orchestra_mode else s.max_time_piano
+    other_orchestra = s.other_orchestra if orchestra_mode else [[], []]
+
+    result = merge_tracks(s.primary, s.simplified, s.orchestral, other_orchestra, s.measure_map, s.ticks_per_beat,
                           simplified_mode, orchestra_mode, merge_measures)
 
     if accented_notes:
-        _apply_accents(result, accented_notes, get_measure_for_tick)
+        _apply_accents(result, accented_notes, s.get_measure_for_tick)
 
     final = [Track(notes=sorted(hand, key=lambda x: x.time)) for hand in result if hand]
     while len(final) < 2:
@@ -404,28 +443,38 @@ def _apply_accents(result: List[List[Note]], accented_notes, get_measure_for_tic
                     note.velocity = min(1.0, note.velocity * 1.2)
 
 
+def simplify_hands(primary: List[List[Note]], simplified: List[List[Note]], fast) -> List[List[Note]]:
+    """The simplified piano part: per hand and measure, the simplified staff's notes where it has any, else the
+    primary staff's (``fast``: tick -> measure number).  Without simplified notes: the primary hands (copies)."""
+    result = [primary[0].copy(), primary[1].copy()]
+    if not any(s for s in simplified if s):
+        return result
+    for hand_idx in (0, 1):
+        if not simplified[hand_idx]:
+            continue
+        prim_by_measure: Dict[int, List[Note]] = {}
+        for n in primary[hand_idx]:
+            prim_by_measure.setdefault(fast(n.ticks), []).append(n)
+        simp_by_measure: Dict[int, List[Note]] = {}
+        for n in simplified[hand_idx]:
+            simp_by_measure.setdefault(fast(n.ticks), []).append(n)
+        new_track = []
+        for m in sorted(set(prim_by_measure) | set(simp_by_measure)):
+            if simp_by_measure.get(m):
+                new_track.extend(simp_by_measure[m])
+            elif prim_by_measure.get(m):
+                new_track.extend(prim_by_measure[m])
+        result[hand_idx] = sorted(new_track, key=lambda n: n.ticks)
+    return result
+
+
 def merge_tracks(primary, simplified, orchestral, other_orchestra, measure_map, tpb,
                  simplified_mode: bool, orchestra_mode: bool, merge_measures) -> List[List[Note]]:
     fast = _measure_lookup(measure_map, tpb)
     result = [primary[0].copy(), primary[1].copy()]
 
-    if simplified_mode and any(s for s in simplified if s):
-        for hand_idx in (0, 1):
-            if not simplified[hand_idx]:
-                continue
-            prim_by_measure: Dict[int, List[Note]] = {}
-            for n in primary[hand_idx]:
-                prim_by_measure.setdefault(fast(n.ticks), []).append(n)
-            simp_by_measure: Dict[int, List[Note]] = {}
-            for n in simplified[hand_idx]:
-                simp_by_measure.setdefault(fast(n.ticks), []).append(n)
-            new_track = []
-            for m in sorted(set(prim_by_measure) | set(simp_by_measure)):
-                if simp_by_measure.get(m):
-                    new_track.extend(simp_by_measure[m])
-                elif prim_by_measure.get(m):
-                    new_track.extend(prim_by_measure[m])
-            result[hand_idx] = sorted(new_track, key=lambda n: n.ticks)
+    if simplified_mode:
+        result = simplify_hands(primary, simplified, fast)
 
     if orchestra_mode or any(merge_measures.values()):
         for hand_idx in (0, 1):
@@ -581,7 +630,8 @@ def create_measure_data(time_sigs, right_notes, left_notes, tempos):
 def build_song(mid: MidiFile, mscx_root: Optional[ET.Element], source_path: str,
                orchestra_mode: bool = True, simplified_mode: bool = True,
                legacy_metadata: bool = True,
-               provenance: Optional[Dict[str, List[Note]]] = None) -> Dict[str, Any]:
+               provenance: Optional[Dict[str, List[Note]]] = None,
+               parts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Assemble the PianoVision JSON document.
 
     ``mscx_root`` supplies title/composer, merge markers and accents; without
@@ -590,6 +640,8 @@ def build_song(mid: MidiFile, mscx_root: Optional[ET.Element], source_path: str,
     ``provenance``, when given, receives ``"right"`` and ``"left"``: the
     :class:`Note` behind every ``tracksV2`` note of that hand, in file order
     (``src`` is the score note when the MIDI came from the renderer with provenance).
+    ``parts``, when given, receives Note Waterfall's parts of the song (:func:`pianovision.parts.build_parts`:
+    ``"doc"``, ``"notes"``, ``"simplified_staff"``); the JSON is the same either way.
     """
     tempos = extract_tempo_events(mid)
     if mscx_root is not None:
@@ -602,7 +654,23 @@ def build_song(mid: MidiFile, mscx_root: Optional[ET.Element], source_path: str,
         merge_markers = {'right': set(), 'left': set()}
         accents = {}
 
-    tracks, song_length = get_notes(mid, orchestra_mode, simplified_mode, merge_markers, accents)
+    streams = note_streams(mid)
+    if parts is not None:
+        # copies of the notes, taken before PianoVision's accents change them in place
+        from .parts import build_parts
+        streams_copy = dataclasses.replace(streams, primary=_copy_hands(streams.primary),
+                                           simplified=_copy_hands(streams.simplified),
+                                           orchestral=_copy_hands(streams.orchestral),
+                                           other_orchestra=_copy_hands(streams.other_orchestra))
+        originals = {id(c): o for name in ("primary", "simplified", "orchestral", "other_orchestra")
+                     for hc, ho in zip(getattr(streams_copy, name), getattr(streams, name)) for c, o in zip(hc, ho)}
+    tracks, song_length = get_notes(mid, orchestra_mode, simplified_mode, merge_markers, accents, streams=streams)
+    if parts is not None:
+        pv_ids = {id(n) for t in tracks for n in t.notes}
+        # the copies of PianoVision's notes stand for them when telling merged orchestra notes
+        pv_copies = [[c for hand in (getattr(streams_copy, name)) for c in hand if id(originals[id(c)]) in pv_ids]
+                     for name in ("orchestral", "other_orchestra")]
+        parts.update(build_parts(streams_copy, accents, pv_copies))
     time_sigs = extract_time_signatures(mid)
     key_sigs = extract_key_signatures(mid)
     tracks_v2 = organize_tracks_v2(tracks, time_sigs, tempos, mid.ticks_per_beat)
