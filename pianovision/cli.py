@@ -266,6 +266,7 @@ def cmd_convert(args) -> int:
 
 def cmd_hands(args) -> int:
     import glob
+    import posixpath
     import shlex
     import subprocess
     from . import handedits as H
@@ -326,15 +327,24 @@ def cmd_hands(args) -> int:
                 if adb.serial:
                     argv += ["--serial", adb.serial]
                 for n in outs:
-                    argv += ["--only", n]
+                    argv += ["--only", H.glob_literal(n)]          # --only takes a glob
                 r = subprocess.run(argv)
                 if r.returncode != 0:
                     raise RuntimeError(f"{' '.join(argv[:2])} exited with {r.returncode}")
         else:
             _p("  (no [hands] waterfall_deploy command configured: Note Waterfall is not deployed)")
         if not args.no_archive and deploy_nw is not None:
+            by_name = {sc.name: sc for rv in reviews for sc in rv.sidecars}
+            songs_dir = posixpath.join(posixpath.dirname(device_dir.rstrip("/")), "Songs")
+
             def archive(names):           # only once Note Waterfall has the rebuilt songs
-                return H.archive_on_device(adb, device_dir, names, stamp)
+                md5 = {}
+                for n in names:
+                    song = by_name[n].song
+                    with open(lib.out_path(song), "rb") as f:
+                        md5[song] = H._md5(f.read())
+                ok = H.archivable(adb, device_dir, songs_dir, [by_name[n] for n in names], md5, log=_p)
+                return H.archive_on_device(adb, device_dir, ok, stamp)
     rep = H.apply_reviews(lib, reviews, yes=args.yes, deploy_pianovision=deploy_pv, deploy_waterfall=deploy_nw,
                           archive=archive)
     _list("declined", rep.declined)

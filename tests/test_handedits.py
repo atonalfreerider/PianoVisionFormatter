@@ -124,6 +124,14 @@ class SidecarTest(unittest.TestCase):
         self.assertEqual([(e.midi, e.votes) for e in sc.edits], [(62, 5)])
         self.assertEqual(len(sc.warnings), 3)
 
+    def test_fields_the_app_leaves_unknown_read_as_the_app_reads_them(self):
+        # The app writes measureInd -1 for a note without one and reads a missing/null occurrence as 0.
+        sc = H.parse_sidecar(json.dumps({"format": 1, "edits": [
+            dict(edit("left", 0, 60), measureInd=-1, occurrence=None), {"from": "left", "to": "right", "ticksStart": 0,
+                                                                        "midi": 62}]}).encode(), "a.hands.json")
+        self.assertEqual(sc.warnings, [])
+        self.assertEqual([(e.midi, e.occurrence, e.measure) for e in sc.edits], [(60, 0, None), (62, 0, None)])
+
     def test_garbage_is_an_error_not_an_exception(self):
         self.assertTrue(H.parse_sidecar(b"\xff\x00", "x.hands.json").error)
         self.assertTrue(H.parse_sidecar(b"[1, 2]", "x.hands.json").error)
@@ -334,6 +342,10 @@ class RepeatAndIdentityTest(Base):
         path = self.sidecar(lib, [edit("left", 0, 48, start=9.0), edit("left", 2 * Q, 55, start=1.0)], md5="0" * 32)
         rv = H.review_song(lib, self.name, [H.read_sidecar(path)])
         self.assertEqual([r.status for r in rv.results], ["stale", "move"])
+        # a note the app knew no measure for (measureInd -1) is not stale for that
+        start = next(n["start"] for n in H._flat(self.library_song(lib), "left") if n["ticksStart"] == 2 * Q and n["note"] == 55)
+        path = self.sidecar(lib, [edit("left", 2 * Q, 55, start=start, measureInd=-1)], md5="0" * 32)
+        self.assertEqual([r.status for r in H.review_song(lib, self.name, [H.read_sidecar(path)]).results], ["move"])
 
     def test_song_outside_the_library(self):
         lib = self.song(self.RH, self.LH)
@@ -394,6 +406,13 @@ class ApplyTest(Base):
         self.assertEqual(self.lib().build().written, [])
         again = self.review(self.lib(), [edit("left", 2 * Q, 64)])
         self.assertEqual(again.results[0].status, "already")
+
+    def test_a_sidecar_the_archive_step_keeps_is_reported(self):
+        lib, rv, _original = self.reviewed()
+        rep = H.apply_reviews(lib, [rv], yes=True, log=lambda *_: None, archive=lambda names: [])
+        self.assertEqual((rep.written, rep.archived), ([self.rel], []))
+        self.assertTrue(any(H.sidecar_name(self.name) in m and "stays on the headset" in m for m in rep.messages),
+                        rep.messages)
 
     def test_a_score_changed_since_the_review_is_left_alone(self):
         lib, rv, original = self.reviewed()
@@ -457,9 +476,16 @@ class FakeAdb:
     def connect(self):
         return self.serial
 
+    def md5s(self, directory):
+        return {os.path.basename(p): H._md5(b) for p, b in self.files.items()
+                if os.path.dirname(p) == directory.rstrip("/") and p.endswith(".json")}
+
     def run(self, *args, timeout=300):
         self.commands.append(args)
         if args[0] == "pull":
+            if args[1] not in self.files:
+                from pianovision.device import DeviceError
+                raise DeviceError(f"adb: {args[1]}: No such file or directory")
             with open(args[2], "wb") as f:
                 f.write(self.files[args[1]])
             return ""
@@ -488,6 +514,47 @@ class DeviceTest(unittest.TestCase):
             self.assertEqual(sorted(os.listdir(inbox)), ["a.hands.json"])
         finally:
             shutil.rmtree(inbox)
+
+    def test_a_failed_pull_leaves_the_inbox_as_it_was(self):
+        class Vanishing(FakeAdb):          # the app replaces the file while it is pulled
+            def run(self, *args, timeout=300):
+                if args[0] == "pull" and args[1].endswith("/b.hands.json"):
+                    self.files.pop(args[1])
+                return super().run(*args, timeout=timeout)
+
+        adb = Vanishing({f"{self.DIR}/a.hands.json": b"{}", f"{self.DIR}/b.hands.json": b"{}"})
+        inbox = tempfile.mkdtemp()
+        try:
+            with open(os.path.join(inbox, "old.hands.json"), "w") as f:
+                f.write("{}")
+            with self.assertRaises(Exception):
+                H.pull(adb, self.DIR, inbox)
+            self.assertEqual(sorted(os.listdir(inbox)), ["old.hands.json"])
+        finally:
+            shutil.rmtree(inbox)
+
+    def test_only_a_sidecar_unchanged_since_the_pull_whose_song_arrived_is_archived(self):
+        songs = os.path.dirname(self.DIR) + "/Songs"
+        reviewed = b'{"format": 1, "edits": []}'
+        adb = FakeAdb({f"{self.DIR}/a.hands.json": reviewed,         # as pulled
+                       f"{self.DIR}/b.hands.json": b'{"format": 1, "edits": [{}]}',   # HAND REC saved more since
+                       f"{self.DIR}/c.hands.json": reviewed,
+                       f"{songs}/a.json": b"A new", f"{songs}/b.json": b"B new", f"{songs}/c.json": b"C old"})
+        scs = [H.Sidecar(name=f"{x}.hands.json", song=f"{x}.json", md5=H._md5(reviewed)) for x in "abcd"]
+        built = {"a.json": H._md5(b"A new"), "b.json": H._md5(b"B new"), "c.json": H._md5(b"C new"),
+                 "d.json": H._md5(b"D new")}
+        logs = []
+        self.assertEqual(H.archivable(adb, self.DIR, songs, scs, built, log=logs.append), ["a.hands.json"])
+        self.assertIn("b.hands.json stays on the headset: it changed there since it was pulled", logs[0])
+        self.assertIn("c.hands.json stays on the headset: Note Waterfall does not have the rebuilt c.json", logs[1])
+        self.assertIn("d.hands.json stays on the headset: it changed there", logs[2])     # gone from the headset
+
+    def test_glob_literal(self):
+        import fnmatch
+        for name in ("chop_Nocturne.json", "a[1].json", "what?.json", "x*.json"):
+            self.assertTrue(fnmatch.fnmatchcase(name, H.glob_literal(name)))
+        self.assertFalse(fnmatch.fnmatchcase("a1.json", H.glob_literal("a[1].json")))
+        self.assertFalse(fnmatch.fnmatchcase("xyz.json", H.glob_literal("x*.json")))
 
     def test_archive_moves_into_applied(self):
         adb = FakeAdb({f"{self.DIR}/a.hands.json": b"{}"})

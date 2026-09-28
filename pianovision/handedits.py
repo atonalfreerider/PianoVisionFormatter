@@ -103,6 +103,7 @@ class Sidecar:
     warnings: List[str] = field(default_factory=list)
     error: str = ""                       # set when nothing could be read
     path: str = ""
+    md5: str = ""                         # of the file's bytes (the copy on the headset must still match to archive it)
 
 
 def sidecar_name(song: str) -> str:
@@ -166,15 +167,18 @@ def parse_sidecar(data: bytes, name: str = "") -> Sidecar:
             sc.warnings.append(f"edit {i}: not an object")
             continue
         fr, to = _hand(e.get("from")), _hand(e.get("to"))
-        tk, midi, occ = _int(e.get("ticksStart")), _int(e.get("midi")), _int(e.get("occurrence", 0))
+        # as the app reads it: a missing (or null) occurrence is the first, a negative measureInd is unknown
+        occ = 0 if e.get("occurrence") is None else _int(e.get("occurrence"))
+        tk, midi = _int(e.get("ticksStart")), _int(e.get("midi"))
         if fr is None or to is None or tk is None or midi is None or occ is None or not 0 <= midi <= 127 \
                 or occ < 0:
             sc.warnings.append(f"edit {i}: unreadable ({json.dumps(e)[:80]})")
             continue
         start = e.get("start")
+        measure = _int(e.get("measureInd"))
         he = HandEdit(fr, to, tk, midi, occ,
                       start=float(start) if isinstance(start, (int, float)) and not isinstance(start, bool) else None,
-                      measure=_int(e.get("measureInd")), votes=_int(e.get("votes")) or 0,
+                      measure=measure if measure is not None and measure >= 0 else None, votes=_int(e.get("votes")) or 0,
                       against=_int(e.get("against")) or 0)
         if he.key() in latest:
             sc.warnings.append(f"edit {i}: the note is listed twice; the later edit wins")
@@ -196,6 +200,7 @@ def read_sidecar(path: str) -> Sidecar:
         return Sidecar(name=os.path.basename(path), song=song_of_sidecar(path), error=str(e), path=path)
     sc = parse_sidecar(data, os.path.basename(path))
     sc.path = path
+    sc.md5 = _md5(data)
     return sc
 
 
@@ -1946,18 +1951,49 @@ def _structure_problems(old: Score, new: Score) -> List[str]:
 
 def pull(adb, device_dir: str, inbox: str) -> List[str]:
     """Copy the sidecars (not ``applied/``) from the headset into ``inbox``; earlier copies there
-    are replaced.  Returns the file names."""
+    are replaced, but only once every file arrived (a failed pull leaves the inbox as it was).
+    Returns the file names."""
     adb.connect()
     d = shlex.quote(device_dir)
     out = adb.run("shell", f"cd {d} 2>/dev/null && for f in *{SIDECAR_EXT}; do [ -f \"$f\" ] && echo \"$f\"; done; true")
     names = [ln.strip() for ln in out.splitlines() if ln.strip().endswith(SIDECAR_EXT)]
     os.makedirs(inbox, exist_ok=True)
-    for f in os.listdir(inbox):
-        if f.endswith(SIDECAR_EXT):
-            os.remove(os.path.join(inbox, f))
-    for n in names:
-        adb.run("pull", f"{device_dir.rstrip('/')}/{n}", os.path.join(inbox, n))
+    staging = tempfile.mkdtemp(prefix=".pull-", dir=inbox)
+    try:
+        for n in names:
+            adb.run("pull", f"{device_dir.rstrip('/')}/{n}", os.path.join(staging, n))
+        for f in os.listdir(inbox):
+            if f.endswith(SIDECAR_EXT):
+                os.remove(os.path.join(inbox, f))
+        for n in names:
+            os.replace(os.path.join(staging, n), os.path.join(inbox, n))
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
     return names
+
+
+def glob_literal(name: str) -> str:
+    """A glob (fnmatch) that matches exactly ``name`` (Tools/deploy_songs.py --only takes globs)."""
+    return "".join(f"[{c}]" if c in "[]*?" else c for c in name)
+
+
+def archivable(adb, device_dir: str, songs_dir: str, sidecars: Sequence[Sidecar], song_md5: Dict[str, str],
+               log: Callable[[str], None] = lambda s: None) -> List[str]:
+    """Names of the sidecars that may go to ``applied/``: the copy on the headset is still the one
+    that was reviewed (HAND REC saved nothing new since the pull: those edits would be lost), and
+    Note Waterfall's copy of the song (``songs_dir``) is the rebuilt one (``song_md5``: song file
+    name -> md5), so the app plays the moved notes from the song itself once the sidecar is gone."""
+    on_device = adb.md5s(device_dir)
+    songs = adb.md5s(songs_dir)
+    ok: List[str] = []
+    for sc in sidecars:
+        if not sc.md5 or on_device.get(sc.name) != sc.md5:
+            log(f"  {sc.name} stays on the headset: it changed there since it was pulled (pull and review again)")
+        elif not song_md5.get(sc.song) or songs.get(sc.song) != song_md5[sc.song]:
+            log(f"  {sc.name} stays on the headset: Note Waterfall does not have the rebuilt {sc.song} yet")
+        else:
+            ok.append(sc.name)
+    return ok
 
 
 def archive_on_device(adb, device_dir: str, names: List[str], stamp: str) -> List[str]:
@@ -2132,6 +2168,9 @@ def apply_reviews(lib, reviews: Sequence[ScoreReview], yes: bool = False,
             rep.archived = archive(names)
         except Exception as e:
             rep.messages.append(f"archiving the sidecars failed: {e}")
+        for n in names:
+            if n not in rep.archived:
+                rep.messages.append(f"{n} stays on the headset: it was not moved to {APPLIED_DIR}/")
         for n in kept:
             rep.messages.append(f"{n} stays on the headset: some of its edits were not applied")
     return rep

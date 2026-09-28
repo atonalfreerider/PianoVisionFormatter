@@ -76,6 +76,7 @@ command writes those changes into the MuseScore scores:
 
 ```bash
 python3 -m pianovision hands pull      # copy the sidecars from the Quest into PianoVision/.hands/inbox
+                                       # (the inbox is replaced only once every file arrived)
 python3 -m pianovision hands review    # what would change, per score (writes nothing)
 python3 -m pianovision hands apply     # the same, then a y/N per score
 ```
@@ -90,8 +91,10 @@ refuses). For each approved score it
 4. deploys the song to PianoVision and to Note Waterfall (`[hands] waterfall_deploy`,
    run as `<command> --library … --only <song>…`), and
 5. moves the sidecar to `HandEdits/applied/` on the headset, once every edit in it is
-   in the score. A sidecar with edits that could not be written stays where it is, so
-   the app keeps playing those notes in the recorded hand.
+   in the score, the copy on the headset is still the one that was pulled (HAND REC saved
+   nothing new since: those edits would be lost) and Note Waterfall's copy of the song is
+   the rebuilt one (md5 over adb). Any other sidecar stays where it is, so the app keeps
+   playing those notes in the recorded hand; `pull` and `apply` again.
 
 `--no-deploy` stops after the build; `--no-archive` leaves the sidecars on the headset.
 Close the scores in MuseScore before `apply`, or a later save there overwrites the edit.
