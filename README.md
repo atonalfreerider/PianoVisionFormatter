@@ -26,7 +26,7 @@ orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits). Th
 | command | what it does |
 |---|---|
 | `status [--device]` | scores to render/retire, invalid files, orphans, title changes; with `--device`, what the Quest is missing |
-| `build [--dry-run] [--force [SCORE…]] [--prune-orphans]` | incremental render of the library into `PianoVision/` |
+| `build [--dry-run] [--force [SCORE…]] [--prune-orphans] [--report FILE]` | incremental render of the library into `PianoVision/`; `--report` also writes what it did (failed scores, ...) as JSON |
 | `deploy [--dry-run] [--force-push] [--prune [-y]]` | adb push of changed files, verified by md5 |
 | `sync` | `build` then `deploy` (accepts the deploy options) |
 | `watch [--deploy] [--interval S]` | poll the scores folder and run `build` (and `deploy`) after each save |
@@ -34,6 +34,55 @@ orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits). Th
 | `rename [SCORE…] [--dry-run]` | rename outputs after a score's title/composer was edited; named scores also get the current naming rules (e.g. MuseScore 3 scores that the old scripts named after the file) |
 | `convert SCORE.mscz [-o out.json] [--midi out.mid] [--provenance notes.jsonl] [--parts out.parts.json]` | one-off conversion, no library bookkeeping; `--provenance` also writes, per note of the song, the measure, staff, voice, chord and note element it comes from; `--parts` writes Note Waterfall's parts file |
 | `hands pull\|review\|apply [FILE…]` | hand edits recorded with Note Waterfall's HAND REC → the scores, after approval (see below) |
+| `gui [--read-only] [--no-device]` | the Piano Library window (see below) |
+
+## Piano Library (the window)
+
+Double-click **Piano Library** on the desktop (or find it in Activities) for a window that does
+the everyday work without a terminal. It is `python3 -m pianovision gui`; GTK 4 with libadwaita
+(plain GTK 4 when libadwaita is missing), stdlib + PyGObject only.
+
+* **Library:** every score with its composer, title, song file and status (up to date, new,
+  edited, moved, output missing, parts to write, failed, pinned, changed outside, to retire,
+  excluded, not a score), whether it has a simplified part and orchestra, and whether PianoVision
+  and Note Waterfall on the headset have the current version (md5 over adb; Note Waterfall also
+  needs the current parts file). Search box (every word must match composer, title, file or status)
+  and a filter (needs a build, not current in either app, problems, title changed, ...). The header
+  counts everything and shows the headset: connected / unauthorized / offline, asleep or awake, free
+  space. adb is polled every 4 s while the window is open; the push buttons are off without a headset.
+* **Build** runs `build` (render new and edited scores, write the parts files, retire removed scores
+  to the attic) with its output in the log pane; Cancel stops it. Failed scores stay marked
+  "failed" (from `build --report`, kept in `PianoVision/.gui/last_build.json`) until they are saved
+  again.
+* **Push to headset…** first reads the headset and shows, per app, what would be pushed; tick
+  PianoVision, Note Waterfall or both (the ☰ menu also has each on its own). PianoVision uses
+  `deploy`'s plan and push (md5-verified); Note Waterfall runs its `Tools/deploy_songs.py`
+  (songs, parts files, audio, portraits). Files this tool deployed earlier that left the library
+  are listed and kept; ticking "also delete" opens a second dialog listing exactly the files that
+  will be deleted from the headset (Note Waterfall's list is checked again right before it runs).
+* **Sync** = Build, then the same push dialog for both apps.
+* **Rename…** lists the songs `rename` would rename; songs whose score title changed since they
+  were named are ticked (e.g. after shortening the paragraph-long "Une nuit sur le Mont Chauve…"
+  subtitle in MuseScore and building). Others (newer naming rules only) are listed unticked.
+* **Orphans & strays:** songs no score makes any more (**Retire orphans…** moves exactly the listed
+  files to `.attic/<date>/`, nothing is deleted), stray `.mid` files, files that need a look.
+* **Hand edits:** Pull from headset, Review (per score: measure and beat, pitch, from → to hand,
+  status, and the conflicts and skipped edits with their reasons), and **Apply…**, which is
+  `hands apply` with the question asked in a dialog for every score (Skip / Overwrite score): the
+  same backup to the attic, verified rebuild, deploy to both apps and archiving of the hand-edit
+  files on the headset. Without a headset the scores are rebuilt but not pushed.
+* Score rows: **Open in MuseScore** (double-click; `mscore4portable` / `mscore` from the PATH or
+  `~/.local/bin`), **Show score file**, **Show song file**.
+
+Everything slow runs in the background with a progress bar; errors come up as a dialog. Options:
+`gui --read-only` (look only: every action that writes is off), `--no-device` (no adb at all),
+and the usual `--config` / `--scores` / `--output` before `gui`.
+
+The launcher is installed by `desktop/install-launcher.sh`: `~/Desktop/Piano Library.desktop` and
+`~/.local/share/applications/org.pianovision.Library.desktop` (both executable and marked
+trusted with `gio set … metadata::trusted true`, so a double-click starts it), the icon in
+`~/.local/share/icons/hicolor/scalable/apps/`. Both run `desktop/piano-library.sh`, which logs to
+`~/.cache/piano-library/launcher.log` and shows a dialog if the window cannot start.
 
 ## How the library is kept organised
 
@@ -205,6 +254,9 @@ pianovision/        the package (stdlib only)
   calibrate.py        compatibility-knob search used by verify --calibrate
   handedits.py        hand edits from Note Waterfall -> the scores (hands pull/review/apply)
   cli.py              python -m pianovision
+  gui.py              the Piano Library window (GTK 4 / libadwaita)
+  guimodel.py         what the window shows and does, without GTK (statuses, push plans, device status)
+desktop/            piano-library.sh (launcher), install-launcher.sh, the icon
 pianovision.toml    settings
 PianoVision/        generated library (git-ignored): *.json, .manifest.json, .attic/, NoteWaterfall/*.parts.json
 ```

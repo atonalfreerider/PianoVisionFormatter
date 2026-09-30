@@ -9,6 +9,7 @@
     rename    re-name outputs after score titles were edited
     convert   one .mscz -> .json (no library, no manifest)
     hands     hand edits recorded on the headset -> the scores (pull | review | apply)
+    gui       the Piano Library window (library, build, push to the headset, hand edits)
 """
 
 from __future__ import annotations
@@ -120,11 +121,37 @@ def _print_build(rep, dry: bool, lib: Optional[Library] = None) -> None:
         _print_parts_summary(lib.parts_summary())
 
 
+def _write_report(path: Optional[str], lib: Library, rep) -> None:
+    """``--report FILE``: what the build did, as JSON (read by the GUI to show failed scores)."""
+    if not path:
+        return
+    import json
+    failed = []
+    for rel, err in rep.failed:
+        try:
+            st = os.stat(os.path.join(lib.cfg.scores, rel))
+            mtime, size = st.st_mtime, st.st_size
+        except OSError:
+            mtime = size = None
+        failed.append({"rel": rel, "error": err, "mtime": mtime, "size": size})
+    doc = {"time": time.strftime("%Y-%m-%dT%H:%M:%S"), "failed": failed,
+           "written": [{"rel": r, "output": o, "why": w} for r, o, w in rep.written],
+           "retired": [{"rel": r, "output": o, "why": w} for r, o, w in rep.retired],
+           "parts": list(rep.parts)}
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=1, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
 def cmd_build(args) -> int:
     lib = _library(args)
     rep = lib.build(force=args.force is not None, only=args.force or None, dry_run=args.dry_run,
                     prune_orphans=args.prune_orphans, jobs=args.jobs)
     _print_build(rep, args.dry_run, lib)
+    if not args.dry_run:
+        _write_report(args.report, lib, rep)
     return 1 if rep.failed else 0
 
 
@@ -174,6 +201,7 @@ def cmd_sync(args) -> int:
     lib = _library(args)
     rep = lib.build(jobs=args.jobs)
     _print_build(rep, False, lib)
+    _write_report(args.report, lib, rep)
     rc = _deploy(lib, args)
     return rc or (1 if rep.failed else 0)
 
@@ -291,11 +319,8 @@ def cmd_convert(args) -> int:
 
 def cmd_hands(args) -> int:
     import glob
-    import posixpath
-    import shlex
-    import subprocess
     from . import handedits as H
-    from .device import Adb, DeviceError, execute_deploy, plan_deploy
+    from .device import Adb, DeviceError
     lib = _library(args)
     serial = args.serial or lib.cfg.serial
     device_dir = args.device_dir or lib.cfg.hands_dir
@@ -335,41 +360,9 @@ def cmd_hands(args) -> int:
         _p("refusing to overwrite scores without a terminal to ask; pass --yes")
         return 1
     stamp = time.strftime("%Y-%m-%d_%H%M%S")
-    deploy_pv = deploy_nw = archive = None
-    if not args.no_deploy:
-        def deploy_pv(outs):
-            import dataclasses
-            plan = plan_deploy(lib, adb)
-            plan = dataclasses.replace(plan, push=[n for n in plan.push if n in outs],
-                                       local={n: h for n, h in plan.local.items() if n in outs})
-            execute_deploy(lib, adb, plan)
-            _p(f"  PianoVision: {len(plan.push)} song(s) pushed")
-
-        cmd = args.waterfall_deploy if args.waterfall_deploy is not None else lib.cfg.waterfall_deploy
-        if cmd:
-            def deploy_nw(outs):
-                argv = shlex.split(cmd) + ["--library", lib.out]
-                if adb.serial:
-                    argv += ["--serial", adb.serial]
-                for n in outs:
-                    argv += ["--only", H.glob_literal(n)]          # --only takes a glob
-                r = subprocess.run(argv)
-                if r.returncode != 0:
-                    raise RuntimeError(f"{' '.join(argv[:2])} exited with {r.returncode}")
-        else:
-            _p("  (no [hands] waterfall_deploy command configured: Note Waterfall is not deployed)")
-        if not args.no_archive and deploy_nw is not None:
-            by_name = {sc.name: sc for rv in reviews for sc in rv.sidecars}
-            songs_dir = posixpath.join(posixpath.dirname(device_dir.rstrip("/")), "Songs")
-
-            def archive(names):           # only once Note Waterfall has the rebuilt songs
-                md5 = {}
-                for n in names:
-                    song = by_name[n].song
-                    with open(lib.out_path(song), "rb") as f:
-                        md5[song] = H._md5(f.read())
-                ok = H.archivable(adb, device_dir, songs_dir, [by_name[n] for n in names], md5, log=_p)
-                return H.archive_on_device(adb, device_dir, ok, stamp)
+    deploy_pv, deploy_nw, archive = hands_callbacks(
+        lib, adb, device_dir, reviews, stamp, deploy=not args.no_deploy, archive=not args.no_archive,
+        waterfall_deploy=args.waterfall_deploy)
     rep = H.apply_reviews(lib, reviews, yes=args.yes, deploy_pianovision=deploy_pv, deploy_waterfall=deploy_nw,
                           archive=archive)
     _list("declined", rep.declined)
@@ -377,16 +370,77 @@ def cmd_hands(args) -> int:
     _list("backups", rep.backups)
     _list("songs rebuilt", rep.built)
     _list("hand-edit files moved to applied/ on the headset", rep.archived)
-    if rep.archived:                          # the local copies follow
-        done = os.path.join(lib.out, ".hands", "applied", stamp)
-        os.makedirs(done, exist_ok=True)
-        for n in rep.archived:
-            if os.path.exists(os.path.join(inbox, n)):
-                os.replace(os.path.join(inbox, n), os.path.join(done, n))
+    hands_archive_local(lib, inbox, rep.archived, stamp)
     _list("FAILED", [f"{r}: {e}" for r, e in rep.failed], 50)
     for m in rep.messages:
         _p(m)
     return 1 if rep.failed else 0
+
+
+def hands_callbacks(lib: Library, adb, device_dir: str, reviews, stamp: str, deploy: bool = True,
+                    archive: bool = True, waterfall_deploy: Optional[str] = None, run=None):
+    """The deploy / archive steps of ``hands apply`` (shared with the GUI): returns
+    ``(deploy_pianovision, deploy_waterfall, archive)`` for :func:`handedits.apply_reviews`, each
+    None when skipped.  ``run`` runs Note Waterfall's deploy command (default: subprocess.run)."""
+    import posixpath
+    import shlex
+    import subprocess
+    from . import handedits as H
+    from .device import execute_deploy, plan_deploy
+    deploy_pv = deploy_nw = archive_fn = None
+    if not deploy:
+        return deploy_pv, deploy_nw, archive_fn
+
+    def deploy_pv(outs):
+        import dataclasses
+        plan = plan_deploy(lib, adb)
+        plan = dataclasses.replace(plan, push=[n for n in plan.push if n in outs],
+                                   local={n: h for n, h in plan.local.items() if n in outs})
+        execute_deploy(lib, adb, plan)
+        _p(f"  PianoVision: {len(plan.push)} song(s) pushed")
+
+    cmd = waterfall_deploy if waterfall_deploy is not None else lib.cfg.waterfall_deploy
+    if cmd:
+        def deploy_nw(outs):
+            argv = shlex.split(cmd) + ["--library", lib.out]
+            if adb.serial:
+                argv += ["--serial", adb.serial]
+            for n in outs:
+                argv += ["--only", H.glob_literal(n)]          # --only takes a glob
+            r = (run or subprocess.run)(argv)
+            if r.returncode != 0:
+                raise RuntimeError(f"{' '.join(argv[:2])} exited with {r.returncode}")
+    else:
+        _p("  (no [hands] waterfall_deploy command configured: Note Waterfall is not deployed)")
+    if archive and deploy_nw is not None:
+        by_name = {sc.name: sc for rv in reviews for sc in rv.sidecars}
+        songs_dir = posixpath.join(posixpath.dirname(device_dir.rstrip("/")), "Songs")
+
+        def archive_fn(names):           # only once Note Waterfall has the rebuilt songs
+            md5 = {}
+            for n in names:
+                song = by_name[n].song
+                with open(lib.out_path(song), "rb") as f:
+                    md5[song] = H._md5(f.read())
+            ok = H.archivable(adb, device_dir, songs_dir, [by_name[n] for n in names], md5, log=_p)
+            return H.archive_on_device(adb, device_dir, ok, stamp)
+    return deploy_pv, deploy_nw, archive_fn
+
+
+def hands_archive_local(lib: Library, inbox: str, archived, stamp: str) -> None:
+    """The local copies of sidecars archived on the headset follow them to .hands/applied/<stamp>."""
+    if not archived:
+        return
+    done = os.path.join(lib.out, ".hands", "applied", stamp)
+    os.makedirs(done, exist_ok=True)
+    for n in archived:
+        if os.path.exists(os.path.join(inbox, n)):
+            os.replace(os.path.join(inbox, n), os.path.join(done, n))
+
+
+def cmd_gui(args) -> int:
+    from .gui import run_gui
+    return run_gui(args)
 
 
 # ------------------------------------------------------------------------------
@@ -419,6 +473,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="re-render these scores (or all, with no names) even if unchanged")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--prune-orphans", action="store_true", help="move outputs without a score to the attic")
+    p.add_argument("--report", metavar="FILE", help="also write what the build did (failed scores...) as JSON")
     jobs(p)
     p.set_defaults(fn=cmd_build)
 
@@ -428,6 +483,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     p = sub.add_parser("sync", help="build, then deploy")
     device(p)
+    p.add_argument("--report", metavar="FILE", help="also write what the build did as JSON")
     jobs(p)
     p.set_defaults(fn=cmd_sync)
 
@@ -484,6 +540,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="command that deploys songs to Note Waterfall (default: [hands] waterfall_deploy)")
     p.add_argument("-v", "--verbose", action="store_true")
     p.set_defaults(fn=cmd_hands)
+
+    p = sub.add_parser("gui", help="the Piano Library window: library, build, push to the headset, hand edits")
+    p.add_argument("--read-only", action="store_true",
+                   help="only show the library: every action that writes (build, push, rename, hand edits) is off")
+    p.add_argument("--no-device", action="store_true", help="do not talk to adb (no device status, no push)")
+    p.add_argument("--screenshot", metavar="PNG",
+                   help="after the first refresh, save the window as PNG and quit (used to check the launcher)")
+    p.set_defaults(fn=cmd_gui)
 
     args = ap.parse_args(argv)
     try:

@@ -569,11 +569,27 @@ class Library:
                 self._store(a.rel, scan.sources[a.rel], target, r, "rendered", a.reason, report)
 
         if prune_orphans:
-            for name in self.orphans():
-                self.to_attic(name, report)
-                m.retired.append({"source": None, "output": name, "date": _now(), "reason": "orphan output"})
-                report.retired.append(("", name, "orphan output (no score)"))
+            self._retire_orphans(self.orphans(), report)
         m.save()
+        return report
+
+    def _retire_orphans(self, names: List[str], report: Report) -> None:
+        for name in names:
+            self.to_attic(name, report)
+            self.manifest.retired.append({"source": None, "output": name, "date": _now(), "reason": "orphan output"})
+            report.retired.append(("", name, "orphan output (no score)"))
+
+    def retire_orphans(self, names: Optional[List[str]] = None) -> Report:
+        """Move orphan outputs (no score) to the attic, like ``build --prune-orphans`` without the
+        build.  ``names``: only these, and only those of them that are still orphans (a list that
+        was confirmed earlier never retires a file that has since got a score)."""
+        current = self.orphans()
+        todo = current if names is None else [n for n in current if n in set(names)]
+        report = Report()
+        self._attic_dir = None
+        self._retire_orphans(todo, report)
+        if todo:
+            self.manifest.save()
         return report
 
     def _store(self, rel: str, src: Source, name: str, r: dict, origin: str, why: str, report: Report,
@@ -640,18 +656,22 @@ class Library:
         raise KeyError(f"no single score matches {s!r}" + (f" ({len(hits)} matches)" if hits else ""))
 
     # -- renaming -------------------------------------------------------------------
-    def rename(self, only: Optional[List[str]] = None, dry_run: bool = False) -> List[Tuple[str, str, str]]:
+    def rename(self, only: Optional[List[str]] = None, dry_run: bool = False,
+               restrict: Optional[set] = None) -> List[Tuple[str, str, str]]:
         """Give outputs the name their score's current title implies (after title edits).
 
         Outputs adopted from the old scripts keep the old naming rules unless their
         scores are named explicitly in ``only``: renaming shows up on the headset as a
-        new song, so it is never done wholesale because the rules improved."""
+        new song, so it is never done wholesale because the rules improved.
+        ``restrict`` (score rels) renames only those of the scores a plain ``rename`` would."""
         from .convert import output_name
         m = self.manifest
         rels = sorted(m.entries)
         if only:
             scan = scan_library(self.cfg.scores)
             rels = [self._resolve_rel(o, scan) for o in only]
+        if restrict is not None:
+            rels = [r for r in rels if r in restrict]
         taken = set(m.outputs()) | set(self.output_files())
         done = []
         for rel in rels:
