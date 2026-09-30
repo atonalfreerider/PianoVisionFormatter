@@ -239,7 +239,16 @@ def format_output_filename(title: str, artist: str, file_path: str) -> str:
     if not title or title.isspace():
         title = os.path.splitext(os.path.basename(file_path))[0]
     formatted_title = re.sub(r'[^a-zA-Z0-9\s]', '', title).strip().replace(' ', '_')
+    if len(formatted_title) > MAX_TITLE_CHARS:
+        # A title can be a whole paragraph (Night on Bald Mountain's programme): keep the file name well under the
+        # 255-byte limit (plus ".tmp" and ".parts.json"), cut at a word.
+        cut = formatted_title[:MAX_TITLE_CHARS]
+        formatted_title = (cut.rsplit('_', 1)[0] if '_' in cut[MAX_TITLE_CHARS // 2:] else cut).rstrip('_')
     return f"{auth}_{formatted_title}.json"
+
+
+MAX_TITLE_CHARS = 100
+"""Longest title part of an output name (the longest existing one is 93)."""
 
 
 _DURATION_MAP = {"whole": 4, "half": 2, "quarter": 1}
