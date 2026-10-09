@@ -208,6 +208,7 @@ orchestra on its own, so `build` also writes, for every song, a parts file:
 ```
 {"format": 1, "song": "<song>.json", "songMd5": "<md5 of that file>", "scoreContent": "<sha256>",
  "resolution": 480, "simplified": true, "orchestra": "piano-orchestral",
+ "markers": [{"time": 12.5, "text": "Più mosso", "kind": "tempo", "measure": 17}, …],
  "parts": {"original":   {"right": [NOTE…], "left": [NOTE…]},
            "simplified": {"right": […], "left": […]},      # only when the score has simplified staves
            "orchestra":  {"right": […], "left": […]}}}
@@ -225,6 +226,21 @@ the score. A library built before parts existed gets them on the next `build` wi
 JSON being rewritten; `status` and `build` print how many scores have a simplified part and
 orchestra notes, `verify` also compares the parts files, `convert --parts FILE` writes one.
 Note Waterfall's `Tools/deploy_songs.py` pushes them next to the songs.
+
+**Markers** (`pianovision/markers.py`): the score's key moments for Note Waterfall's song
+scrubber (chapters) and the small text falling with its notes, in time order. `time` is on the
+notes' clock (same tempo map, pauses and fermatas; repeats and jumps unrolled, so a mark in a
+repeated passage appears once per pass), `measure` the score's 1-based measure number, `kind`
+one of `rehearsal` (rehearsal marks), `section` ("Intro", "Cadenza", "Theme", a coda sign),
+`tempo` (a new tempo in words: "Andante", "a tempo", "Più mosso"; bare metronome marks are
+not kept), `gradual` ("rit.", "accel.": a gradual tempo change line or words), `expression`
+("dolce", "con brio") and `text` (other system or piano-staff text). Left out: invisible
+texts, dynamics (`p`, `cresc.`), the `merge` / `end merge` control texts, harp pedal and chord
+names, orchestra / hand / articulation / pedal directions (`div.`, `L.H.`, `ten.`, `Ped.`),
+instrument cues and the orchestra staves' texts, jumps (D.S., segno, fine); the same text at
+one moment is kept once. 83 of the library's 144 songs have markers. Parts files written
+before markers existed are rewritten by the next `build` (the manifest records the parts
+revision; the PianoVision JSON is not touched).
 
 ## Fidelity
 
@@ -248,6 +264,7 @@ pianovision/        the package (stdlib only)
   repeats.py tempo.py velocity.py harmony.py rhythm.py navigate.py cxxsort.py
   pvjson.py           PianoVision JSON builder (port of midi_to_json.py, output byte-identical)
   parts.py            Note Waterfall's parts files (original / simplified piano part, orchestra)
+  markers.py          the parts files' markers (rehearsal marks, sections, tempo words) from the score's texts
   convert.py          one score -> JSON
   library.py          manifest, incremental build, adoption of existing outputs
   device.py           adb deploy

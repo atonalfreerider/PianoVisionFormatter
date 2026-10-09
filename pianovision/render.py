@@ -1429,6 +1429,9 @@ class Renderer:
                                     ins(ti, pm.tick_with_pauses(ticks(seg.tick) + off), Msg("marker", text=_midi_text(text)))
 
         mf = MidiFile(ticks_per_beat=480)
+        # the score's texts on the same unrolled, paused timeline, for Note Waterfall's markers (pianovision.markers)
+        from .markers import collect_score_texts
+        mf.annotations = collect_score_texts(score, self.repeat_list, pm)
         for track in tracks:
             track.sort(key=lambda x: x[0])
             msgs = []

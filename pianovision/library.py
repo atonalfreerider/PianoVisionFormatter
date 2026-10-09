@@ -335,17 +335,18 @@ class Library:
     def _parts_current(self, e: dict) -> bool:
         """The entry's parts file is there, of the current format, for the current score and output."""
         from .convert import file_hash
-        from .parts import PARTS_FORMAT
+        from .parts import PARTS_FORMAT, PARTS_REVISION
         p = e.get("parts")
         path = self.parts_path(e["output"])
-        return (bool(p) and p.get("format") == PARTS_FORMAT and p.get("content") == e.get("content")
+        return (bool(p) and p.get("format") == PARTS_FORMAT and p.get("revision", 1) == PARTS_REVISION
+                and p.get("content") == e.get("content")
                 and p.get("output_sha256") == e.get("output_sha256") and os.path.exists(path)
                 and file_hash(path) == p.get("sha256"))
 
     def _write_parts(self, rel: str, doc: Optional[dict], song_data: bytes, report: Report) -> None:
         """Writes the parts file of the entry ``rel`` (after its output was stored) and records it."""
         from .convert import bytes_hash
-        from .parts import parts_bytes, parts_rel, parts_stats
+        from .parts import PARTS_REVISION, parts_bytes, parts_rel, parts_stats
         e = self.manifest.entries[rel]
         if doc is None:
             return
@@ -362,7 +363,7 @@ class Library:
         if path is not None:
             atomic_write(path, data)
             report.parts.append(parts_rel(e["output"]))
-        e["parts"] = {"format": doc["format"], "sha256": bytes_hash(data), "content": e.get("content"),
+        e["parts"] = {"format": doc["format"], "revision": PARTS_REVISION, "sha256": bytes_hash(data), "content": e.get("content"),
                       "output_sha256": e.get("output_sha256"), **parts_stats(doc)}
 
     def parts_summary(self) -> dict:

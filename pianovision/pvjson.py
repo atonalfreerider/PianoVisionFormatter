@@ -671,6 +671,16 @@ def build_song(mid: MidiFile, mscx_root: Optional[ET.Element], source_path: str,
         pv_copies = [[c for hand in (getattr(streams_copy, name)) for c in hand if id(originals[id(c)]) in pv_ids]
                      for name in ("orchestral", "other_orchestra")]
         parts.update(build_parts(streams_copy, accents, pv_copies))
+        # the score's rehearsal marks, sections and tempo words (pianovision.markers), on the notes' clock
+        from .markers import build_markers
+        piano_staves = [t for t, kind in classify_tracks(mid, True)[0] if kind in (TRACK_PRIMARY, TRACK_SIMPLIFIED)]
+        markers = build_markers(getattr(mid, "annotations", None) or [], TempoIndex(tempos, mid.ticks_per_beat),
+                                piano_staves)
+        doc = parts["doc"]
+        # after the header, before the (long) note streams
+        parts["doc"] = {k: v for k, v in doc.items() if k != "parts"}
+        parts["doc"]["markers"] = markers
+        parts["doc"]["parts"] = doc["parts"]
     time_sigs = extract_time_signatures(mid)
     key_sigs = extract_key_signatures(mid)
     tracks_v2 = organize_tracks_v2(tracks, time_sigs, tempos, mid.ticks_per_beat)

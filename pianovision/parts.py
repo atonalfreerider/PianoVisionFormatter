@@ -15,11 +15,16 @@ Format 1 (UTF-8 JSON, ``json.dumps`` compact separators, keys in this order)::
      "resolution": 480,
      "simplified": true,                      # the score has simplified piano staves with notes
      "orchestra": "piano-orchestral",         # "piano-orchestral" | "instruments" | "none"
+     "markers": [{"time": 12.5, "text": "Più mosso", "kind": "tempo", "measure": 17}, ...],
      "parts": {
        "original":   {"right": [NOTE...], "left": [NOTE...]},   # the piano staves ('piano')
        "simplified": {"right": [...], "left": [...]},           # only when "simplified": the simplified part
        "orchestra":  {"right": [...], "left": [...]}            # the orchestra arranged for piano
      }}
+
+``markers`` (revision 2, :data:`PARTS_REVISION`): the score's rehearsal marks, sections,
+tempo words, gradual tempo changes and expression texts on the song's clock, repeats unrolled, noise filtered
+(:mod:`pianovision.markers`); an empty list when the score has none.  Apps reading format 1 skip unknown keys.
 
 A NOTE carries the fields of a ``tracksV2`` note that Note Waterfall reads, with the same values PianoVision's
 JSON has for it: ``note`` (MIDI), ``ticksStart``, ``durationTicks``, ``start`` and ``duration`` (s),
@@ -55,6 +60,9 @@ from typing import Any, Dict, List, Optional
 from .pvjson import Note, NoteStreams, _apply_accents, _measure_lookup, simplify_hands
 
 PARTS_FORMAT = 1
+# Bumped when the parts file gains content an app of the same format skips if absent (2: "markers"); the manifest
+# records it, so the next build writes every parts file again (their PianoVision JSON stays byte for byte).
+PARTS_REVISION = 2
 PARTS_DIR = "NoteWaterfall"
 PARTS_EXT = ".parts.json"
 HANDS = ("right", "left")
@@ -151,7 +159,8 @@ def parts_bytes(doc: Dict[str, Any], song: str, song_data: bytes, score_content:
 def parts_stats(doc: Dict[str, Any]) -> Dict[str, Any]:
     """Counts for the manifest: notes per part, whether the score has a simplified part, the orchestra's source."""
     counts = {name: sum(len(v) for v in hands.values()) for name, hands in doc.get("parts", {}).items()}
-    return {"simplified": bool(doc.get("simplified")), "orchestra": doc.get("orchestra", "none"), "notes": counts}
+    return {"simplified": bool(doc.get("simplified")), "orchestra": doc.get("orchestra", "none"), "notes": counts,
+            "markers": len(doc.get("markers") or [])}
 
 
 def read_parts(path: str) -> Optional[dict]:

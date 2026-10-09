@@ -48,6 +48,9 @@ class Msg:
 class MidiFile:
     ticks_per_beat: int = 480
     tracks: List[List[Msg]] = field(default_factory=list)
+    # a render's score texts (pianovision.markers.ScoreText) for Note Waterfall's markers; not MIDI data, never
+    # written to a .mid (empty for a file read from disk)
+    annotations: list = field(default_factory=list, compare=False, repr=False)
 
 
 # --------------------------------------------------------------------------
