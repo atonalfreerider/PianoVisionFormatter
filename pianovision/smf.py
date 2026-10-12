@@ -51,6 +51,8 @@ class MidiFile:
     # a render's score texts (pianovision.markers.ScoreText) for Note Waterfall's markers; not MIDI data, never
     # written to a .mid (empty for a file read from disk)
     annotations: list = field(default_factory=list, compare=False, repr=False)
+    # a render's lyrics (pianovision.lyrics.LyricTimeline) for Note Waterfall's parts file; likewise not MIDI data
+    lyrics: Optional[object] = field(default=None, compare=False, repr=False)
 
 
 # --------------------------------------------------------------------------

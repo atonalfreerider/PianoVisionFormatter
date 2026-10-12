@@ -93,6 +93,9 @@ def _print_parts_summary(s: dict) -> None:
        f"{s['simplified']} with a simplified part, {s['orchestra']} with orchestra notes "
        f"({s['piano_orchestral']} piano-orchestral staves, {s['instruments']} orchestra instruments; "
        f"{s['orchestra_notes']} notes)")
+    if "lyrics" in s:
+        _p(f"lyrics on the notes: {s['lyrics']} scores ({s['lyrics_piano']} on piano staves, "
+           f"{s['lyrics_vocal']} on vocal staves)")
 
 
 def _print_build(rep, dry: bool, lib: Optional[Library] = None) -> None:

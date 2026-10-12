@@ -110,7 +110,8 @@ def convert_mscz(mscz_path: str, compat: Optional[Compat] = None, orchestra: boo
     compat = compat or Compat()
     root = score_root(mscz_path)
     score = read_score(mscz_path)
-    midi = render_score(score, compat, provenance=provenance)
+    # the parts' lyrics find the notes that sing them through the notes' provenance (the JSON is the same)
+    midi = render_score(score, compat, provenance=provenance or parts)
     prov: Optional[Dict[str, list]] = {} if provenance else None
     parts_out: Optional[dict] = {} if parts else None
     c = _finish(midi, root, mscz_path, orchestra, simplified, keep_midi, compat.metadata, prov,

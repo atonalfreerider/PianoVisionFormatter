@@ -678,10 +678,15 @@ def build_song(mid: MidiFile, mscx_root: Optional[ET.Element], source_path: str,
         piano_staves = [t for t, kind in classify_tracks(mid, True)[0] if kind in (TRACK_PRIMARY, TRACK_SIMPLIFIED)]
         markers = build_markers(getattr(mid, "annotations", None) or [], TempoIndex(tempos, mid.ticks_per_beat),
                                 piano_staves)
+        # the sung syllables onto the notes that sing them (pianovision.lyrics; needs the notes' provenance)
+        from .lyrics import attach_lyrics
+        lyrics = attach_lyrics(parts, getattr(mid, "lyrics", None), piano_staves,
+                               TempoIndex(tempos, mid.ticks_per_beat))
         doc = parts["doc"]
         # after the header, before the (long) note streams
         parts["doc"] = {k: v for k, v in doc.items() if k != "parts"}
         parts["doc"]["markers"] = markers
+        parts["doc"]["lyrics"] = lyrics
         parts["doc"]["parts"] = doc["parts"]
     time_sigs = extract_time_signatures(mid)
     key_sigs = extract_key_signatures(mid)

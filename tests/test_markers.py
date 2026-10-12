@@ -130,7 +130,7 @@ class MarkersTest(unittest.TestCase):
         data = parts_bytes(c.parts, "test_Hands.json", c.data, content_hash(path))
         doc = json.loads(data)
         self.assertEqual(list(doc), ["format", "song", "songMd5", "scoreContent", "resolution", "simplified",
-                                     "orchestra", "markers", "parts"])
+                                     "orchestra", "markers", "lyrics", "parts"])
         self.assertIn(b"Pi\\u00f9 mosso", data)               # ASCII JSON, UTF-8 text after decoding
         self.assertEqual(doc["markers"][1]["text"], "Più mosso")
 

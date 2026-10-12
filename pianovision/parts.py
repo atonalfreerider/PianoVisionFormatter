@@ -16,6 +16,7 @@ Format 1 (UTF-8 JSON, ``json.dumps`` compact separators, keys in this order)::
      "simplified": true,                      # the score has simplified piano staves with notes
      "orchestra": "piano-orchestral",         # "piano-orchestral" | "instruments" | "none"
      "markers": [{"time": 12.5, "text": "Più mosso", "kind": "tempo", "measure": 17}, ...],
+     "lyrics": {"syllables": 312, "verses": 2, "staves": ["Piano"], "sources": ["piano"]},   # or null
      "parts": {
        "original":   {"right": [NOTE...], "left": [NOTE...]},   # the piano staves ('piano')
        "simplified": {"right": [...], "left": [...]},           # only when "simplified": the simplified part
@@ -24,7 +25,9 @@ Format 1 (UTF-8 JSON, ``json.dumps`` compact separators, keys in this order)::
 
 ``markers`` (revision 2, :data:`PARTS_REVISION`): the score's rehearsal marks, sections,
 tempo words, gradual tempo changes and expression texts on the song's clock, repeats unrolled, noise filtered
-(:mod:`pianovision.markers`); an empty list when the score has none.  Apps reading format 1 skip unknown keys.
+(:mod:`pianovision.markers`); an empty list when the score has none.  ``lyrics`` (revision 3): a summary of the
+sung syllables the notes carry (below; :mod:`pianovision.lyrics`), ``null`` when the score has no lyrics.  Apps
+reading format 1 skip unknown keys.
 
 A NOTE carries the fields of a ``tracksV2`` note that Note Waterfall reads, with the same values PianoVision's
 JSON has for it: ``note`` (MIDI), ``ticksStart``, ``durationTicks``, ``start`` and ``duration`` (s),
@@ -35,7 +38,11 @@ Streams are in time order, as tracksV2 is.  Extra fields:
   original part's notes of measures the simplified staves leave empty);
 * orchestra: ``"staff"``: the score's staff (0-based) the note is written on; ``"program"``: the General MIDI
   program of an orchestra instrument (absent for the 'piano-orchestral' staves); ``"merged": 1`` on the notes
-  PianoVision's JSON merges into the hands ('merge' markers, measures where the piano rests).
+  PianoVision's JSON merges into the hands ('merge' markers, measures where the piano rests);
+* any part: ``"lyric": {"text": "beau", "syllabic": "single"|"begin"|"middle"|"end", "extend": false}`` on a
+  note that sings a syllable (repeats unrolled, one verse per pass; the highest note of the chord the syllable
+  is written on), and ``"sung": true`` on a note of a vocal staff that carries one; a vocal staff's syllable is
+  also copied onto the piano part's note that doubles it (:mod:`pianovision.lyrics`).
 
 The simplified part is what PianoVision shows in simplified mode without the orchestra.  The orchestra is the
 'piano-orchestral' staves (first staff right hand, second left) when the score has any; otherwise the orchestra
@@ -60,9 +67,10 @@ from typing import Any, Dict, List, Optional
 from .pvjson import Note, NoteStreams, _apply_accents, _measure_lookup, simplify_hands
 
 PARTS_FORMAT = 1
-# Bumped when the parts file gains content an app of the same format skips if absent (2: "markers"); the manifest
-# records it, so the next build writes every parts file again (their PianoVision JSON stays byte for byte).
-PARTS_REVISION = 2
+# Bumped when the parts file gains content an app of the same format skips if absent (2: "markers", 3: "lyrics");
+# the manifest records it, so the next build writes every parts file again (their PianoVision JSON stays byte for
+# byte).
+PARTS_REVISION = 3
 PARTS_DIR = "NoteWaterfall"
 PARTS_EXT = ".parts.json"
 HANDS = ("right", "left")
@@ -157,10 +165,13 @@ def parts_bytes(doc: Dict[str, Any], song: str, song_data: bytes, score_content:
 
 
 def parts_stats(doc: Dict[str, Any]) -> Dict[str, Any]:
-    """Counts for the manifest: notes per part, whether the score has a simplified part, the orchestra's source."""
+    """Counts for the manifest: notes per part, whether the score has a simplified part, the orchestra's source,
+    the markers, the sung syllables and where they are written (``"lyrics": {"syllables", "sources"}``, or None)."""
     counts = {name: sum(len(v) for v in hands.values()) for name, hands in doc.get("parts", {}).items()}
+    lyr = doc.get("lyrics")
+    lyrics = {"syllables": lyr.get("syllables", 0), "sources": list(lyr.get("sources") or [])} if lyr else None
     return {"simplified": bool(doc.get("simplified")), "orchestra": doc.get("orchestra", "none"), "notes": counts,
-            "markers": len(doc.get("markers") or [])}
+            "markers": len(doc.get("markers") or []), "lyrics": lyrics}
 
 
 def read_parts(path: str) -> Optional[dict]:

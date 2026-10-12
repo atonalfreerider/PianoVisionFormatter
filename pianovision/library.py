@@ -441,15 +441,19 @@ class Library:
                       "output_sha256": e.get("output_sha256"), **parts_stats(doc)}
 
     def parts_summary(self) -> dict:
-        """Counts over the manifest: scores with parts, with a simplified part, with orchestra notes."""
+        """Counts over the manifest: scores with parts, with a simplified part, with orchestra notes, with lyrics
+        (written on a staff of the piano part / on a vocal staff)."""
         ps = [e["parts"] for e in self.manifest.entries.values() if e.get("parts")]
+        lyr = [p["lyrics"] for p in ps if p.get("lyrics")]
         with_orch = [p for p in ps if p.get("notes", {}).get("orchestra", 0) > 0]
         return {"scores": len(self.manifest.entries), "parts": len(ps),
                 "simplified": sum(1 for p in ps if p.get("simplified")),
                 "orchestra": len(with_orch),
                 "piano_orchestral": sum(1 for p in with_orch if p.get("orchestra") == "piano-orchestral"),
                 "instruments": sum(1 for p in with_orch if p.get("orchestra") == "instruments"),
-                "orchestra_notes": sum(p.get("notes", {}).get("orchestra", 0) for p in ps)}
+                "orchestra_notes": sum(p.get("notes", {}).get("orchestra", 0) for p in ps),
+                "lyrics": len(lyr), "lyrics_piano": sum(1 for x in lyr if "piano" in x.get("sources", [])),
+                "lyrics_vocal": sum(1 for x in lyr if "vocal" in x.get("sources", []))}
 
     def _jobs(self, jobs: Optional[int]) -> int:
         return max(1, jobs or self.cfg.jobs or os.cpu_count() or 1)

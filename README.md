@@ -214,6 +214,7 @@ orchestra on its own, so `build` also writes, for every song, a parts file:
 {"format": 1, "song": "<song>.json", "songMd5": "<md5 of that file>", "scoreContent": "<sha256>",
  "resolution": 480, "simplified": true, "orchestra": "piano-orchestral",
  "markers": [{"time": 12.5, "text": "Più mosso", "kind": "tempo", "measure": 17}, …],
+ "lyrics": {"syllables": 312, "verses": 2, "staves": ["Piano"], "sources": ["piano"]},   # or null
  "parts": {"original":   {"right": [NOTE…], "left": [NOTE…]},
            "simplified": {"right": […], "left": […]},      # only when the score has simplified staves
            "orchestra":  {"right": […], "left": […]}}}
@@ -246,6 +247,21 @@ instrument cues and the orchestra staves' texts, jumps (D.S., segno, fine); the 
 one moment is kept once. 83 of the library's 144 songs have markers. Parts files written
 before markers existed are rewritten by the next `build` (the manifest records the parts
 revision; the PianoVision JSON is not touched).
+
+**Lyrics** (`pianovision/lyrics.py`): a note that sings a syllable carries
+`"lyric": {"text": "…", "syllabic": "single"|"begin"|"middle"|"end", "extend": true|false}`
+(the text as written, trimmed, without an added hyphen or the verse's number; `extend`:
+MuseScore's melisma, the syllable held over the following notes). Repeats are unrolled as the
+notes are: on the k-th pass through a measure a chord sings its verse k, nothing when verse k is
+sung elsewhere in that measure, else its lowest verse. The syllable goes on the highest struck
+note of the chord it is written on (one on a rest or a tied-over chord has no note). A vocal
+staff (not part of the piano part, or a voice instrument wherever it lands) gives its notes
+the syllable and `"sung": true`, and the piano part's note struck at the same moment (30 ms)
+at the same pitch, else an octave away (right hand first), a copy; the simplified part carries
+the original part's syllables to its notes of the same onset and pitch. `lyrics` sums them
+up (`null` without lyrics); `status` and `build` print how many scores have lyrics and on
+which kind of staff (11 of the library's 144; one, Love Has No Pride, on a vocal staff). Parts
+revision 3: the next `build` writes every parts file again.
 
 ## Fidelity
 
@@ -321,6 +337,7 @@ pianovision/        the package (stdlib only)
   pvjson.py           PianoVision JSON builder (port of midi_to_json.py, output byte-identical)
   parts.py            Note Waterfall's parts files (original / simplified piano part, orchestra)
   markers.py          the parts files' markers (rehearsal marks, sections, tempo words) from the score's texts
+  lyrics.py           the parts files' sung syllables, on the notes that sing them
   convert.py          one score -> JSON
   library.py          manifest, incremental build, adoption of existing outputs
   device.py           adb deploy

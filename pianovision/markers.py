@@ -118,9 +118,10 @@ class ScoreText:
     subtype: str = ""      # Marker: its subtype (coda, segno, fine, ...); GradualTempoChange: its tempoChangeType
 
 
-def element_text(el) -> str:
+def element_text(el, syms: Optional[Dict[str, str]] = None, other_sym: str = " ") -> str:
     """The text of a MuseScore text element (its ``<text>``), without the names of the SMuFL glyphs it embeds
-    (``<sym>metNoteQuarterUp</sym>``: the glyph is not text) and with ``<font>`` and the like read through."""
+    (``<sym>metNoteQuarterUp</sym>``: the glyph is not text) and with ``<font>`` and the like read through.
+    ``syms``: glyphs that stand for text (name -> text); any other glyph reads as ``other_sym``."""
     if el is None:
         return ""
     t = el.find("text")
@@ -130,7 +131,8 @@ def element_text(el) -> str:
 
     def walk(node, top: bool) -> None:
         if not top and node.tag == "sym":
-            out.append(" ")
+            name = (node.text or "").strip()
+            out.append(syms[name] if syms and name in syms else other_sym)
         else:
             if node.text:
                 out.append(node.text)

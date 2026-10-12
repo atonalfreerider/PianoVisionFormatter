@@ -1482,6 +1482,9 @@ class Renderer:
         # the score's texts on the same unrolled, paused timeline, for Note Waterfall's markers (pianovision.markers)
         from .markers import collect_score_texts
         mf.annotations = collect_score_texts(score, self.repeat_list, pm)
+        # and its sung syllables, for the notes of the parts file that sing them (pianovision.lyrics)
+        from .lyrics import collect_lyrics
+        mf.lyrics = collect_lyrics(score, self.repeat_list, pm)
         for track in tracks:
             track.sort(key=lambda x: x[0])
             msgs = []
