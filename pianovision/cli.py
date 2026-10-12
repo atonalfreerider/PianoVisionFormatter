@@ -57,10 +57,13 @@ def cmd_status(args) -> int:
     _p(f"scores:  {lib.cfg.scores}")
     _p(f"output:  {lib.cfg.output}")
     _p(f"{len(scan.sources)} scores; {c.get('keep', 0)} up to date, {c.get('render', 0)} to render, "
+       f"{c.get('staves', 0)} to check against the revised staff classification, "
        f"{c.get('parts', 0)} Note Waterfall parts files to write, "
        f"{c.get('move', 0)} moved, {c.get('retire', 0)} to retire, {c.get('conflict', 0)} conflicts")
     _print_parts_summary(st["parts"])
     _list("to render", [f"{a.rel}  ({a.reason})" for a in st["actions"] if a.kind == "render"])
+    _list("to check (rendered again; the output changes only where the score's staves are classified anew)",
+          [a.rel for a in st["actions"] if a.kind == "staves"], 5)
     _list("moved", [f"{a.old_rel} -> {a.rel}" for a in st["actions"] if a.kind == "move"])
     _list("to retire", [f"{a.rel}  ({a.reason})" for a in st["actions"] if a.kind == "retire"])
     _list("outputs edited outside the pipeline (build --force to replace)",
@@ -107,6 +110,7 @@ def _print_build(rep, dry: bool, lib: Optional[Library] = None) -> None:
             kinds.setdefault(a.kind, []).append(a)
         _p(f"dry run: {len(kinds.get('keep', []))} up to date")
         _list("would render", [f"{a.rel}  ({a.reason})" for a in kinds.get("render", [])])
+        _list("would check against the revised staff classification", [a.rel for a in kinds.get("staves", [])], 5)
         _list("would write Note Waterfall parts", [f"{a.rel}  ({a.reason})" for a in kinds.get("parts", [])])
         _list("would move", [f"{a.old_rel} -> {a.rel}" for a in kinds.get("move", [])])
         _list("would retire", [f"{a.rel}  ({a.reason})" for a in kinds.get("retire", [])])

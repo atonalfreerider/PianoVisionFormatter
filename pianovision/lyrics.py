@@ -51,6 +51,7 @@ from fractions import Fraction
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .markers import _fix_mojibake, element_text
+from .pvjson import VOICE_PROGRAMS
 from .score import SEG_CHORDREST, VOICES, ticks
 
 COPY_WINDOW = 0.03            # s: a piano note struck this close to a sung note doubles it
@@ -58,7 +59,6 @@ SYLLABIC = ("single", "begin", "middle", "end")
 HANDS = ("right", "left")
 # SMuFL glyphs a lyric may embed: the elision (two syllables on one note) is text, the others are not
 _LYRIC_SYMS = {"lyricsElision": "‿", "lyricsElisionNarrow": "‿", "lyricsElisionWide": "‿"}
-VOICE_PROGRAMS = (52, 53, 54)  # General MIDI choir aahs, voice oohs, synth voice
 _VERSE_NUMBER = re.compile(r"^\d{1,2}[.)] (?=\S)")
 
 

@@ -134,11 +134,14 @@ def dynamic(subtype, velocity, staff_only=True):
     return E("Dynamic", *kids)
 
 
-def make_piano_score(path, rh, lh, title="Hands", composer="Jane Tester", repeat=None, parts=()):
+def make_piano_score(path, rh, lh, title="Hands", composer="Jane Tester", repeat=None, parts=(), piano="Piano",
+                     before=()):
     """``rh``/``lh``: one entry per measure, each a list of voices, each a list of elements (4/4, C major).
     ``repeat``: (first measure, last measure) of a repeated section, 0-based.  ``parts``: more parts after
     the piano, each ``(track name, program, [staff, ...])`` with a staff as ``rh``/``lh`` (for example
-    ``("Piano-simplified", 0, [rh2, lh2])`` or ``("Violin", 40, [vln])``)."""
+    ``("Piano-simplified", 0, [rh2, lh2])`` or ``("Violin", 40, [vln])``), or ``(name, program, staves, options)``
+    with the options ``id`` (the instrumentId), ``drums`` (a drumset) and ``channels`` (more channels, as
+    ``(name, program)``).  ``before``: parts above the piano, the same way; ``piano``: the piano part's name."""
     def staff(sid, measures, top):
         kids = []
         if top:
@@ -159,28 +162,42 @@ def make_piano_score(path, rh, lh, title="Hands", composer="Jane Tester", repeat
             kids.append(E("Measure", *mkids))
         return E("Staff", *kids, id=str(sid))
 
-    part = E("Part",
-             E("Staff", E("StaffType", E("name", text="stdNormal"), group="pitched"), id="1"),
-             E("Staff", E("StaffType", E("name", text="stdNormal"), group="pitched"),
-               E("defaultClef", text="F"), id="2"),
-             E("trackName", text="Piano"),
-             E("Instrument", E("longName", text="Piano"), E("trackName", text="Piano"),
-               E("instrumentId", text="keyboard.piano"), E("Channel", E("program", value="0"))),
-             id="1")
-    extra_parts, extra_staves = [], []
-    sid = 3
-    for pi, (name, program, staves) in enumerate(parts):
-        defs = [E("Staff", E("StaffType", E("name", text="stdNormal"), group="pitched"), id=str(sid + k))
+    def other_part(pid, sid, spec):
+        name, program, staves = spec[:3]
+        opts = spec[3] if len(spec) > 3 else {}
+        group = "percussion" if opts.get("drums") else "pitched"
+        defs = [E("Staff", E("StaffType", E("name", text="stdNormal"), group=group), id=str(sid + k))
                 for k in range(len(staves))]
-        extra_parts.append(E("Part", *defs, E("trackName", text=name),
-                             E("Instrument", E("longName", text=name), E("trackName", text=name),
-                               E("instrumentId", text="keyboard.piano" if program < 8 else "strings.violin"),
-                               E("Channel", E("program", value=str(program)))), id=str(pi + 2)))
-        for k, measures in enumerate(staves):
-            extra_staves.append(staff(sid + k, measures, False))
-        sid += len(staves)
-    score = E("Score", E("Division", text="480"), part, *extra_parts, staff(1, rh, True), staff(2, lh, False),
-              *extra_staves)
+        ins = [E("longName", text=name), E("trackName", text=name),
+               E("instrumentId", text=opts.get("id") or ("keyboard.piano" if program < 8 else "strings.violin"))]
+        if opts.get("drums"):
+            ins.append(E("useDrumset", text="1"))
+        ins.append(E("Channel", E("program", value=str(program))))
+        ins += [E("Channel", E("program", value=str(p)), name=n) for n, p in opts.get("channels", ())]
+        return E("Part", *defs, E("trackName", text=name), E("Instrument", *ins), id=str(pid))
+
+    part_els, content = [], []
+    sid = 1
+    for spec in before:
+        part_els.append(other_part(len(part_els) + 1, sid, spec))
+        content += [(sid + k, m) for k, m in enumerate(spec[2])]
+        sid += len(spec[2])
+    part_els.append(E("Part",
+                      E("Staff", E("StaffType", E("name", text="stdNormal"), group="pitched"), id=str(sid)),
+                      E("Staff", E("StaffType", E("name", text="stdNormal"), group="pitched"),
+                        E("defaultClef", text="F"), id=str(sid + 1)),
+                      E("trackName", text=piano),
+                      E("Instrument", E("longName", text=piano), E("trackName", text=piano),
+                        E("instrumentId", text="keyboard.piano"), E("Channel", E("program", value="0"))),
+                      id=str(len(part_els) + 1)))
+    content += [(sid, rh), (sid + 1, lh)]
+    sid += 2
+    for spec in parts:
+        part_els.append(other_part(len(part_els) + 1, sid, spec))
+        content += [(sid + k, m) for k, m in enumerate(spec[2])]
+        sid += len(spec[2])
+    score = E("Score", E("Division", text="480"), *part_els,
+              *[staff(i, measures, i == 1) for i, measures in content])
     root = E("museScore", E("programVersion", text="4.6.0"), score, version="4.60")
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + "\n".join(root.lines()) + "\n"
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:

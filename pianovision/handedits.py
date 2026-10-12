@@ -1551,9 +1551,9 @@ def _sha256(data: bytes) -> str:
 def _hands_of(midi, orchestra: bool) -> Dict[int, int]:
     """Content staff -> hand (0 right, 1 left) of the staves a hand edit may move notes between: the piano
     part's and the simplified piano part's (the 'piano-orchestral' staves are the orchestra)."""
-    from .pvjson import TRACK_PRIMARY, TRACK_SIMPLIFIED, classify_tracks, piano_hand
-    piano, _orch = classify_tracks(midi, orchestra)
-    return {t: piano_hand(piano, t, tt) for t, tt in piano if tt in (TRACK_PRIMARY, TRACK_SIMPLIFIED)}
+    from .pvjson import TRACK_PRIMARY, TRACK_SIMPLIFIED, staff_roles
+    roles = staff_roles(midi)
+    return {t: roles.hands[t] for t, tt in roles.piano if tt in (TRACK_PRIMARY, TRACK_SIMPLIFIED)}
 
 
 def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = False,

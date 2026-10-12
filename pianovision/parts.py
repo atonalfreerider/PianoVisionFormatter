@@ -37,8 +37,9 @@ Streams are in time order, as tracksV2 is.  Extra fields:
 * simplified part: ``"simplified": 1`` on the notes written on the simplified staves (the others are the
   original part's notes of measures the simplified staves leave empty);
 * orchestra: ``"staff"``: the score's staff (0-based) the note is written on; ``"program"``: the General MIDI
-  program of an orchestra instrument (absent for the 'piano-orchestral' staves); ``"merged": 1`` on the notes
-  PianoVision's JSON merges into the hands ('merge' markers, measures where the piano rests);
+  program of an orchestra instrument or vocal staff (absent for the 'piano-orchestral' staves); ``"vocal": 1`` on
+  the notes of a vocal staff; ``"merged": 1`` on the notes PianoVision's JSON merges into the hands ('merge'
+  markers, measures where the piano rests);
 * any part: ``"lyric": {"text": "beau", "syllabic": "single"|"begin"|"middle"|"end", "extend": false}`` on a
   note that sings a syllable (repeats unrolled, one verse per pass; the highest note of the chord the syllable
   is written on), and ``"sung": true`` on a note of a vocal staff that carries one; a vocal staff's syllable is
@@ -46,8 +47,10 @@ Streams are in time order, as tracksV2 is.  Extra fields:
 
 The simplified part is what PianoVision shows in simplified mode without the orchestra.  The orchestra is the
 'piano-orchestral' staves (first staff right hand, second left) when the score has any; otherwise the orchestra
-instruments PianoVision's orchestra mode takes (program 0-7, 40-51, 64-95 except 112-119), in the hands by pitch
-(middle C and up: right).  Accents are matched per part exactly as PianoVision's JSON matches them.
+instruments PianoVision's orchestra mode takes (program 0-7, 40-51, 64-95 except 112-119) and the vocal staves'
+sung lines (a voice, or a vocal line written for a piano instrument: :func:`pianovision.pvjson.staff_roles`;
+PianoVision's JSON never merges them), in the hands by pitch (middle C and up: right).  Percussion is in no part.  Accents are
+matched per part exactly as PianoVision's JSON matches them.
 
 Hand edits (the sidecar's note identity): a note of the ORIGINAL part is (hand, ticksStart, note, occurrence)
 counted among the original part's notes; a note written on the simplified staves is counted among the
@@ -108,8 +111,8 @@ def build_parts(streams: NoteStreams, accented_notes, pv_notes: List[List[Note]]
     simplified = simplify_hands(_copy(streams.primary), simplified_staff, fast) if has_simplified else None
     if any(streams.orchestral):
         source, orch_src = "piano-orchestral", streams.orchestral
-    elif any(streams.other_orchestra):
-        source, orch_src = "instruments", streams.other_orchestra
+    elif any(streams.other_orchestra) or any(streams.vocal):
+        source, orch_src = "instruments", [o + v for o, v in zip(streams.other_orchestra, streams.vocal)]
     else:
         source, orch_src = "none", [[], []]
     merged_ids = {id(n) for hand in pv_notes for n in hand}
@@ -122,6 +125,7 @@ def build_parts(streams: NoteStreams, accented_notes, pv_notes: List[List[Note]]
                 merged.add(id(c))
             orchestra[h].append(c)
     programs = dict(streams.orchestra_tracks)
+    vocal_programs = dict(streams.vocal_tracks)
 
     parts: Dict[str, List[List[Note]]] = {"original": original}
     if simplified is not None:
@@ -144,7 +148,10 @@ def build_parts(streams: NoteStreams, accented_notes, pv_notes: List[List[Note]]
                     d["simplified"] = 1
                 elif name == "orchestra":
                     d["staff"] = n.track
-                    if source == "instruments" and n.track in programs:
+                    if source == "instruments" and n.track in vocal_programs:
+                        d["program"] = vocal_programs[n.track]
+                        d["vocal"] = 1
+                    elif source == "instruments" and n.track in programs:
                         d["program"] = programs[n.track]
                     if id(n) in merged:
                         d["merged"] = 1
@@ -165,13 +172,17 @@ def parts_bytes(doc: Dict[str, Any], song: str, song_data: bytes, score_content:
 
 
 def parts_stats(doc: Dict[str, Any]) -> Dict[str, Any]:
-    """Counts for the manifest: notes per part, whether the score has a simplified part, the orchestra's source,
+    """Counts for the manifest: notes per part (``vocal``: the orchestra's notes of vocal staves), whether the score
+    has a simplified part, the orchestra's source,
     the markers, the sung syllables and where they are written (``"lyrics": {"syllables", "sources"}``, or None)."""
     counts = {name: sum(len(v) for v in hands.values()) for name, hands in doc.get("parts", {}).items()}
+    # the orchestra's notes of vocal staves (a score whose orchestra is only a vocal line has no accompaniment)
+    orch = doc.get("parts", {}).get("orchestra") or {}
+    vocal = sum(1 for hand in orch.values() for n in hand if n.get("vocal"))
     lyr = doc.get("lyrics")
     lyrics = {"syllables": lyr.get("syllables", 0), "sources": list(lyr.get("sources") or [])} if lyr else None
     return {"simplified": bool(doc.get("simplified")), "orchestra": doc.get("orchestra", "none"), "notes": counts,
-            "markers": len(doc.get("markers") or []), "lyrics": lyrics}
+            "markers": len(doc.get("markers") or []), "lyrics": lyrics, "vocal": vocal}
 
 
 def read_parts(path: str) -> Optional[dict]:

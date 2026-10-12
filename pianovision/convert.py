@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 
 from .metadata import format_output_filename, title_artist
 from .mscx import load_mscx_bytes, read_score
-from .pvjson import build_song
+from .pvjson import build_song, staves_revised
 from .render import Compat, Renderer
 from .smf import MidiFile, read_midi
 
@@ -89,6 +89,8 @@ class Converted:
     parts_provenance: Optional[Dict[str, Dict[str, List[NoteSource]]]] = None
     # with parts=True and an arrangement in the options: what the alignment did (pianovision.arrangement.report_dict)
     arrangement: Optional[dict] = None
+    # the score's staves have other roles than the legacy classification gave them (pvjson.staves_revised)
+    staves_revised: bool = False
 
 
 def song_bytes(song: dict) -> bytes:
@@ -124,6 +126,7 @@ def convert_mscz(mscz_path: str, compat: Optional[Compat] = None, orchestra: boo
     parts_out: Optional[dict] = {} if parts else None
     c = _finish(midi, root, mscz_path, orchestra, simplified, keep_midi, compat.metadata, prov,
                 parts_out, options)
+    c.staves_revised = staves_revised(midi)
     if provenance:
         c.score = score
         c.provenance = {hand: [note_source(hand, i, n) for i, n in enumerate(prov[hand])]
