@@ -35,6 +35,11 @@ def staff_text(text):
     return E("StaffText", E("text", text=text))
 
 
+def play_tech(text, technique="normal"):
+    """MuseScore 4.7's form of a staff text that switches the playing technique."""
+    return E("PlayTechAnnotation", E("playTechType", text=technique), E("text", text=text))
+
+
 def system_text(text):
     return E("SystemText", E("text", text=text))
 
@@ -97,6 +102,12 @@ class MarkersTest(unittest.TestCase):
         m1 = 4 * 60 / 80
         self.assertEqual(got, [(0.0, "dolce", "expression", 1), (round(m1, 3), "a tempo", "tempo", 2),
                                (round(2 * m1, 3), "espressivo", "expression", 3)])
+
+    def test_a_playing_technique_text_is_read_like_a_staff_text(self):
+        vln = ("Violin", 40, [[[[play_tech("con brio", "pizzicato"), chord("whole", 67)]], [[chord("whole", 69)]]]])
+        rh = [notes(play_tech("en dehors")), notes(play_tech("una corda"))]
+        got = self.markers(rh, parts=(vln,))
+        self.assertEqual(got, [(0.0, "en dehors", "text", 1)])
 
     def test_orchestra_staff_texts_are_not_the_pianos(self):
         vln = ("Violin", 40, [[[[staff_text("pizz."), staff_text("con brio"), chord("whole", 67)]],

@@ -43,8 +43,9 @@ KINDS = ("rehearsal", "section", "tempo", "gradual", "expression", "text")
 _RANK = {k: i for i, k in enumerate(KINDS)}
 
 # the score elements read
-TEXT_TAGS = ("RehearsalMark", "Tempo", "SystemText", "StaffText", "Expression")
-STAFF_TAGS = ("StaffText", "Expression")      # belong to a staff: only the piano part's are read
+# MuseScore 4.7 saves a staff text that switches the playing technique ("non arpegg.") as a PlayTechAnnotation
+TEXT_TAGS = ("RehearsalMark", "Tempo", "SystemText", "StaffText", "Expression", "PlayTechAnnotation")
+STAFF_TAGS = ("StaffText", "Expression", "PlayTechAnnotation")   # belong to a staff: only the piano part's are read
 
 _GRADUAL_TYPES = {
     "ritardando": "rit.", "accelerando": "accel.", "rallentando": "rall.", "allargando": "allarg.",
