@@ -3,7 +3,8 @@
     mscz --(mscx.read_score)--> Score --(render.render_score)--> MIDI events
          --(pvjson.build_song)--> PianoVision JSON
 
-The MIDI stage is an in-memory model of what MuseScore 4.6 exports; nothing is
+The MIDI stage is an in-memory model of what MuseScore exports (4.6, or 4.7 for
+scores saved by 4.7: see render.Compat.engine); nothing is
 written to disk and MuseScore itself is never run.
 """
 
@@ -17,7 +18,7 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Any, Dict, List, Optional
 
-from .metadata import extract_title_artist, format_output_filename
+from .metadata import format_output_filename, title_artist
 from .mscx import load_mscx_bytes, read_score
 from .pvjson import build_song
 from .render import Compat, render_score
@@ -112,7 +113,7 @@ def convert_mscz(mscz_path: str, compat: Optional[Compat] = None, orchestra: boo
     midi = render_score(score, compat, provenance=provenance)
     prov: Optional[Dict[str, list]] = {} if provenance else None
     parts_out: Optional[dict] = {} if parts else None
-    c = _finish(midi, root, mscz_path, orchestra, simplified, keep_midi, compat.metadata == "legacy", prov,
+    c = _finish(midi, root, mscz_path, orchestra, simplified, keep_midi, compat.metadata, prov,
                 parts_out)
     if provenance:
         c.score = score
@@ -141,24 +142,25 @@ def convert_midi(midi_path: str, mscz_path: Optional[str] = None, orchestra: boo
     """Legacy path: JSON from a MuseScore-exported .mid (metadata from the .mscz when given),
     exactly as the old midi_to_json.py made it."""
     root = score_root(mscz_path) if mscz_path else None
-    return _finish(read_midi(midi_path), root, mscz_path or midi_path, orchestra, simplified, False, True)
+    return _finish(read_midi(midi_path), root, mscz_path or midi_path, orchestra, simplified, False, "legacy")
 
 
 def _finish(midi: MidiFile, root: Optional[ET.Element], path: str, orchestra: bool, simplified: bool,
-            keep_midi: bool, legacy_metadata: bool, provenance: Optional[dict] = None,
+            keep_midi: bool, rules: str, provenance: Optional[dict] = None,
             parts: Optional[dict] = None) -> Converted:
     song = build_song(midi, root, path, orchestra_mode=orchestra, simplified_mode=simplified,
-                      legacy_metadata=legacy_metadata, provenance=provenance, parts=parts)
+                      legacy_metadata=rules, provenance=provenance, parts=parts)
     title, artist = song["name"], song["artist"]
     if root is not None:
-        title, artist = extract_title_artist(root, path, legacy=legacy_metadata)
+        title, artist = title_artist(root, path, rules)
     return Converted(title=title, artist=artist, name=format_output_filename(title, artist, path),
                      data=song_bytes(song), midi=midi if keep_midi else None)
 
 
-def output_name(mscz_path: str, legacy: bool = False) -> str:
-    """The default output file name without rendering the score."""
-    title, artist = extract_title_artist(score_root(mscz_path), mscz_path, legacy=legacy)
+def output_name(mscz_path: str, legacy: bool = False, rules: Optional[str] = None) -> str:
+    """The default output file name without rendering the score (``rules``: the title rules as
+    ``Compat.metadata``; ``legacy`` is short for "legacy")."""
+    title, artist = title_artist(score_root(mscz_path), mscz_path, rules or ("legacy" if legacy else "v2"))
     return format_output_filename(title, artist, mscz_path)
 
 

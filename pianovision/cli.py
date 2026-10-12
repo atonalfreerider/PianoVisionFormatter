@@ -109,13 +109,16 @@ def _print_build(rep, dry: bool, lib: Optional[Library] = None) -> None:
         return
     _list("adopted existing outputs", [f"{o}  <- {r}  [{how}]" for r, o, how in rep.adopted], 8)
     _list("written", [f"{o}  <- {r}  ({why})" for r, o, why in rep.written])
+    _list("score saved again, output kept as it is", [f"{o}  <- {r}  ({how})" for r, o, how in rep.resaved])
     _list("moved", [f"{a} -> {b}" for a, b in rep.moved])
     _list("retired", [f"{o}  ({why})" for _r, o, why in rep.retired])
     _list("conflicts (not overwritten; use --force)", [f"{r}: {w}" for r, w in rep.conflicts])
     _list("FAILED", [f"{r}: {e}" for r, e in rep.failed], 50)
     _list("moved aside to the attic", rep.attic)
     _list("Note Waterfall parts written", rep.parts, 8)
-    _p(f"{rep.kept} up to date, {len(rep.written)} written, {len(rep.adopted)} adopted, "
+    _p(f"{rep.kept + len(rep.resaved)} up to date"
+       + (f" ({len(rep.resaved)} of them saved again, output kept)" if rep.resaved else "")
+       + f", {len(rep.written)} written, {len(rep.adopted)} adopted, "
        f"{len(rep.retired)} retired, {len(rep.parts)} parts files written, {len(rep.failed)} failed")
     if lib is not None:
         _print_parts_summary(lib.parts_summary())
@@ -137,6 +140,7 @@ def _write_report(path: Optional[str], lib: Library, rep) -> None:
     doc = {"time": time.strftime("%Y-%m-%dT%H:%M:%S"), "failed": failed,
            "written": [{"rel": r, "output": o, "why": w} for r, o, w in rep.written],
            "retired": [{"rel": r, "output": o, "why": w} for r, o, w in rep.retired],
+           "resaved": [{"rel": r, "output": o, "how": h} for r, o, h in rep.resaved],
            "parts": list(rep.parts)}
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     tmp = path + ".tmp"
@@ -148,7 +152,7 @@ def _write_report(path: Optional[str], lib: Library, rep) -> None:
 def cmd_build(args) -> int:
     lib = _library(args)
     rep = lib.build(force=args.force is not None, only=args.force or None, dry_run=args.dry_run,
-                    prune_orphans=args.prune_orphans, jobs=args.jobs)
+                    prune_orphans=args.prune_orphans, jobs=args.jobs, keep=args.keep)
     _print_build(rep, args.dry_run, lib)
     if not args.dry_run:
         _write_report(args.report, lib, rep)
@@ -266,8 +270,11 @@ def cmd_verify(args) -> int:
     res = lib.verify(only=args.scores_ or None, calibrate=args.calibrate, jobs=args.jobs)
     counts = {}
     parts = {}
+    resaved = []
     for rel, status, r in res:
         counts[status] = counts.get(status, 0) + 1
+        if r.get("resaved"):
+            resaved.append(f"{rel}  {r['resaved']}")
         if "parts" in r:
             parts[r["parts"]] = parts.get(r["parts"], 0) + 1
         if status != "identical":
@@ -275,6 +282,7 @@ def cmd_verify(args) -> int:
             _p(f"  {status:10} {rel}  {extra}")
         if r.get("parts") == "differs":
             _p(f"  parts differ {rel}  (NoteWaterfall/ file; `build` rewrites it)")
+    _list("identical once `build` keeps the output of a score saved again, with these knobs", resaved, 8)
     _p(", ".join(f"{v} {k}" for k, v in sorted(counts.items())))
     if parts:
         _p("Note Waterfall parts files: " + ", ".join(f"{v} {k}" for k, v in sorted(parts.items())))
@@ -473,6 +481,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="re-render these scores (or all, with no names) even if unchanged")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--prune-orphans", action="store_true", help="move outputs without a score to the attic")
+    p.add_argument("--keep", nargs="+", metavar="SCORE", default=[],
+                   help="keep these scores' current outputs as they are (pinned) although the scores changed")
     p.add_argument("--report", metavar="FILE", help="also write what the build did (failed scores...) as JSON")
     jobs(p)
     p.set_defaults(fn=cmd_build)

@@ -4,6 +4,8 @@ State lives in ``<output>/.manifest.json``.  Every output file is pinned to the
 content of the score it came from:
 
 * unchanged score            -> its JSON is left alone (byte-for-byte),
+* re-saved score (e.g. by a newer MuseScore) that still renders to its JSON
+                             -> the JSON is left alone, and so is a pinned JSON whose notes it still renders,
 * new or edited score        -> rendered directly from the .mscz,
 * moved/renamed score        -> recognised by content, keeps its output name,
 * deleted or excluded score  -> output retired to ``.attic/`` (never deleted),
@@ -224,19 +226,77 @@ def _job_render(path: str, compat: Optional[dict], orchestra: bool, simplified: 
         return {"error": f"{type(e).__name__}: {e}"}
 
 
-def _job_verify(path: str, compat: Optional[dict], target: str, orchestra: bool, simplified: bool,
-                do_calibrate: bool, parts_target: Optional[str] = None, content: str = "") -> dict:
-    """Re-render and compare with the pinned output; with ``parts_target`` also with the parts file there
-    (``parts``: identical | differs | missing)."""
-    from .calibrate import calibrate, note_signature
+def resave_candidates(e: dict, version: int) -> List[dict]:
+    """Knob sets (``Compat.to_dict``) under which a score saved again since its output was made may still
+    render to that output, most likely first; the default knobs are not among them.
+
+    ``e`` is the manifest entry, ``version`` the score's file format now (:func:`mscx.file_version`).
+    Besides the entry's own knobs: for a file saved by MuseScore 4.7, MuseScore 4.6's export rules
+    (``engine``); what a re-save changes in the file: a pre-4.4 score's dynType 0 became the voice
+    assignment "allInStaff" (``va_dyn_type``, with the 4.5 dynamics model), and a MuseScore 3 score's
+    capitalised title styles became lower case (``metadata`` "file": the legacy rules named it after its
+    file)."""
+    base = Library._verify_compat(e) or {}
+    engines = [base.get("engine", "auto")] + (["4.6"] if version >= 470 and "engine" not in base else [])
+    vas = [bool(base.get("va_dyn_type"))]
+    if base.get("dynamics") == "4.5" and version >= 440 and not base.get("va_dyn_type"):
+        vas.append(True)
+    metas = [base.get("metadata", "v2")] + (["file"] if base.get("metadata") == "legacy" else [])
+    out: List[dict] = []
+    for meta in metas:
+        for engine in engines:
+            for va in vas:
+                c = Compat.from_dict(base)
+                c.engine, c.va_dyn_type, c.metadata = engine, va, meta
+                d = c.to_dict()
+                if d and d not in out:
+                    out.append(d)
+    return out
+
+
+def _job_resaved(path: str, candidates: List[dict], target: str, orchestra: bool, simplified: bool) -> dict:
+    """The first of ``candidates`` (knobs) under which the score renders to exactly the file ``target``
+    (``{"compat": knobs, ...render}``; ``{"compat": None}`` if none does)."""
     from .convert import convert_mscz
+    try:
+        with open(target, "rb") as f:
+            want = f.read()
+        for c in candidates:
+            r = convert_mscz(path, Compat.from_dict(c), orchestra, simplified, parts=True)
+            if r.data == want:
+                return {"compat": c, "title": r.title, "artist": r.artist, "name": r.name, "data": r.data,
+                        "parts": r.parts}
+    except Exception as e:
+        return {"compat": None, "error": f"{type(e).__name__}: {e}"}
+    return {"compat": None}
+
+
+def _job_verify(path: str, compat: Optional[dict], target: str, orchestra: bool, simplified: bool,
+                do_calibrate: bool, parts_target: Optional[str] = None, content: str = "",
+                entry: Optional[dict] = None) -> dict:
+    """Re-render and compare with the pinned output; with ``parts_target`` also with the parts file there
+    (``parts``: identical | differs | missing).  ``entry``: the manifest entry; when the score changed since
+    its output was made, the knobs ``build`` tries for a re-saved score (:func:`resave_candidates`) are
+    tried as well (``"resaved"``: the ones that reproduce the output)."""
+    from .calibrate import calibrate, note_signature
+    from .convert import content_hash, convert_mscz
+    from .mscx import file_version, load_mscx_bytes
     from .parts import parts_bytes
     try:
         with open(target, "rb") as f:
             want = f.read()
         c = convert_mscz(path, Compat.from_dict(compat), orchestra, simplified, parts=parts_target is not None)
+        extra0 = {}
+        if c.data != want and entry is not None and content_hash(path) != entry.get("content"):
+            for k in resave_candidates(entry, file_version(load_mscx_bytes(path))):
+                if k == (compat or {}):
+                    continue                                 # rendered just above
+                c2 = convert_mscz(path, Compat.from_dict(k), orchestra, simplified, parts=parts_target is not None)
+                if c2.data == want:
+                    c, extra0 = c2, {"resaved": k}
+                    break
         got = c.data
-        extra = {}
+        extra = dict(extra0)
         if parts_target is not None:
             if not os.path.exists(parts_target):
                 extra["parts"] = "missing"
@@ -283,6 +343,20 @@ class Report:
     attic: List[str] = field(default_factory=list)
     planned: List[Action] = field(default_factory=list)
     parts: List[str] = field(default_factory=list)       # Note Waterfall parts files written (NoteWaterfall/...)
+    resaved: List[Tuple[str, str, str]] = field(default_factory=list)     # (rel, output, how): score saved again,
+                                                                          # its output kept (byte for byte)
+
+
+def _knobs_text(knobs: dict) -> str:
+    """What a set of knobs reproduces, for the build report."""
+    words = []
+    if knobs.get("engine") == "4.6":
+        words.append("MuseScore 4.6 export rules")
+    if knobs.get("va_dyn_type"):
+        words.append("4.5 dynamics with allInStaff as dynType 0")
+    if knobs.get("metadata") == "file":
+        words.append("title from the file name")
+    return ", ".join(words) or "its knobs"
 
 
 def _stem_tokens(rel: str) -> List[str]:
@@ -477,14 +551,16 @@ class Library:
     # -- build --------------------------------------------------------------------
     def build(self, force: bool = False, only: Optional[List[str]] = None, dry_run: bool = False,
               prune_orphans: bool = False, jobs: Optional[int] = None, restrict: Optional[set] = None,
-              compat_for: Optional[Dict[str, dict]] = None) -> Report:
+              compat_for: Optional[Dict[str, dict]] = None, keep: Optional[List[str]] = None) -> Report:
         """``restrict`` limits the build to these scores (others are left for the next build);
-        ``compat_for`` is passed to :meth:`plan`."""
+        ``compat_for`` is passed to :meth:`plan`.  ``keep``: scores whose current output stays as it is
+        (pinned) although the score changed, e.g. after MuseScore 4.7 reads it differently."""
         from .calibrate import note_signature
         from .convert import bytes_hash, file_hash
         scan = scan_library(self.cfg.scores)
         if only:
             only = [self._resolve_rel(o, scan) for o in only]
+        keep_rels = {self._resolve_rel(k, scan) for k in keep or []}
         actions = self.plan(scan, force=force, only=only, compat_for=compat_for)
         if restrict is not None:
             actions = [a for a in actions if a.rel in restrict]
@@ -517,6 +593,7 @@ class Library:
         todo = [a for a in actions if a.kind in ("render", "parts")]
         results = self._pool_map(_job_render, [(scan.sources[a.rel].path, a.compat, self.cfg.orchestra,
                                                 self.cfg.simplified) for a in todo], jobs, "rendering")
+        resaved = self._resaved_outputs(scan, todo, results, keep_rels, jobs)
         taken = set(m.outputs())
         new_by_name: Dict[str, List[Tuple[Action, dict]]] = {}
         for a, r in zip(todo, results):
@@ -527,6 +604,9 @@ class Library:
                 # the song's JSON is kept as it is; its parts go with those bytes
                 with open(self.out_path(m.entries[a.rel]["output"]), "rb") as f:
                     self._write_parts(a.rel, r.get("parts"), f.read(), report)
+                continue
+            if a.rel in resaved:
+                self._keep_resaved(a.rel, scan.sources[a.rel], resaved[a.rel], report)
                 continue
             if a.rel in m.entries:
                 self._store(a.rel, scan.sources[a.rel], m.entries[a.rel]["output"], r, "rendered", a.reason,
@@ -574,6 +654,73 @@ class Library:
         m.save()
         return report
 
+    def _current_output(self, e: dict) -> Optional[bytes]:
+        """The entry's output as the pipeline wrote it (None if missing or changed outside the pipeline)."""
+        from .convert import bytes_hash
+        path = self.out_path(e["output"])
+        if not os.path.exists(path):
+            return None
+        with open(path, "rb") as f:
+            data = f.read()
+        return data if bytes_hash(data) == e.get("output_sha256") else None
+
+    def _resaved_outputs(self, scan: "ScanResult", todo: List[Action], results: List[dict], keep: set,
+                         jobs: Optional[int]) -> Dict[str, dict]:
+        """Changed scores whose current output stays: ``{rel: {"how", "compat", "parts", "pinned"}}``.
+
+        A score saved again without changing what it renders (e.g. re-saved by MuseScore 4.7) keeps its
+        output byte for byte when the new file renders to exactly that output under the entry's knobs or the
+        knobs a re-save calls for (:func:`resave_candidates`); a pinned output (reproducible: false) stays
+        while the score renders the same notes; ``keep`` (``build --keep``) pins the current output as it is."""
+        from .calibrate import note_signature
+        from .mscx import file_version, load_mscx_bytes
+        m = self.manifest
+        found: Dict[str, dict] = {}
+        checks = []
+        for a, r in zip(todo, results):
+            if a.kind != "render" or a.reason != "score changed" or "error" in r or a.rel not in m.entries:
+                continue
+            e = m.entries[a.rel]
+            cur = self._current_output(e)
+            if cur is None or r["data"] == cur:
+                continue
+            if a.rel in keep:
+                found[a.rel] = {"how": "kept as it was (--keep), now pinned", "parts": r.get("parts"), "pinned": True}
+            elif e.get("reproducible") is False:
+                if note_signature(r["data"]) == note_signature(cur):
+                    found[a.rel] = {"how": "pinned output kept: the score still has the same notes",
+                                    "parts": r.get("parts"), "pinned": True}
+            else:
+                path = scan.sources[a.rel].path
+                cands = resave_candidates(e, file_version(load_mscx_bytes(path)))
+                if cands:
+                    checks.append((a.rel, path, cands, self.out_path(e["output"])))
+        res = self._pool_map(_job_resaved, [(path, cands, target, self.cfg.orchestra, self.cfg.simplified)
+                                            for _rel, path, cands, target in checks], jobs, "checking re-saved scores")
+        for (rel, _path, _cands, _target), r in zip(checks, res):
+            if r.get("compat") is not None:
+                found[rel] = {"how": "output kept: " + _knobs_text(r["compat"]), "compat": r["compat"],
+                              "parts": r.get("parts"), "pinned": False}
+        return found
+
+    def _keep_resaved(self, rel: str, src: Source, info: dict, report: Report) -> None:
+        e = self.manifest.entries[rel]
+        e.update(content=self._hashes.get(rel) or e["content"], mtime=src.mtime, size=src.size)
+        if info["pinned"]:
+            e["reproducible"] = False
+        else:
+            knobs = dict(info["compat"])
+            if e.get("origin") == "legacy" and knobs.get("metadata") == "legacy":
+                knobs.pop("metadata")                    # implied by the origin (_verify_compat)
+            if knobs:
+                e["compat"] = knobs
+            else:
+                e.pop("compat", None)
+            e["reproducible"] = True
+        report.resaved.append((rel, e["output"], info["how"]))
+        with open(self.out_path(e["output"]), "rb") as f:
+            self._write_parts(rel, info.get("parts"), f.read(), report)
+
     def _retire_orphans(self, names: List[str], report: Report) -> None:
         for name in names:
             self.to_attic(name, report)
@@ -598,10 +745,12 @@ class Library:
         from .convert import bytes_hash
         path = self.out_path(name)
         data = r["data"]
+        same = False
         if os.path.exists(path):
             with open(path, "rb") as f:
-                if f.read() != data:
-                    self.to_attic(name, report)
+                same = f.read() == data
+            if not same:
+                self.to_attic(name, report)
         if not os.path.exists(path):
             atomic_write(path, data)
         e = {"content": self._hashes.get(rel) or self.manifest.entries.get(rel, {}).get("content"),
@@ -611,7 +760,10 @@ class Library:
         if compat:
             e["compat"] = compat
         self.manifest.entries[rel] = e
-        report.written.append((rel, name, why))
+        if same and why == "score changed":
+            report.resaved.append((rel, name, "output unchanged"))      # e.g. saved again by a newer MuseScore
+        else:
+            report.written.append((rel, name, why))
         self._write_parts(rel, r.get("parts"), data, report)
 
     @staticmethod
@@ -680,8 +832,8 @@ class Library:
             path = os.path.join(self.cfg.scores, rel)
             if not os.path.exists(path):
                 continue
-            legacy = not only and (self._verify_compat(e) or {}).get("metadata") == "legacy"
-            want = output_name(path, legacy=legacy)
+            rules = "v2" if only else (self._verify_compat(e) or {}).get("metadata", "v2")
+            want = output_name(path, rules=rules)
             if want == e["output"] or want in taken:
                 continue
             done.append((rel, e["output"], want))
@@ -710,7 +862,8 @@ class Library:
             rels = [self._resolve_rel(o, scan) for o in only]
         args = [(os.path.join(self.cfg.scores, rel), self._verify_compat(m.entries[rel]),
                  self.out_path(m.entries[rel]["output"]), self.cfg.orchestra, self.cfg.simplified, calibrate,
-                 self.parts_path(m.entries[rel]["output"]), m.entries[rel].get("content") or "")
+                 self.parts_path(m.entries[rel]["output"]), m.entries[rel].get("content") or "",
+                 m.entries[rel] if m.entries[rel].get("reproducible") is not False else None)
                 for rel in rels]
         results = self._pool_map(_job_verify, args, jobs, "verifying")
         out = []
@@ -719,6 +872,12 @@ class Library:
             e = m.entries[rel]
             if r["status"] == "calibrated":
                 e["compat"], e["reproducible"] = r["compat"], True
+                changed = True
+            elif r["status"] == "identical" and r.get("resaved") and calibrate:
+                knobs = dict(r["resaved"])               # the knobs `build` will find for the re-saved score
+                if e.get("origin") == "legacy" and knobs.get("metadata") == "legacy":
+                    knobs.pop("metadata")
+                e["compat"], e["reproducible"] = knobs, True
                 changed = True
             elif r["status"] == "identical" and not e.get("reproducible"):
                 e["reproducible"] = True

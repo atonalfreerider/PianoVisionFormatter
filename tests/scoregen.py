@@ -3,7 +3,7 @@
 import zipfile
 
 TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
-<museScore version="4.60"><programVersion>4.6.0</programVersion><Score><Division>480</Division>
+<museScore version="{version}"><programVersion>{program}</programVersion><Score><Division>480</Division>
 <Part id="1"><Staff id="1"><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff>
 <trackName>Piano</trackName><Instrument id="piano"><longName>Piano</longName><trackName>Piano</trackName>
 <instrumentId>keyboard.piano</instrumentId><Channel><program value="0"/></Channel></Instrument></Part>
@@ -14,19 +14,26 @@ TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 def make_score(path: str, title: str = "Test Song", composer: str = "Jane Tester",
-               pitches=(60, 62, 64, 65, 67, 69, 71, 72), tempo_bpm: int = 0, ms3_styles: bool = False) -> str:
-    """``ms3_styles`` writes MuseScore 3's capitalised text style names ("Title")."""
+               pitches=(60, 62, 64, 65, 67, 69, 71, 72), tempo_bpm: int = 0, ms3_styles: bool = False,
+               version: str = "4.60", fermata: bool = False) -> str:
+    """``ms3_styles`` writes MuseScore 3's capitalised text style names ("Title"); ``version`` "4.70"
+    writes a score as MuseScore 4.7 saves it (line breaks in texts as ``<br/>``); ``fermata`` puts a
+    fermata on the 4th note."""
     measures = []
     for i in range(0, len(pitches), 4):
         head = "<KeySig><concertKey>0</concertKey></KeySig><TimeSig><sigN>4</sigN><sigD>4</sigD></TimeSig>" if i == 0 else ""
         if i == 0 and tempo_bpm:
             head += (f"<Tempo><tempo>{tempo_bpm / 60:.6f}</tempo><followText>1</followText>"
                      f"<text>= {tempo_bpm}</text></Tempo>")
-        chords = "".join(f"<Chord><durationType>quarter</durationType><Note><pitch>{p}</pitch></Note></Chord>"
-                         for p in pitches[i:i + 4])
+        chords = "".join(("<Fermata><subtype>fermataAbove</subtype></Fermata>" if fermata and i + k == 3 else "")
+                         + f"<Chord><durationType>quarter</durationType><Note><pitch>{p}</pitch></Note></Chord>"
+                         for k, p in enumerate(pitches[i:i + 4]))
         measures.append(f"<Measure><voice>{head}{chords}</voice></Measure>")
     t, c = ("T", "C") if ms3_styles else ("t", "c")
-    xml = TEMPLATE.format(title=title, composer=composer, measures="".join(measures), t=t, c=c)
+    if version >= "4.70":
+        title, composer = title.replace("\n", "<br/>"), composer.replace("\n", "<br/>")
+    xml = TEMPLATE.format(title=title, composer=composer, measures="".join(measures), t=t, c=c, version=version,
+                          program={"4.70": "4.7.5", "4.30": "4.3.0"}.get(version, "4.6.0"))
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("META-INF/container.xml",
                    '<?xml version="1.0" encoding="UTF-8"?><container><rootfiles>'

@@ -5,10 +5,11 @@ and keeps a Meta Quest 3 in sync with it.
 
 Scores are rendered **directly from the `.mscz`**. MuseScore is not needed and
 nothing goes through MIDI export files. The renderer is a Python port of MuseScore
-4.6's own MIDI export (note lengths, ties, grace notes, ornaments, tremolos,
+4.6's and 4.7's own MIDI export (note lengths, ties, grace notes, ornaments, tremolos,
 arpeggios, glissandi, swing, repeats and voltas, fermatas and pauses, tempo
-changes, dynamics and hairpins, chord symbols, pedal). It needs Python 3.11+ and
-nothing else.
+changes, dynamics and hairpins, chord symbols, pedal): scores saved by MuseScore 4.7
+are rendered as 4.7 exports them, older scores as 4.6 does (see [MuseScore 4.7](#musescore-47)).
+It needs Python 3.11+ and nothing else.
 
 ## Everyday use
 
@@ -26,7 +27,7 @@ orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits). Th
 | command | what it does |
 |---|---|
 | `status [--device]` | scores to render/retire, invalid files, orphans, title changes; with `--device`, what the Quest is missing |
-| `build [--dry-run] [--force [SCORE…]] [--prune-orphans] [--report FILE]` | incremental render of the library into `PianoVision/`; `--report` also writes what it did (failed scores, ...) as JSON |
+| `build [--dry-run] [--force [SCORE…]] [--keep SCORE…] [--prune-orphans] [--report FILE]` | incremental render of the library into `PianoVision/`; `--keep` keeps the current output of changed scores as it is (pinned); `--report` also writes what it did (failed scores, ...) as JSON |
 | `deploy [--dry-run] [--force-push] [--prune [-y]]` | adb push of changed files, verified by md5 |
 | `sync` | `build` then `deploy` (accepts the deploy options) |
 | `watch [--deploy] [--interval S]` | poll the scores folder and run `build` (and `deploy`) after each save |
@@ -91,6 +92,10 @@ trusted with `gio set … metadata::trusted true`, so a double-click starts it),
 settings) and the output file made from it.
 
 * **Unchanged score:** its JSON is left alone, byte for byte.
+* **Score saved again without a change to its music** (e.g. by a newer MuseScore): its JSON is left
+  alone too when the new file still renders to exactly that JSON, if need be with the knobs that model
+  the older version (see [MuseScore 4.7](#musescore-47)); a pinned JSON stays while the score has the
+  same notes. `build` lists these as "score saved again, output kept as it is".
 * **New or edited score:** rendered and written.
 * **Moved or renamed score:** recognised by content; it keeps its output name, so the Quest keeps its history for the song.
 * **Excluded score** (renamed to `.zip`) **or deleted score:** its JSON is retired to `PianoVision/.attic/`.
@@ -254,12 +259,63 @@ MuseScore-exported MIDI files:
 * 4 depend on state that only existed in an open MuseScore session when the MIDI
   was exported. Those outputs are kept pinned as they are.
 
+The library's 141 scores saved again by MuseScore 4.7.5 render exactly like 4.7.5's own MIDI export
+of them, except 6 that differed the same way from 4.6.3's export already (a tempo event whose place
+depends on layout, which the `tempo_model` knob covers, in 4; the MIDI channels of Rach-2/I's
+orchestra, which the JSON does not show) or newly in Vocalise, where 4.7's layout adds courtesy
+time signatures at the voltas (its `tempo_model: layout` knob matches 4.7.5).
+
+## MuseScore 4.7
+
+MuseScore 4.7 saves scores as format 4.70. The renderer tells the formats apart and applies what
+4.7 reads or exports differently to 4.70 files only, so scores saved by 4.6 and older render
+exactly as before:
+
+* **Line breaks in texts** are saved as `<br/>`: a title or composer on two lines reads as before
+  ("Doctor My Eyes Jackson Harrower …", not "Doctor My EyesJackson Harrower …"). Staff texts
+  (Note Waterfall's markers) and instrument names read the same way.
+* **Tempos are rounded to 6 decimals** (beats per second) whenever they go into the tempo map:
+  tempo markings, fermatas, gradual tempo changes, voltas. A 4.70 file of a score with a fermata at
+  70 bpm plays the fermata at 1714284 µs per quarter where 4.6 gave 1714285, so note times move by
+  microseconds (at most 0.15 ms in this library).
+* **A spanner written backwards** (its end before its start, e.g. a hairpin) is turned round when
+  4.7 reads it, so it sounds; 4.6 kept it with a negative length, which did not. 4.7 saves it
+  forwards, so a score saved by 4.7 plays the hairpin.
+* A tie into a grace note adds nothing to the tied note's length.
+
+**Saving the library again with MuseScore 4.7** (every score's content changes): `build` keeps
+every output whose music did not change, byte for byte. It tries, in order, the score's own knobs,
+then the knobs a re-save calls for, and records the ones that reproduce the output in the manifest:
+
+| knob | what it models |
+|---|---|
+| `engine: "4.6"` | MuseScore 4.6's export rules for a 4.70 file (the output was made before the score was saved by 4.7) |
+| `va_dyn_type: true` | with `dynamics: "4.5"`: a pre-4.4 score's `dynType` 0 (staff range) was saved by 4.4+ as the voice assignment "allInStaff", which MuseScore 4.5 ignored; read it back as the staff range |
+| `metadata: "file"` | the title from the file name and the composer from the folder: what the old title rules made of a MuseScore 3 score, whose capitalised title styles MuseScore 4 saves in lower case |
+
+A pinned output stays pinned while the score has the same notes. `verify` sees a re-saved score as
+`build` will (it lists the knobs). What changes is what MuseScore 4.7 plays differently, as for any
+edited score: the song is rendered with 4.7's rules (`build --keep SCORE` keeps the old output pinned
+instead; `build --force SCORE` drops the knobs and renders a score with the current rules).
+
+Re-saving the whole library with MuseScore 4.7.5 (141 of 144 scores; three files MuseScore reports as
+corrupted): 138 outputs stay byte for byte (80 render the same anyway, 37 with `engine: "4.6"`, 13
+with their existing knobs, 3 MuseScore 3 scores with `metadata: "file"`, 1 with both, 1 with
+`engine` and `va_dyn_type`, and the 3 pinned ones); 3 are rendered again because 4.7 plays hairpins
+that were written backwards: Stella by Starlight (m. 40-41: a crescendo, 80 to 96, where all notes
+were 96), Rachmaninoff's Concerto No. 2/II (m. 150-152, and the rest of the piece now with
+MuseScore 4.6+'s dynamics instead of the 4.5 model its output came from) and Night on Bald Mountain
+(m. 69-70 and 73-74: diminuendos; also a tempo saved with 6 decimals, < 1 µs). Note Waterfall's
+parts files are all written again (they carry the score's content hash); in the Tchaikovsky concerto
+transcription, 7 staff texts that MuseScore 3 styled as expressions are expression texts now (marker
+kind `expression`), and "non apregg." is no longer a marker.
+
 ## Layout
 
 ```
 pianovision/        the package (stdlib only)
   mscx.py             .mscz/.mscx reader -> score model (score.py)
-  render.py           MuseScore 4.6 MIDI export: tempo/time-sig maps, channels, velocities, events
+  render.py           MuseScore 4.6/4.7 MIDI export: tempo/time-sig maps, channels, velocities, events
   playevents.py       note play events (gate time, ornaments, tremolo, arpeggio, glissando, swing)
   repeats.py tempo.py velocity.py harmony.py rhythm.py navigate.py cxxsort.py
   pvjson.py           PianoVision JSON builder (port of midi_to_json.py, output byte-identical)

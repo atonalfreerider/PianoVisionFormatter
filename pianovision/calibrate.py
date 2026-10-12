@@ -3,6 +3,8 @@
 Outputs made by the old workflow came from MuseScore's own MIDI export, run
 with different MuseScore versions (4.5 and 4.6) and sometimes from an open
 GUI session.  Each difference has a Compat knob; this module searches them.
+For a score saved by MuseScore 4.7 since, the search is repeated with 4.6's
+export rules (``engine``).
 """
 
 from __future__ import annotations
@@ -14,19 +16,19 @@ import time
 from typing import Iterable, List, Optional, Tuple
 
 from .convert import convert_mscz
-from .mscx import read_score
+from .mscx import file_version, load_mscx_bytes, read_score
 from .render import Compat, _play, tempo_value
 from .score import SEG_CHORDREST, SEG_TIMETICK, ticks
 
 
-def knob_combinations() -> Iterable[Compat]:
+def knob_combinations(engine: str = "auto") -> Iterable[Compat]:
     """Every combination of the switch knobs; plain 4.6 and 4.5 exports first."""
-    yield Compat(dynamics="4.6")
-    yield Compat(dynamics="4.5")
+    yield Compat(dynamics="4.6", engine=engine)
+    yield Compat(dynamics="4.5", engine=engine)
     for text, model, volta, dyn in itertools.product((False, True), ("auto", "read", "layout"),
                                                      (None, True, False), ("4.6", "4.5")):
         if text or model != "auto" or volta is not None:
-            yield Compat(dynamics=dyn, tempo_text=text, tempo_model=model, volta_tempo=volta)
+            yield Compat(dynamics=dyn, tempo_text=text, tempo_model=model, volta_tempo=volta, engine=engine)
 
 
 def note_signature(data: bytes) -> Tuple[tuple, tuple]:
@@ -68,22 +70,24 @@ def calibrate(mscz_path: str, target: bytes, orchestra: bool = True, simplified:
         c.metadata = metadata
         return convert_mscz(mscz_path, c, orchestra, simplified).data
 
-    for c in knob_combinations():
-        if time.monotonic() > deadline:
-            return None
-        if render(c) == target:
-            return c
+    engines = ("auto", "4.6") if file_version(load_mscx_bytes(mscz_path)) >= 470 else ("auto",)
+    for engine in engines:
+        for c in knob_combinations(engine):
+            if time.monotonic() > deadline:
+                return None
+            if render(c) == target:
+                return c
 
     # Individual tempo markings recomputed from their text (edited in an open MuseScore session).
     cands = text_tempo_candidates(mscz_path)
     if not cands:
         return None
     want = _tempo_pairs(target)
-    for dyn in ("4.6", "4.5"):
+    for engine, dyn in itertools.product(engines, ("4.6", "4.5")):
         chosen: List[int] = []
 
         def fit(tt: List[int]) -> Tuple[int, bytes]:
-            data = render(Compat(dynamics=dyn, text_tempo_ticks=tuple(sorted(tt))))
+            data = render(Compat(dynamics=dyn, text_tempo_ticks=tuple(sorted(tt)), engine=engine))
             got = _tempo_pairs(data)
             return sum((got & want).values()) - sum((got - want).values()), data
 
@@ -96,5 +100,5 @@ def calibrate(mscz_path: str, target: bytes, orchestra: bool = True, simplified:
                 chosen.append(t)
                 best, data = s, d
         if data == target:
-            return Compat(dynamics=dyn, text_tempo_ticks=tuple(sorted(chosen)), metadata=metadata)
+            return Compat(dynamics=dyn, text_tempo_ticks=tuple(sorted(chosen)), metadata=metadata, engine=engine)
     return None

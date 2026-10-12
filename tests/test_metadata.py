@@ -3,7 +3,7 @@
 import unittest
 import xml.etree.ElementTree as ET
 
-from pianovision.metadata import extract_title_artist, format_output_filename
+from pianovision.metadata import extract_title_artist, format_output_filename, title_artist
 
 MS3 = """<museScore version="3.02"><Score>
 <metaTag name="composer">Alicia Keys</metaTag><metaTag name="workTitle">Alicia Keys - Song</metaTag>
@@ -28,6 +28,13 @@ class Metadata(unittest.TestCase):
         # the old scripts only knew MuseScore 4's lower-case styles: file name + folder
         title, artist = extract_title_artist(ET.fromstring(MS3), PATH, legacy=True)
         self.assertEqual(format_output_filename(title, artist, PATH), "pop_empirestateofmind.json")
+
+    def test_file_rules_name_a_resaved_musescore3_score_as_the_legacy_rules_did(self):
+        # MuseScore 4 saves the styles in lower case, which the legacy rules recognise
+        ms4 = ET.fromstring(MS3.replace("<style>T", "<style>t").replace("<style>S", "<style>s")
+                            .replace("<style>C", "<style>c"))
+        self.assertNotEqual(title_artist(ms4, PATH, "legacy"), title_artist(ET.fromstring(MS3), PATH, "legacy"))
+        self.assertEqual(title_artist(ms4, PATH, "file"), title_artist(ET.fromstring(MS3), PATH, "legacy"))
 
     def test_score_properties_before_file_name(self):
         root = ET.fromstring('<museScore><Score><metaTag name="workTitle">Real Title</metaTag>'

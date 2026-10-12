@@ -272,6 +272,109 @@ class PartsLibraryTest(Base):
             self.assertEqual(json.loads(f.read())["song"], "test_New_Title.json")
 
 
+class ResaveTest(Base):
+    """Scores saved again (by MuseScore 4.7) whose outputs were made before: what renders the same stays."""
+
+    def read(self, name="test_Test_Song.json"):
+        with open(os.path.join(self.out, name), "rb") as f:
+            return f.read()
+
+    def test_resave_by_musescore_47_keeps_the_output_with_the_4_6_rules(self):
+        # a fermata at 70 bpm: MuseScore 4.7 rounds its tempo to 6 decimals, 4.6 did not
+        p = self.score("a.mscz", tempo_bpm=70, fermata=True)
+        self.lib().build()
+        before = self.read()
+        make_score(p, tempo_bpm=70, fermata=True, version="4.70")
+        self.assertNotEqual(convert_mscz(p).data, before)
+        lib = self.lib()
+        rep = lib.build()
+        self.assertEqual((rep.written, rep.resaved),
+                         ([], [("a.mscz", "test_Test_Song.json", "output kept: MuseScore 4.6 export rules")]))
+        self.assertEqual(self.read(), before)
+        self.assertEqual(lib.manifest.entries["a.mscz"]["compat"], {"engine": "4.6"})
+        self.assertEqual([s for _r, s, _x in self.lib().verify()], ["identical"])
+        self.assertEqual(self.lib().build().kept, 1)
+        # a real edit afterwards: rendered with MuseScore 4.7's rules
+        make_score(p, tempo_bpm=70, fermata=True, version="4.70", pitches=(60, 60, 60, 60))
+        lib = self.lib()
+        rep = lib.build()
+        self.assertEqual([(w[1], w[2]) for w in rep.written], [("test_Test_Song.json", "score changed")])
+        self.assertNotIn("compat", lib.manifest.entries["a.mscz"])
+        self.assertEqual(self.read(), convert_mscz(p).data)
+
+    def test_verify_sees_the_resaved_score_as_build_will(self):
+        p = self.score("a.mscz", tempo_bpm=70, fermata=True)
+        self.lib().build()
+        make_score(p, tempo_bpm=70, fermata=True, version="4.70")
+        [(_rel, status, r)] = self.lib().verify()
+        self.assertEqual((status, r["resaved"]), ("identical", {"engine": "4.6"}))
+
+    def test_resave_that_renders_the_same_is_not_a_write(self):
+        p = self.score("a.mscz")
+        self.lib().build()
+        make_score(p, version="4.70")
+        rep = self.lib().build()
+        self.assertEqual((rep.written, rep.resaved), ([], [("a.mscz", "test_Test_Song.json", "output unchanged")]))
+
+    def pin(self, lib):
+        """Make the output a pinned one (e.g. a GUI-session export the renderer does not reproduce)."""
+        from pianovision.convert import bytes_hash
+        pinned = self.read().replace(b'"name": "Test Song"', b'"name": "Test Song (pinned)"')
+        self.assertNotEqual(pinned, self.read())
+        with open(os.path.join(self.out, "test_Test_Song.json"), "wb") as f:
+            f.write(pinned)
+        e = lib.manifest.entries["a.mscz"]
+        e["output_sha256"], e["reproducible"] = bytes_hash(pinned), False
+        lib.manifest.save()
+        return pinned
+
+    def test_a_pinned_output_survives_a_resave_with_the_same_notes(self):
+        p = self.score("a.mscz", tempo_bpm=70)
+        lib = self.lib()
+        lib.build()
+        pinned = self.pin(lib)
+        make_score(p, tempo_bpm=70, version="4.70")
+        rep = self.lib().build()
+        self.assertEqual((rep.written, [r[2] for r in rep.resaved]),
+                         ([], ["pinned output kept: the score still has the same notes"]))
+        self.assertEqual(self.read(), pinned)
+        make_score(p, tempo_bpm=70, version="4.70", pitches=(60, 60, 60, 60))       # new notes: rendered
+        self.assertEqual([w[2] for w in self.lib().build().written], ["score changed"])
+
+    def test_keep_pins_the_output_of_a_changed_score(self):
+        p = self.score("a.mscz", tempo_bpm=70)
+        self.lib().build()
+        before = self.read()
+        make_score(p, tempo_bpm=90, version="4.70")
+        lib = self.lib()
+        rep = lib.build(keep=["a.mscz"])
+        self.assertEqual((rep.written, [r[2] for r in rep.resaved]), ([], ["kept as it was (--keep), now pinned"]))
+        self.assertEqual(self.read(), before)
+        self.assertIs(lib.manifest.entries["a.mscz"]["reproducible"], False)
+        self.assertEqual(self.lib().build().kept, 1)
+
+    def test_a_musescore_3_title_survives_the_resave(self):
+        # an output adopted from the old scripts, which named MuseScore 3 scores after the file;
+        # MuseScore 4 saves the title styles in lower case, which the old rules would read
+        from pianovision.render import Compat
+        p = self.score("Pop/old-song.mscz", title="Old Song", ms3_styles=True)
+        os.makedirs(self.out)
+        with open(os.path.join(self.out, "pop_oldsong.json"), "wb") as f:
+            f.write(convert_mscz(p, Compat(metadata="legacy")).data)      # name "oldsong", artist "Pop"
+        lib = self.lib()
+        lib.build()
+        self.assertEqual([s for _r, s, _x in lib.verify()], ["identical"])  # with the old title rules
+        before = self.read("pop_oldsong.json")
+        make_score(p, title="Old Song", version="4.70")
+        lib = self.lib()
+        rep = lib.build()
+        self.assertEqual([r[2] for r in rep.resaved], ["output kept: title from the file name"])
+        self.assertEqual(self.read("pop_oldsong.json"), before)
+        self.assertEqual(lib.manifest.entries["Pop/old-song.mscz"]["compat"], {"metadata": "file"})
+        self.assertEqual(lib.rename(), [])
+        self.assertEqual([s for _r, s, _x in self.lib().verify()], ["identical"])
+
+
 class FakeAdb:
     """In-memory stand-in for the device folder."""
 

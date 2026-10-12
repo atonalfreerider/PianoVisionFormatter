@@ -1,5 +1,9 @@
 """Render a :class:`Score` to MIDI-equivalent events, exactly like MuseScore's
 "Export MIDI" (CompatMidiRendererInternal + ExportMidi), without MuseScore.
+
+Files saved by MuseScore 4.7 (format 4.70) are rendered with 4.7's export rules
+(:meth:`Compat.rules_47`: tempos rounded to 6 decimals, ties into grace notes),
+older files with 4.6's.
 """
 
 from __future__ import annotations
@@ -206,9 +210,16 @@ class Compat:
     dynamics      "4.6" (per-voice assignment) or "4.5" (per-staff DynamicRange)
     tempo_text    recompute text-following tempos from their text (GUI-session exports)
     text_tempo_ticks  score ticks of individual tempo markings recomputed from their text
-    metadata      "v2" (default) or "legacy" title/composer rules (metadata.extract_title_artist)
+    metadata      "v2" (default), "legacy" or "file" title/composer rules (metadata.title_artist; "file": the
+                  file and folder name, what the legacy rules made of a MuseScore 3 score)
     tempo_model   "auto" (command-line export rules), "read" or "layout" (post-layout tempo rebuild)
     volta_tempo   None = follow tempo_model; True/False forces Volta::setTempo entries
+    engine        "auto": MuseScore 4.7's export rules for files saved by 4.7 (format 4.70), 4.6's for older
+                  files; "4.6": 4.6's rules for every file (an output made before its score was saved again
+                  by MuseScore 4.7)
+    va_dyn_type   with dynamics "4.5": read the voice assignment "allInStaff" as the dynType 0 (staff range)
+                  it was converted from (a pre-4.4 score saved again by MuseScore 4.4+ after its output was made;
+                  MuseScore 4.5 itself ignored voice assignments)
     """
     dynamics: str = "4.6"
     tempo_text: bool = False
@@ -216,6 +227,8 @@ class Compat:
     volta_tempo: Optional[bool] = None
     text_tempo_ticks: Tuple[int, ...] = ()
     metadata: str = "v2"
+    engine: str = "auto"
+    va_dyn_type: bool = False
 
     def key(self) -> str:
         k = f"dyn={self.dynamics},text={int(self.tempo_text)},model={self.tempo_model},volta={self.volta_tempo}"
@@ -223,6 +236,10 @@ class Compat:
             k += ",ticks=" + ":".join(str(t) for t in self.text_tempo_ticks)
         if self.metadata != "v2":
             k += f",meta={self.metadata}"
+        if self.engine != "auto":
+            k += f",engine={self.engine}"
+        if self.va_dyn_type:
+            k += ",va_dyn_type"
         return k
 
     def to_dict(self) -> dict:
@@ -239,6 +256,10 @@ class Compat:
             d["text_tempo_ticks"] = list(self.text_tempo_ticks)
         if self.metadata != "v2":
             d["metadata"] = self.metadata
+        if self.engine != "auto":
+            d["engine"] = self.engine
+        if self.va_dyn_type:
+            d["va_dyn_type"] = True
         return d
 
     @classmethod
@@ -250,6 +271,20 @@ class Compat:
 
     def uses_text(self, tt: Element, tick: int) -> bool:
         return (self.tempo_text and follow_text(tt)) or tick in self.text_tempo_ticks
+
+    def rules_47(self, score: Score) -> bool:
+        """Whether MuseScore 4.7's export rules apply (see ``engine``)."""
+        return self.engine == "auto" and score.msc_version >= 470
+
+
+TEMPO_PRECISION = 6
+
+
+def round_tempo(bps: float) -> float:
+    """MuseScore 4.7's roundTempo (muse::RealRound(bps, TEMPO_PRECISION)): every tempo that goes into the tempo
+    map is rounded to 6 decimals of beats per second (4.7 also saves tempo markings with 6 decimals)."""
+    scale = 10 ** TEMPO_PRECISION
+    return math.floor(bps * scale + 0.5) / scale
 
 
 def needs_post_layout_rebuild(score: Score) -> bool:
@@ -271,6 +306,7 @@ def build_maps(score: Score, compat: Optional[Compat] = None) -> Tuple[TempoMap,
         laid_out = compat.tempo_model == "layout"
     volta_entries = (not laid_out) if compat.volta_tempo is None else compat.volta_tempo
     from_text = compat.uses_text
+    rt = round_tempo if compat.rules_47(score) else _same_tempo
     tempomap = TempoMap()
     sigmap = TimeSigMap()
     measures = score.measures
@@ -288,12 +324,12 @@ def build_maps(score: Score, compat: Optional[Compat] = None) -> Tuple[TempoMap,
         m: Measure = mb
         if m.is_anacrusis(mbs[mb_i - 1] if mb_i > 0 else None):
             anacrusis.append(m)
-        _rebuild_measure(score, m, mb_i, tempomap, sigmap, tempo_primo, laid_out, from_text)
+        _rebuild_measure(score, m, mb_i, tempomap, sigmap, tempo_primo, laid_out, from_text, rt)
 
     for sp in score.spanners:
         if sp.tag != "GradualTempoChange" or not _play(sp):
             continue
-        _apply_gradual_tempo(sp, tempomap)
+        _apply_gradual_tempo(sp, tempomap, rt)
     if not tempomap.keys:
         tempomap.set_tempo(0, DEFAULT_TEMPO)
     for m in anacrusis:
@@ -303,7 +339,7 @@ def build_maps(score: Score, compat: Optional[Compat] = None) -> Tuple[TempoMap,
         if nm is not None:
             tt, tt_tick = _tempo_text_in(nm, with_tick=True)
             if tt is not None:
-                tempomap.set_tempo(ticks(m.tick), tempo_value(tt, from_text(tt, tt_tick)))
+                tempomap.set_tempo(ticks(m.tick), rt(tempo_value(tt, from_text(tt, tt_tick))))
     # layout: Volta::setTempo restores the pre-volta tempo at the end of a repeated ending
     # (lost again if the tempo map is rebuilt after layout)
     from .repeats import volta_measures
@@ -314,8 +350,12 @@ def build_maps(score: Score, compat: Optional[Compat] = None) -> Tuple[TempoMap,
         if sm is None or em is None or not em.repeat_end:
             continue
         before = tempomap.tempo(ticks(sm.tick) - 1)
-        tempomap.set_tempo(ticks(em.end_tick) - 1, before)
+        tempomap.set_tempo(ticks(em.end_tick) - 1, rt(before))      # Score::setTempo
     return tempomap, sigmap
+
+
+def _same_tempo(bps: float) -> float:
+    return bps
 
 
 def _tempo_text_in(m: Measure, with_tick: bool = False):
@@ -335,7 +375,8 @@ def _all_segments_before(score: Score, m: Measure):
 
 
 def _rebuild_measure(score: Score, m: Measure, mb_i: int, tempomap: TempoMap, sigmap: TimeSigMap, tempo_primo,
-                     laid_out: bool = False, from_text=lambda tt, tick: False) -> None:
+                     laid_out: bool = False, from_text=lambda tt, tick: False, rt=_same_tempo) -> None:
+    """Score::rebuildTempoAndTimeSigMaps for one measure; ``rt`` rounds the tempos it sets (MuseScore 4.7)."""
     start = m.tick
     t1, t2 = ticks(start), ticks(m.end_tick)
     zero_in = start <= 0 < m.end_tick
@@ -395,18 +436,18 @@ def _rebuild_measure(score: Score, m: Measure, mb_i: int, tempomap: TempoMap, si
                     tv = tempo_value(e, from_text(e, ticks(seg.tick)))
                     ttype = tempo_type(e)
                     if ttype == "normal" and tempo_primo[0] is None:
-                        tempo_primo[0] = tv
+                        tempo_primo[0] = rt(tv)
                     st = ticks(seg.tick)
                     if ttype == "aTempo" and follow_text(e):
                         tempomap.set_tempo(st, tempomap.tempo(st))
                     elif ttype == "tempoPrimo" and follow_text(e):
                         tempomap.set_tempo(st, tempo_primo[0] if tempo_primo[0] is not None else DEFAULT_TEMPO)
                     else:
-                        tempomap.set_tempo(st, tv)
+                        tempomap.set_tempo(st, rt(tv))
             if stretch != 0.0 and stretch != 1.0:
                 st = ticks(seg.tick)
                 otempo = tempomap.tempo(st)
-                tempomap.set_tempo(st, otempo / stretch)
+                tempomap.set_tempo(st, rt(otempo / stretch))
                 nxt = _next1_active(score, m, si)
                 if nxt is not None:
                     end_tick = nxt.tick
@@ -593,7 +634,7 @@ GRADUAL_FACTORS = {
 }
 
 
-def _apply_gradual_tempo(sp: Spanner, tempomap: TempoMap) -> None:
+def _apply_gradual_tempo(sp: Spanner, tempomap: TempoMap, rt=_same_tempo) -> None:
     t0 = ticks(sp.tick)
     cur = tempomap.tempo(t0)
     ctype = str(sp.props.get("tempoChangeType", "undefined"))
@@ -608,7 +649,7 @@ def _apply_gradual_tempo(sp: Spanner, tempomap: TempoMap) -> None:
     for off, val in easing_value_curve(total, steps, new - cur, method).items():
         t = t0 + off
         if t not in tempomap:
-            tempomap.set_tempo(t, cur + val)
+            tempomap.set_tempo(t, rt(cur + val))
 
 
 # ------------------------------------------------------------------------------
@@ -768,10 +809,15 @@ def voice_assignment(score: Score, e: Element) -> str:
     return "instrument"
 
 
-def dyn_range_452(score: Score, e: Element) -> str:
-    """MuseScore 4.5: DynamicRange (only the legacy dynType tag of pre-4.4 files is honoured)."""
+def dyn_range_452(score: Score, e: Element, va_dyn_type: bool = False) -> str:
+    """MuseScore 4.5: DynamicRange (only the legacy dynType tag of pre-4.4 files is honoured).
+
+    ``va_dyn_type`` (Compat): a pre-4.4 score saved again by 4.4+ has its dynType 0 as voiceAssignment
+    "allInStaff" (read400/read410: Read206::readDynamicRange); read it back as the staff range."""
     if score.msc_version < 440 and e.props.get("dynType", "") != "":
         return {"0": "staff", "1": "instrument", "2": "system"}.get(str(e.props["dynType"]).strip(), "instrument")
+    if va_dyn_type and str(e.props.get("voiceAssignment", "")).strip() == "allInStaff":
+        return "staff"
     return "instrument"
 
 
@@ -797,9 +843,10 @@ def _art_mult(ctx: PlayContext, seg, el, mults_for):
     vm.add_hairpin(el.tick, el.tick + change_time, change, "normal", DECREASING)
 
 
-def fill_score_velocities(score: Score, ctx: PlayContext, tempomap: TempoMap, profile: str = "4.6"):
+def fill_score_velocities(score: Score, ctx: PlayContext, tempomap: TempoMap, profile: str = "4.6",
+                          va_dyn_type: bool = False):
     if profile == "4.5":
-        return _fill_velocities_452(score, ctx, tempomap)
+        return _fill_velocities_452(score, ctx, tempomap, va_dyn_type)
     velos: Dict[int, VelocityMap] = {t: VelocityMap() for t in range(score.ntracks())}
     mults: Dict[int, VelocityMap] = {t: VelocityMap() for t in range(score.ntracks())}
     for m in score.measures:
@@ -896,7 +943,7 @@ def _fill_volta_velocities(score: Score, maps_for_staff) -> None:
             vm.add_dynamic(end_tick, vm.val(start_tick))
 
 
-def _fill_velocities_452(score: Score, ctx: PlayContext, tempomap: TempoMap):
+def _fill_velocities_452(score: Score, ctx: PlayContext, tempomap: TempoMap, va_dyn_type: bool = False):
     """MuseScore 4.5.x: one map per staff, dynamics/hairpins scoped by DynamicRange."""
     staff_velo = {st.idx: VelocityMap() for st in score.staves}
     staff_mult = {st.idx: VelocityMap() for st in score.staves}
@@ -923,7 +970,7 @@ def _fill_velocities_452(score: Score, ctx: PlayContext, tempomap: TempoMap):
                         continue
                     v = max(1, min(127, v))
                     direction = DECREASING if change < 0 else INCREASING
-                    for si in targets(st.idx, dyn_range_452(score, e)):
+                    for si in targets(st.idx, dyn_range_452(score, e, va_dyn_type)):
                         staff_velo[si].add_dynamic(tick, v)
                         if change != 0:
                             staff_velo[si].add_hairpin(tick, tick + length, change, "normal", direction)
@@ -937,7 +984,7 @@ def _fill_velocities_452(score: Score, ctx: PlayContext, tempomap: TempoMap):
             if sp.tag != "HairPin" or sp.track // VOICES != st.idx:
                 continue
             velo_change, method, direction = _hairpin_args(sp)
-            for si in targets(st.idx, dyn_range_452(score, sp)):
+            for si in targets(st.idx, dyn_range_452(score, sp, va_dyn_type)):
                 staff_velo[si].add_hairpin(sp.tick, sp.tick2, velo_change, method, direction)
     for st in score.staves:
         if st.linked_primary:
@@ -1000,6 +1047,7 @@ class Renderer:
         self.score = score
         self.profile = self.compat.dynamics
         self.tempomap, self.sigmap = build_maps(score, self.compat)
+        self.rules_47 = self.compat.rules_47(score)
         self.repeat_list = build_repeat_list(score)
         self.ctx = PlayContext(score, self.tempomap)
         self.events = EventsHolder()
@@ -1010,7 +1058,8 @@ class Renderer:
         apply_ottavas(score)
         PlayEventRenderer(self.ctx).create_all()
         self.channel_map = assign_channels(score)
-        self.velos, self.mults = fill_score_velocities(score, self.ctx, self.tempomap, self.profile)
+        self.velos, self.mults = fill_score_velocities(score, self.ctx, self.tempomap, self.profile,
+                                                       self.compat.va_dyn_type)
         for staff in score.staves:
             self.render_staff(staff)
         self.fixup_midi()
@@ -1165,7 +1214,8 @@ class Renderer:
             else:
                 break
             nel = n.play_events
-            if nel:
+            # MuseScore 4.7 (calculateTieLength): a tie into a grace note adds nothing
+            if nel and not (self.rules_47 and n.chord.is_grace):
                 tie_len += cdiv(nel[0].len * ticks(n.chord.actual_ticks()), NOTE_LENGTH)
             guard += 1
             if guard > 100000:

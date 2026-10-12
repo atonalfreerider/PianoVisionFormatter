@@ -16,9 +16,9 @@ import dataclasses
 import os
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-from .metadata import extract_accented_notes, extract_merge_markers, extract_title_artist
+from .metadata import extract_accented_notes, extract_merge_markers, title_artist
 from .smf import MidiFile, merged_messages_seconds
 
 
@@ -629,14 +629,15 @@ def create_measure_data(time_sigs, right_notes, left_notes, tempos):
 
 def build_song(mid: MidiFile, mscx_root: Optional[ET.Element], source_path: str,
                orchestra_mode: bool = True, simplified_mode: bool = True,
-               legacy_metadata: bool = True,
+               legacy_metadata: Union[bool, str] = True,
                provenance: Optional[Dict[str, List[Note]]] = None,
                parts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Assemble the PianoVision JSON document.
 
     ``mscx_root`` supplies title/composer, merge markers and accents; without
     it the file name and folder are used for metadata.  ``legacy_metadata``
-    selects the old title rules (see metadata.extract_title_artist).
+    selects the old title rules (see metadata.extract_title_artist), or names the
+    rules ("v2" | "legacy" | "file", as ``Compat.metadata``).
     ``provenance``, when given, receives ``"right"`` and ``"left"``: the
     :class:`Note` behind every ``tracksV2`` note of that hand, in file order
     (``src`` is the score note when the MIDI came from the renderer with provenance).
@@ -645,7 +646,8 @@ def build_song(mid: MidiFile, mscx_root: Optional[ET.Element], source_path: str,
     """
     tempos = extract_tempo_events(mid)
     if mscx_root is not None:
-        title, artist = extract_title_artist(mscx_root, source_path, legacy=legacy_metadata)
+        rules = legacy_metadata if isinstance(legacy_metadata, str) else ("legacy" if legacy_metadata else "v2")
+        title, artist = title_artist(mscx_root, source_path, rules)
         merge_markers = extract_merge_markers(mscx_root)
         accents = extract_accented_notes(mscx_root)
     else:

@@ -3,11 +3,15 @@
 The reading logic follows MuseScore 4.6's ``rw/read460`` (measure/voice
 reading, relative ``location`` handling and connector matching for ties
 and spanners), including the older 3.x/4.0-4.4 layouts found in real
-libraries.
+libraries.  MuseScore 4.7 still reads its own files (format 4.70) with
+``read460``; what it reads differently is applied to 4.70 files only
+(:func:`load_mscx_bytes`, :meth:`MscxReader._add_to_score`), so files
+saved by 4.6 and older read exactly as before.
 """
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 import zipfile
 from fractions import Fraction
@@ -35,7 +39,38 @@ TIME_ANCHOR_TAGS = {"Dynamic", "Expression", "Tempo", "StaffText", "SystemText",
                     "InstrumentChange", "PlayTechAnnotation", "Capo", "StringTunings", "Sticking"}
 
 
+_VERSION_RE = re.compile(rb'<museScore\s+version="([^"]*)"')
+
+
+def version_number(version: str) -> int:
+    """MuseScore file format version as a number: "4.70" -> 470, "3.02" -> 302."""
+    major, _, minor = version.partition(".")
+    return int(major) * 100 + int((minor + "00")[:2])
+
+
+def file_version(data: bytes) -> int:
+    """Format version of an .mscx document (``<museScore version="4.70">`` -> 470; 460 when absent)."""
+    m = _VERSION_RE.search(data[:4096])
+    try:
+        return version_number(m.group(1).decode("ascii")) if m else 460
+    except ValueError:
+        return 460
+
+
 def load_mscx_bytes(path: str) -> bytes:
+    """The main .mscx of a score, as MuseScore reads it.
+
+    MuseScore 4.7 writes a line break inside a text (titles, staff texts, instrument names, ...) as
+    ``<br/>`` where 4.6 and older wrote a raw newline, and its reader turns ``<br/>`` back into a newline
+    (``TRead::lineBreakFromTag``).  For 4.70 files the same is done here, so a title split over two lines
+    reads ``"Doctor My Eyes\\nJackson ..."`` again and not ``"Doctor My EyesJackson ..."``."""
+    data = _read_main_mscx(path)
+    if file_version(data) >= 470:
+        data = data.replace(b"<br/>", b"\n")
+    return data
+
+
+def _read_main_mscx(path: str) -> bytes:
     if path.lower().endswith(".mscx"):
         with open(path, "rb") as f:
             return f.read()
@@ -345,9 +380,7 @@ class MscxReader:
     def read(self) -> Score:
         data = load_mscx_bytes(self.path)
         root = ET.fromstring(data)
-        version = root.get("version", "4.60")
-        major, _, minor = version.partition(".")
-        self.score.msc_version = int(major) * 100 + int((minor + "00")[:2])
+        self.score.msc_version = version_number(root.get("version", "4.60"))
         self.score.style = read_style(self.path)
         score_el = root.find("Score")
         if score_el is None:
@@ -1087,6 +1120,7 @@ class MscxReader:
         sp = Spanner(stype, track=start.cur_loc.track, props=props)
         sp.track2 = end.cur_loc.track
         cur_s, cur_e = start.current, end.current
+        has_end = True                     # tick2 was read (not left at its default)
         if isinstance(cur_s, Note):
             sp.tick = cur_s.chord.tick
             sp.tick2 = cur_e.chord.tick if isinstance(cur_e, Note) else sp.tick
@@ -1113,9 +1147,16 @@ class MscxReader:
             if isinstance(cur_e, ChordRest):
                 sp.tick2 = cur_e.tick
                 sp.end = cur_e
+            else:
+                has_end = False
         else:  # measure anchored
             sp.tick = start.measure.tick + start.cur_loc.frac
             sp.tick2 = end.measure.tick + end.cur_loc.frac
+        if self.score.msc_version >= 470 and has_end and sp.tick2 < sp.tick:
+            # MuseScore 4.7's Spanner::setTick2: an end before the start swaps the two ticks (4.6 kept a
+            # negative length, e.g. a hairpin written backwards).  4.7 saves spanners forwards, so this only
+            # matters for 4.70 files written by other tools; older files keep 4.6's reading.
+            sp.tick, sp.tick2 = sp.tick2, sp.tick
         sp.props["_seq"] = self.spanner_seq
         self.spanner_seq += 1
         self.score.spanners.append(sp)
