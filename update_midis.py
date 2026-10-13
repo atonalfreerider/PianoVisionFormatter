@@ -5,7 +5,7 @@ import shutil
 import subprocess
 from typing import Optional
 
-APPIMAGE_DEFAULT = "/home/john/.local/bin/MuseScore-Studio-4.6.0.252730944-x86_64.AppImage"
+APPIMAGE_DEFAULT = "/home/john/.local/bin/mscore"   # symlink to the current MuseScore Studio AppImage
 
 def _find_musescore_cli() -> Optional[str]:
     """
