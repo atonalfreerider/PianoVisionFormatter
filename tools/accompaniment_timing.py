@@ -16,8 +16,10 @@ song's clock (the formatter's MIDI with the tempo map of every track's set_tempo
   the onset times (0 means the envelope adds no lag of its own).
 * **matched**: every onset matched to the nearest detected onset within 50 ms; median difference.
 * **mp3** (with ``--mp3``): where the mp3's audio lands against the WAV it was encoded from (times ``--gain-db``),
-  decoded once honouring the LAME gapless header (encoder delay and padding) and once ignoring it, as a decoder
-  that does not read the header would (ffmpeg ``-flags2 +skip_manual``).
+  decoded once as ffmpeg does by default (it honours a LAME gapless header when there is one), once without any
+  gapless handling (``-flags2 +skip_manual``: every frame decoded and concatenated), and once from a frame in the
+  middle of the file, as a player fed the frames from there on (what Note Waterfall serves a Sonos): that one
+  should land at the frame's index times 1152 samples.
 """
 
 import argparse
@@ -120,6 +122,57 @@ def decode(mp3, manual_skip):
     return np.frombuffer(raw, dtype=np.float32)
 
 
+def mp3_frames(data):
+    """Byte offsets of the audio frames of an MPEG-1 Layer III file (an ID3v2 tag and a Xing/Info frame skipped)."""
+    pos = 0
+    if data[:3] == b"ID3":
+        pos = 10 + ((data[6] << 21) | (data[7] << 14) | (data[8] << 7) | data[9])
+    rates = [44100, 48000, 32000]
+    kbps = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320]
+    out = []
+    while pos + 4 <= len(data):
+        h = data[pos:pos + 4]
+        if h[0] != 0xFF or (h[1] & 0xFE) != 0xFA:          # MPEG-1 Layer III sync
+            pos += 1
+            continue
+        br, sr_i, pad = h[2] >> 4, (h[2] >> 2) & 3, (h[2] >> 1) & 1
+        if br in (0, 15) or sr_i == 3:
+            pos += 1
+            continue
+        length = 144000 * kbps[br] // rates[sr_i] + pad
+        side = 17 if (h[3] >> 6) == 3 else 32
+        if not out and data[pos + 4 + side:pos + 8 + side] in (b"Xing", b"Info"):
+            pos += length
+            continue
+        out.append(pos)
+        pos += length
+    return out
+
+
+def from_frame(mp3, ref, sr=44100):
+    """Decode the mp3 from a frame boundary in its loudest stretch; lag of that decode against ref from the frame's
+    nominal time (frame index * 1152), + = later."""
+    with open(mp3, "rb") as f:
+        data = f.read()
+    frames = mp3_frames(data)
+    if len(frames) < 100:
+        return None
+    hop = 1152
+    loud = [float(np.sum(ref[k * hop:(k + 200) * hop] ** 2)) for k in range(0, len(frames) - 400, 200)]
+    k = 200 * int(np.argmax(loud)) + 100 if loud else len(frames) // 2
+    import tempfile, os
+    fd, tmp = tempfile.mkstemp(suffix=".mp3")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data[frames[k]:])
+        d = decode(tmp, True)
+    finally:
+        os.unlink(tmp)
+    lag, corr = offset(ref[k * hop:], d, sr)
+    return {"frame": k, "frame_time_s": round(k * hop / sr, 3), "samples": lag, "ms": round(lag / sr * 1000, 2),
+            "corr": round(corr, 4), "frames": len(frames)}
+
+
 def offset(ref, y, sr=44100, maxlag=6000):
     """Lag (samples) of y against ref, + = y later, over the loudest 20 s of ref."""
     n = min(len(ref), len(y))
@@ -169,11 +222,14 @@ def main(argv=None):
     if args.mp3:
         ref = y.mean(axis=1) * (10 ** (args.gain_db / 20))
         out = {}
-        for name, manual in (("gapless_honoured", False), ("gapless_ignored", True)):
+        for name, manual in (("ffmpeg_default", False), ("no_gapless_handling", True)):
             d = decode(args.mp3, manual)
             lag, corr = offset(ref, d, sr)
             out[name] = {"samples": lag, "ms": round(lag / sr * 1000, 2), "corr": round(corr, 4),
                          "decoded_samples": int(len(d)), "source_samples": int(len(ref))}
+        ff = from_frame(args.mp3, ref, sr)
+        if ff:
+            out["from_a_frame"] = ff
         res["mp3"] = out
     text = json.dumps(res, indent=1)
     if args.out:

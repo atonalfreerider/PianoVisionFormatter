@@ -302,7 +302,10 @@ For each score:
    itself against the notes.
 6. **Encode**: a linear gain to `lufs` (-16 LUFS integrated, ffmpeg's loudnorm measurement),
    capped so the true peak stays at or below `true_peak` (-1 dBTP), no compression; LAME mp3,
-   `bitrate` kbit/s CBR, `<out_dir>/<song>.mp3` named after the PianoVision JSON.
+   `bitrate` kbit/s CBR, `<out_dir>/<song>.mp3` named after the PianoVision JSON. The first
+   1105 samples (LAME's 576-sample encoder delay plus the decoder's 529) are cut and no Xing/LAME
+   header is written: every decoder, gapless-aware or not, and a player fed the frames from any
+   frame on (a Sonos), plays the audio on the score's timeline.
 
 The report is `<out_dir>/accompaniment-report.md`, and `accompaniment-report.json` (which is
 also the cache). A score is rendered again only when its file, its options, the muted
@@ -313,9 +316,14 @@ its instruments played the basic sounds. So installing Percussion or Harp later 
 only the scores with timpani, harp, ... (the libraries are read from the Muse Sounds folder's
 `.instruments` database, read-only).
 
-The mp3s carry a LAME header with the encoder delay and padding. A decoder that honours it
-plays the audio from the first sample; one that ignores it (or a stream that starts after the
-header frame) plays it 1105 samples (25 ms at 44.1 kHz) late.
+The timing check also decodes each mp3 three ways (ffmpeg's default, without any gapless
+handling, and from a frame in the middle of the file) and reports where it lands against the WAV:
+0 samples. (An mp3 with the usual LAME header plays 1105 samples, 25 ms, late in any decoder that
+ignores the header, and always from a frame index.)
+
+`play_parts` keeps an instrument the formatter counts as piano playing: the drum staves on MIDI
+channel 10 have program 0, which the formatter's rule takes for a piano (Shape of You, Evanescence,
+Rach 3/II and III have them in `accompaniment.json`).
 
 ## Fidelity
 

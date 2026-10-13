@@ -386,6 +386,30 @@ class ListenChecksTest(unittest.TestCase):
         self.assertEqual(len(ck["bleed_suspects"]), 1)
 
 
+class EncodeTest(unittest.TestCase):
+    def test_codec_delay_cut_and_no_gapless_header(self):
+        args = A.encode_args("in.wav", "out.mp3", 4.5, 256, "T", "", "", end=120.0)
+        af = args[args.index("-af") + 1]
+        self.assertTrue(af.startswith(f"atrim=start_sample={A.MP3_CODEC_DELAY}:end=120.000,asetpts=PTS-STARTPTS,"))
+        self.assertIn("volume=4.500dB", af)
+        self.assertEqual(args[args.index("-write_xing") + 1], "0")
+        self.assertEqual(args[args.index("-b:a") + 1], "256k")
+        self.assertEqual(A.MP3_CODEC_DELAY, 1105)
+        self.assertEqual(args[-1], "out.mp3")
+
+
+class OptionsFileTest(unittest.TestCase):
+    def test_the_checked_in_options_parse(self):
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), A.OPTIONS_NAME)
+        defaults, scores = A.load_options(path)
+        self.assertTrue(scores)
+        for rel, per in scores.items():
+            o = A.score_options(defaults, per)
+            for r in o.relabel:
+                self.assertTrue(r.part and r.old and r.new and r.musicxml, rel)
+        self.assertEqual(A.score_options(defaults, scores["Pop/Shape of You.mscz"]).play_parts, ["3", "9"])
+
+
 class SettingsTest(unittest.TestCase):
     def test_toml_section_and_relative_paths(self):
         tmp = tempfile.mkdtemp()

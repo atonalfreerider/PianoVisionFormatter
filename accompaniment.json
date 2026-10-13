@@ -20,8 +20,14 @@
       ]
     },
     "Pop/Evanescence — Imaginary [MIDIfind.com].mscz": {
+      "play_parts": ["9"],
+      "_play_parts": "the Drum Kit (channel 10, program 0) is counted as piano by the formatter; it plays here",
       "mute_vocals": true,
       "_why": "a sampled 'aah' singing the lyric line would sound wrong; set false to keep the vocal staves"
+    },
+    "Pop/Shape of You.mscz": {
+      "play_parts": ["3", "9"],
+      "_play_parts": "the Tambourine and Hand Clap staves (channel 10, program 0) are counted as piano by the formatter; they play here"
     },
     "Rachmaninoff/Rach-2/I/Piano_Concerto_2_First-master.mscz": {
       "relabel": [
@@ -57,6 +63,8 @@
       ]
     },
     "Rachmaninoff/Rach-3/II/Piano_Concerto_3_Second-master.mscz": {
+      "play_parts": ["11", "12"],
+      "_play_parts": "the Drumset staves Platillos (cymbals) and Gr. Cassa (bass drum) are counted as piano by the formatter (channel 10, program 0); they play here",
       "relabel": [
         {"part": "6", "from": "bb-horn-basso", "to": "horn", "instrumentId": "brass.french-horn", "why": "'Horn in B♭ basso' is a natural horn label for the horns [added after the probe: basic sounds otherwise]"},
         {"part": "17", "from": "violin", "to": "violins", "instrumentId": "strings.group", "why": "solo violin used for the first violins section [added: the same fix as the third movement]"},
@@ -67,6 +75,8 @@
       ]
     },
     "Rachmaninoff/Rach-3/III/Piano_Concerto_3_Third-master.mscz": {
+      "play_parts": ["11", "12", "13"],
+      "_play_parts": "the Drumset staves Tambor (snare), Platillos (cymbals) and Gran casa (bass drum) are counted as piano by the formatter (channel 10, program 0); they play here",
       "relabel": [
         {"part": "1", "from": "c-dizi", "to": "flute", "instrumentId": "wind.flutes.flute", "why": "'C Dizi, 2 Flautas' is the flutes"},
         {"part": "16", "from": "violin", "to": "violins", "instrumentId": "strings.group", "why": "solo violin used for the first violins section"},
@@ -76,7 +86,7 @@
         {"part": "20", "from": "contrabass", "to": "contrabasses", "instrumentId": "strings.group", "why": "solo double bass used for the basses section"},
         {"part": "6", "from": "bb-horn-basso", "to": "horn", "instrumentId": "brass.french-horn", "why": "'Horn in B♭ basso' is a natural horn label for the horns [added after the probe: basic sounds otherwise]"}
       ],
-      "_drums": "The three Drumset staves (Tambor, Platillos, Gran casa: snare, cymbals, bass drum) are not relabelled: the formatter counts them as the piano part, so they are muted; and no Muse Sounds percussion library is installed to check a pitch mapping against."
+      "_drums": "The three Drumset staves (snare, cymbals, bass drum) keep their Drumset instrument and the basic sounds: no Muse Sounds percussion library is installed to check a pitch mapping against."
     }
   }
 }

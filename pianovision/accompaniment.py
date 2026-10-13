@@ -29,7 +29,8 @@ so run ``build`` first).  For each one:
    configured, and the same for the score's piano alone rendered with the basic sounds (MuseScore's timeline
    apart from the Muse Sounds attacks).
 6. **Encode.**  A linear gain to ``lufs`` integrated loudness (ffmpeg loudnorm measurement), capped so the true
-   peak stays at or below ``true_peak``; no compression.  LAME mp3, constant bit rate.
+   peak stays at or below ``true_peak``; no compression.  LAME mp3, constant bit rate, with the codec delay cut
+   from the start and no Xing/LAME header: decoded without gapless handling, it lines up at sample 0.
 
 The output is ``<out>/<song>.mp3`` (``<song>`` = the PianoVision JSON's name) and the report
 ``accompaniment-report.md`` / ``.json``.  The JSON is also the cache: a score is rendered again only when its
@@ -61,10 +62,12 @@ import zipfile
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
-PIPELINE_VERSION = 2            # bump when rendering, probing or encoding changes what a file sounds like
+PIPELINE_VERSION = 3            # bump when rendering, probing or encoding changes what a file sounds like
 REPORT_NAME = "accompaniment-report"
 OPTIONS_NAME = "accompaniment.json"
 SOUND_PROFILE = "MuseSounds"
+MP3_SAMPLE_RATE = 44100
+MP3_CODEC_DELAY = 576 + 529     # LAME's encoder delay + the MPEG layer III decoder's delay, in samples
 PROBE_BPM = 120
 PROBE_MEASURE_S = 4 * 60.0 / PROBE_BPM      # 4/4 at 120 bpm
 PROBE_SLOT_MEASURES = 3                     # one whole note, two measures' rest for the tail
@@ -985,16 +988,26 @@ def duration(path: str) -> float:
         return 0.0
 
 
-def encode_mp3(wav: str, mp3: str, gain_db: float, bitrate: int, title: str = "", artist: str = "",
-               comment: str = "", end: Optional[float] = None) -> None:
-    """``wav`` times ``gain_db`` (a plain gain; ``end``: cut there, the start is never moved) as a LAME mp3."""
-    af = (f"atrim=end={end:.3f}," if end else "") + f"volume={gain_db:.3f}dB"
-    args = ["-y", "-i", wav, "-af", af, "-c:a", "libmp3lame", "-b:a", f"{bitrate}k",
-            "-ar", "44100", "-ac", "2", "-map_metadata", "-1", "-id3v2_version", "3"]
+def encode_args(wav: str, mp3: str, gain_db: float, bitrate: int, title: str = "", artist: str = "",
+                comment: str = "", end: Optional[float] = None) -> List[str]:
+    """ffmpeg arguments for :func:`encode_mp3`."""
+    af = (f"atrim=start_sample={MP3_CODEC_DELAY}" + (f":end={end:.3f}" if end else "")
+          + f",asetpts=PTS-STARTPTS,volume={gain_db:.3f}dB")
+    args = ["-y", "-i", wav, "-af", af, "-c:a", "libmp3lame", "-b:a", f"{bitrate}k", "-ar", str(MP3_SAMPLE_RATE),
+            "-ac", "2", "-map_metadata", "-1", "-id3v2_version", "3", "-write_xing", "0"]
     for k, v in (("title", title), ("artist", artist), ("comment", comment)):
         if v:
             args += ["-metadata", f"{k}={v}"]
-    _ffmpeg(args + [mp3])
+    return args + [mp3]
+
+
+def encode_mp3(wav: str, mp3: str, gain_db: float, bitrate: int, title: str = "", artist: str = "",
+               comment: str = "", end: Optional[float] = None) -> None:
+    """``wav`` times ``gain_db`` (a plain gain; ``end``: cut there) as a LAME mp3, constant bit rate, that every
+    decoder plays on the score's timeline: the encoder and decoder delay (:data:`MP3_CODEC_DELAY` samples) is cut
+    from the start and no Xing/LAME header is written, so no decoder can apply gapless trimming and a plain
+    frame-by-frame decode (what a Sonos fed from a frame index does) lines up at sample 0."""
+    _ffmpeg(encode_args(wav, mp3, gain_db, bitrate, title, artist, comment, end))
 
 
 def lame_tag(mp3: str) -> Dict[str, Any]:
@@ -1163,7 +1176,8 @@ def process(c: Candidate, s: Settings, defaults: dict, per_score: Dict[str, dict
     a = analyse(c.path, _verify_compat(c.entry))
     plan = plan_mutes(a, o)
     tools = tools_signature(s)
-    encode = {"bitrate": s.bitrate, "lufs": s.lufs, "true_peak": s.true_peak}
+    encode = {"bitrate": s.bitrate, "lufs": s.lufs, "true_peak": s.true_peak, "sample_rate": MP3_SAMPLE_RATE,
+              "codec_delay_cut": MP3_CODEC_DELAY, "xing_header": False}
     key = cache_key(score_sha, o.to_dict(), plan.to_dict(), tools, encode)
     installed = muse_libraries(s.path("musesampler"))
     prev = state.get("scores", {}).get(c.rel) or {}
@@ -1501,6 +1515,11 @@ def report_markdown(state: dict, settings: Settings) -> str:
                      f"p5 {_f(x['p5_ms'])}, p95 {_f(x['p95_ms'])} ({x['windows']}/{x['windows_total']} windows), "
                      f"drift {_f(x['drift_ms_per_min'], '+.2f')} ms/min; method {_f(tr_.get('method_bias_ms'))} ms "
                      f"on clicks")
+        mp = (t or {}).get("mp3") if t and not t.get("error") else None
+        if mp:
+            parts_ = [f"{k.replace('_', ' ')} {v['samples']:+d} samples" for k, v in mp.items() if "samples" in v]
+            L.append("- **mp3 alignment** against the WAV (+ = later): " + ", ".join(parts_)
+                     + ("; Xing/LAME header: " + ("yes" if (r.get("lame") or {}).get("info_frame") else "none")))
         ld = r.get("loudness") or {}
         if ld:
             b, a_ = ld["before"], ld["after"]
