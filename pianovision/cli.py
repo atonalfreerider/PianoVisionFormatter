@@ -12,6 +12,7 @@
     gui       the Piano Library window (library, build, push to the headset, hand edits)
     accompaniment  Note Waterfall's companion audio: the scores' orchestra rendered by MuseScore with Muse Sounds
     arrangement    the measure alignment of a simplified part made from an arrangement (scores.json), as a report
+    recordings     companion audio from recordings you own: match them to songs (TypeSafe), align, retime
 """
 
 from __future__ import annotations
@@ -505,6 +506,34 @@ def cmd_arrangement(args) -> int:
     return 0
 
 
+def cmd_recordings(args) -> int:
+    """Recordings from the music folder linked to the library's songs and retimed onto their timelines."""
+    from . import recordings as R
+    lib = _library(args)
+    s = R.load_settings(lib.cfg.path, music_dir=args.music, out_dir=args.out, work_dir=args.work,
+                        python=args.python, links=os.path.abspath(args.links) if args.links else None)
+    try:
+        if args.action == "match":
+            stats = R.match(lib, s, only=args.only, refresh=args.refresh, dry_run=args.dry_run, log=_p)
+            if not args.dry_run:
+                _p(f"links: {s.links}")
+            return 1 if stats.get("errors") else 0
+        if args.action in ("align", "retime"):
+            return R.run(lib, s, only=args.only, force=args.force, retime=args.action == "retime", log=_p)
+        if args.action == "status":
+            return R.status(lib, s, log=_p)
+        if not args.items:
+            _p(f"recordings {args.action}: name the song (score path, song file or a glob)")
+            return 2
+        if args.action == "confirm":
+            return R.decide_link(lib, s, args.items[0], args.items[1] if len(args.items) > 1 else None,
+                                 args.variant, log=_p)
+        return R.decide_link(lib, s, args.items[0], reject=True, log=_p)
+    except R.RecordingsError as e:
+        _p(f"error: {e}")
+        return 2
+
+
 def cmd_gui(args) -> int:
     from .gui import run_gui
     return run_gui(args)
@@ -636,6 +665,42 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--write", action="store_true",
                    help="also write the report to <output>/.arrangements/ (build does this too)")
     p.set_defaults(fn=cmd_arrangement)
+
+    p = sub.add_parser(
+        "recordings", help="companion audio from recordings you own: match them to the songs, align, retime",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Recordings from the music folder ([recordings] music_dir, read only) as Note Waterfall's "
+                    "companion audio, on each song's own timeline.",
+        epilog="""actions:
+  match     inventory the music folder; per song, candidates by title/artist/file names and one TypeSafe
+            judgment (TYPESAFE_API_KEY): the links file (recordings.json, checked in) with the pick, its
+            confidence, status linked / review / none. Asks again only for songs whose question changed;
+            the others are decided again from their stored answers (thresholds may have changed).
+  align     align every usable link (linked, or confirmed by you) with its song: key, tempo, structure
+  retime    align, then retime the variant (piano-removed stem if there is one) onto the song's timeline,
+            encode <out>/<song>.mp3, verify it, write the accuracy summaries, the audio_map proposal and the
+            report (recordings-report.md)
+  status    the music folder, the links (what is used, what needs your confirmation), the aligned songs
+  confirm SONG [RECORDING] [--variant full|no_piano]
+            your decision: use the pick (or RECORDING, a path below the music folder)
+  reject SONG
+            your decision: no recording for this song
+
+Settings: [recordings] in pianovision.toml (music_dir, out_dir, work_dir, python, model, thresholds).""")
+    p.add_argument("action", choices=("match", "align", "retime", "status", "confirm", "reject"))
+    p.add_argument("items", nargs="*", metavar="ARG", help="confirm: SONG [RECORDING]; reject: SONG")
+    p.add_argument("--only", action="append", default=[], metavar="GLOB",
+                   help="only songs whose score path or song name matches (repeatable)")
+    p.add_argument("--refresh", action="store_true", help="match: ask again even where the question is unchanged")
+    p.add_argument("--dry-run", action="store_true", help="match: list the candidates, ask nothing, write nothing")
+    p.add_argument("--force", action="store_true", help="align/retime: again even if nothing changed")
+    p.add_argument("--variant", choices=("full", "no_piano"), help="confirm: the file to retime and deliver")
+    p.add_argument("--music", help="music folder (default: [recordings] music_dir)")
+    p.add_argument("--links", help="links file (default: [recordings] links, recordings.json)")
+    p.add_argument("--out", help="output folder (default: [recordings] out_dir)")
+    p.add_argument("--work", help="scratch folder (default: [recordings] work_dir)")
+    p.add_argument("--python", help="a Python with numpy, scipy, soundfile, librosa (default: [recordings] python)")
+    p.set_defaults(fn=cmd_recordings)
 
     p = sub.add_parser("gui", help="the Piano Library window: library, build, push to the headset, hand edits")
     p.add_argument("--read-only", action="store_true",

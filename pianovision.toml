@@ -33,3 +33,19 @@ lufs = -16.0            # integrated loudness target (linear gain, no compressio
 true_peak = -1.0        # dBTP ceiling: the gain is capped so the peaks stay below
 timing_python = "~/miniconda3/envs/midi-retime/bin/python"   # numpy + soundfile + librosa; "" skips the timing check
 timing_script = "tools/accompaniment_timing.py"
+
+[recordings]
+# Note Waterfall's companion audio from recordings you own (python -m pianovision recordings match|align|retime|status):
+# a recording linked to its song (a TypeSafe judgment; TYPESAFE_API_KEY), aligned and retimed onto the song's timeline
+music_dir = "~/Music"                               # read only
+exclude = ["Note Waterfall Accompaniments", "MuseScore MIDI"]
+links = "recordings.json"                           # the links (and your decisions), checked in
+out_dir = "~/.cache/nw-recordings/out"              # <song>.mp3, audio_map.proposed.json, accuracy/, recordings-report.md
+work_dir = "~/.cache/nw-recordings/work"            # inventory, references, alignments, WAVs
+python = "~/miniconda3/envs/midi-retime/bin/python" # numpy + scipy + soundfile + librosa (alignment, retime, checks)
+script = "tools/recording_align.py"
+model = "jev-1.13.0"                                # pinned: the thresholds were set with it
+link_confidence = 0.6                               # Choice confidence to link without your confirmation
+same_min = 0.8                                      # Noul "same composition" for a candidate to count
+retune_cents = 15.0                                 # retune a recording to A440 when it is off by this much (0: never)
+audio_map = "~/Desktop/Note-Waterfall/Tools/audio_map.json"   # read only: what Note Waterfall has now

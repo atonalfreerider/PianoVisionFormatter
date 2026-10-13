@@ -1,0 +1,3652 @@
+{
+  "_comment": [
+    "Recordings you own linked to the library's songs, for Note Waterfall's companion audio",
+    "(`python3 -m pianovision recordings`, pianovision/recordings.py). Keys of 'links' are score paths relative to",
+    "the scores folder; recording paths are relative to [recordings] music_dir. Written by `recordings match`:",
+    "  status        'linked' (used), 'review' (needs your decision; not used until you confirm), 'none'",
+    "  recording     the pick (or the suggestion, for review); variants: the full mix and the piano-removed stem",
+    "  variant       the file that is retimed and delivered: 'no_piano' when the recording has one, else 'full'",
+    "  confidence    the TypeSafe Choice confidence (both candidate orders averaged); p_none; p_same: the Noul",
+    "                'same composition' of the recording; consistent: both orders picked the same",
+    "  alternatives  other candidates that look like the same composition, or carried probability",
+    "  judged        model, time, the hash of the question (match asks again only when it changes, or --refresh),",
+    "                the candidates and the raw answers (match decides again from them: thresholds may change)",
+    "Yours (never overwritten; `recordings confirm|reject` writes it):",
+    "  decision      {} confirms the pick; {\"recording\": \"<path>\"} links another recording; {\"recording\": null}",
+    "                rejects; \"variant\": \"full\" | \"no_piano\" chooses the file"
+  ],
+  "format": 1,
+  "links": {
+    "70s/A_Natural_Woman_You_make_me_feel.mscz": {
+      "song": "wexl_You_Make_Me_Feel_Like.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.98,
+      "p_same": null,
+      "p_none": 0.99,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "9a921c8cb8542606",
+        "candidates": [
+          {
+            "recording": "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3",
+            "score": 0.134
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3": 0.01,
+            "none": 0.99
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3": 0.01,
+            "none": 0.99
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.03
+          ]
+        }
+      }
+    },
+    "70s/Doctor_My_Eyes.mscz": {
+      "song": "bark_Doctor_My_Eyes_Jackson_Harrower_20_Senior_Solo.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "95ce717676505f92",
+        "candidates": [
+          {
+            "recording": "Zouk/zouk-me-playlist/original/When I Close My Eyes.mp3",
+            "score": 0.135
+          },
+          {
+            "recording": "Zouk/zouk-me-playlist/original/Mafie Zouker - When I Close My Eyes.mp3",
+            "score": 0.124
+          },
+          {
+            "recording": "country/My Little Javelin.mp3",
+            "score": 0.108
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/zouk-me-playlist/original/When I Close My Eyes.mp3": 0.0,
+            "Zouk/zouk-me-playlist/original/Mafie Zouker - When I Close My Eyes.mp3": 0.0,
+            "country/My Little Javelin.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "country/My Little Javelin.mp3": 0.0,
+            "Zouk/zouk-me-playlist/original/Mafie Zouker - When I Close My Eyes.mp3": 0.0,
+            "Zouk/zouk-me-playlist/original/When I Close My Eyes.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.02,
+            0.03,
+            0.03
+          ]
+        }
+      }
+    },
+    "70s/Love_Has_No_Pride.mscz": {
+      "song": "titu_Love_Has_No_Pride.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.927,
+      "p_same": null,
+      "p_none": 0.945,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "532c32c95c5b4a65",
+        "candidates": [
+          {
+            "recording": "Zouk/full/Baby Love.mp3",
+            "score": 0.114
+          },
+          {
+            "recording": "Zouk/Prism Of Love.mp3",
+            "score": 0.108
+          },
+          {
+            "recording": "Zouk/Baby Love 48000 1_01.mp3",
+            "score": 0.092
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/full/Baby Love.mp3": 0.02,
+            "Zouk/Prism Of Love.mp3": 0.03,
+            "Zouk/Baby Love 48000 1_01.mp3": 0.0,
+            "none": 0.95
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/Baby Love 48000 1_01.mp3": 0.0,
+            "Zouk/Prism Of Love.mp3": 0.04,
+            "Zouk/full/Baby Love.mp3": 0.02,
+            "none": 0.94
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.11,
+            0.1,
+            0.1
+          ]
+        }
+      }
+    },
+    "70s/Pink_Floyd_-_The_Great_Gig_in_the_Sky.mscz": {
+      "song": "floy_The_Great_Gig_in_the_Sky__The_Dark_Side_of_the_Moon.json",
+      "status": "review",
+      "recording": "Late for the Sky (Remastered).mp3",
+      "variants": {
+        "full": "Late for the Sky (Remastered).mp3"
+      },
+      "variant": "full",
+      "confidence": 0.367,
+      "p_same": 0.58,
+      "p_none": 0.465,
+      "consistent": true,
+      "why": "picked, but its same-composition check is 0.58",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "dab8246b2834e48c",
+        "candidates": [
+          {
+            "recording": "Late for the Sky (Remastered).mp3",
+            "score": 0.204
+          },
+          {
+            "recording": "Zouk/Benta_-_Lover_In_Dark_AObeats_Remix[MP3Fiber.com].mp3",
+            "score": 0.138
+          },
+          {
+            "recording": "Zouk/full/Benta - Lover In Dark (AObeats Remix).mp3",
+            "score": 0.138
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Late for the Sky (Remastered).mp3": 0.53,
+            "Zouk/Benta_-_Lover_In_Dark_AObeats_Remix[MP3Fiber.com].mp3": 0.01,
+            "Zouk/full/Benta - Lover In Dark (AObeats Remix).mp3": 0.0,
+            "none": 0.46
+          },
+          "pick_choice": "Late for the Sky (Remastered).mp3",
+          "pick_reversed": {
+            "Zouk/full/Benta - Lover In Dark (AObeats Remix).mp3": 0.0,
+            "Zouk/Benta_-_Lover_In_Dark_AObeats_Remix[MP3Fiber.com].mp3": 0.01,
+            "Late for the Sky (Remastered).mp3": 0.52,
+            "none": 0.47
+          },
+          "pick_reversed_choice": "Late for the Sky (Remastered).mp3",
+          "same": [
+            0.58,
+            0.05,
+            0.04
+          ]
+        }
+      }
+    },
+    "70s/fountain-of-sorrow.mscz": {
+      "song": "brow_Fountain_of_Sorrow.json",
+      "status": "linked",
+      "recording": "Fountain of Sorrow (Remastered).mp3",
+      "variants": {
+        "full": "Fountain of Sorrow (Remastered).mp3"
+      },
+      "variant": "full",
+      "confidence": 1.0,
+      "p_same": 0.97,
+      "p_none": 0.0,
+      "consistent": true,
+      "why": "picked with high confidence",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "b63fa153c3edb4ef",
+        "candidates": [
+          {
+            "recording": "Fountain of Sorrow (Remastered).mp3",
+            "score": 0.662
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Fountain of Sorrow (Remastered).mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_choice": "Fountain of Sorrow (Remastered).mp3",
+          "pick_reversed": {
+            "Fountain of Sorrow (Remastered).mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_reversed_choice": "Fountain of Sorrow (Remastered).mp3",
+          "same": [
+            0.97
+          ]
+        }
+      }
+    },
+    "70s/sky-blue-and-black-jackson-browne-implode-fix.mscz": {
+      "song": "arra_Untitled_score__Subtitle.json",
+      "status": "review",
+      "recording": "Late for the Sky (Remastered).mp3",
+      "variants": {
+        "full": "Late for the Sky (Remastered).mp3"
+      },
+      "variant": "full",
+      "confidence": 0.64,
+      "p_same": 0.51,
+      "p_none": 0.225,
+      "consistent": true,
+      "why": "picked, but its same-composition check is 0.51",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "27ecc3c94aac3633",
+        "candidates": [
+          {
+            "recording": "Late for the Sky (Remastered).mp3",
+            "score": 0.222
+          },
+          {
+            "recording": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+            "score": 0.193
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Late for the Sky (Remastered).mp3": 0.71,
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 0.02,
+            "none": 0.27
+          },
+          "pick_choice": "Late for the Sky (Remastered).mp3",
+          "pick_reversed": {
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 0.01,
+            "Late for the Sky (Remastered).mp3": 0.81,
+            "none": 0.18
+          },
+          "pick_reversed_choice": "Late for the Sky (Remastered).mp3",
+          "same": [
+            0.51,
+            0.03
+          ]
+        }
+      }
+    },
+    "Chopin/Waltz_Grande_valse_brillante_Op.18.mscz": {
+      "song": "chop_Grande_Valse_Brillante__Op_18_No1.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "e5e24826c5a9bf0c",
+        "candidates": [
+          {
+            "recording": "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav",
+            "score": 0.085
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.02
+          ]
+        }
+      }
+    },
+    "Dvorak/serenade-for-strings-in-e-major-op-22-tempo-di-valse-antonin-dvorak-piano-ver.mscz": {
+      "song": "dvor_Serenade_for_Strings_in_E_Major__Op_22__II_Tempo_di_Valse__Piano_ver.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.988,
+      "p_same": null,
+      "p_none": 0.99,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "7aa0efdb913fc059",
+        "candidates": [
+          {
+            "recording": "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav",
+            "score": 0.207
+          },
+          {
+            "recording": "Moszkowski/mosz-II/mosz-II-retime.wav",
+            "score": 0.119
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+            "score": 0.113
+          },
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.107
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Moszkowski/mosz-II/mosz-II-retime.wav": 0.01,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "none": 0.99
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Moszkowski/mosz-II/mosz-II-retime.wav": 0.01,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "none": 0.99
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.02,
+            0.08,
+            0.03,
+            0.03
+          ]
+        }
+      }
+    },
+    "Dvorak/slavonic-dance-op-72-no-2-for-solo-piano.mscz": {
+      "song": "limb_Slavonic_Dance__No_2_for_Solo_Piano__Op_72.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "4820aa93d9aaafdc",
+        "candidates": [
+          {
+            "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+            "score": 0.121
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav",
+            "score": 0.089
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.01,
+            0.02
+          ]
+        }
+      }
+    },
+    "Dvorak/symphony-no-9-mvt-4-allegro-con-fuoco-antonin-dvorak.mscz": {
+      "song": "dvor_symphonyno9mvt4allegroconfuocoantonindvorak.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "c89f92b06bb81435",
+        "candidates": [
+          {
+            "recording": "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav",
+            "score": 0.143
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav",
+            "score": 0.136
+          },
+          {
+            "recording": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+            "score": 0.121
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav",
+            "score": 0.113
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3",
+            "score": 0.096
+          },
+          {
+            "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+            "score": 0.093
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.02,
+            0.02,
+            0.02,
+            0.02,
+            0.03,
+            0.02
+          ]
+        }
+      }
+    },
+    "Film/Bond/From_Russia_with_Love__Lionel_Bart__From_the_film_007_James_Bond_series.mscz": {
+      "song": "saka_From_Russia_with_Love__From_007_James_Bond_series.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "fdb7a909ca2b4dd5",
+        "candidates": [
+          {
+            "recording": "Zouk/full/Baby Love.mp3",
+            "score": 0.102
+          },
+          {
+            "recording": "Zouk/Prism Of Love.mp3",
+            "score": 0.097
+          },
+          {
+            "recording": "Zouk/Baby Love 48000 1_01.mp3",
+            "score": 0.082
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/full/Baby Love.mp3": 0.0,
+            "Zouk/Prism Of Love.mp3": 0.0,
+            "Zouk/Baby Love 48000 1_01.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/Baby Love 48000 1_01.mp3": 0.0,
+            "Zouk/Prism Of Love.mp3": 0.0,
+            "Zouk/full/Baby Love.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.03,
+            0.03,
+            0.04
+          ]
+        }
+      }
+    },
+    "Film/Bond/James_Bond_-_Nobody_does_it_better.mscz": {
+      "song": "simo_Nobody_Does_it_Better__James_Bond_The_Spy_Who_Loved_Me.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.84,
+      "p_same": null,
+      "p_none": 0.92,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "4f71f733c7276f9c",
+        "candidates": [
+          {
+            "recording": "Zouk/zouk-me-playlist/original/Hold Me.mp3",
+            "score": 0.084
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/zouk-me-playlist/original/Hold Me.mp3": 0.08,
+            "none": 0.92
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/zouk-me-playlist/original/Hold Me.mp3": 0.08,
+            "none": 0.92
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.05
+          ]
+        }
+      }
+    },
+    "Film/Bond/all-in-a-days-work-tomorrow-never-dies.mscz": {
+      "song": "arno_All_in_a_Days_Work__Tomorrow_Never_Dies.json",
+      "status": "linked",
+      "recording": "soundtrack/22 - All In A Day's Work.mp3",
+      "variants": {
+        "full": "soundtrack/22 - All In A Day's Work.mp3"
+      },
+      "variant": "full",
+      "confidence": 1.0,
+      "p_same": 0.95,
+      "p_none": 0.0,
+      "consistent": true,
+      "why": "picked with high confidence",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "778437960cce11ed",
+        "candidates": [
+          {
+            "recording": "soundtrack/22 - All In A Day's Work.mp3",
+            "score": 0.437
+          }
+        ],
+        "answers": {
+          "pick": {
+            "soundtrack/22 - All In A Day's Work.mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_choice": "soundtrack/22 - All In A Day's Work.mp3",
+          "pick_reversed": {
+            "soundtrack/22 - All In A Day's Work.mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_reversed_choice": "soundtrack/22 - All In A Day's Work.mp3",
+          "same": [
+            0.95
+          ]
+        }
+      }
+    },
+    "Film/Didn't-I-Do-Well-James-Newton-Howard-piano-solo.mscz": {
+      "song": "howa_Didnt_I_Do_Well__Red_Sparrow_piano_solo.json",
+      "status": "linked",
+      "recording": "soundtrack/Didn't-I-Do-Well.mp3",
+      "variants": {
+        "full": "soundtrack/Didn't-I-Do-Well.mp3"
+      },
+      "variant": "full",
+      "confidence": 1.0,
+      "p_same": 0.94,
+      "p_none": 0.0,
+      "consistent": true,
+      "why": "picked with high confidence",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "eeb50e991f37e3be",
+        "candidates": [
+          {
+            "recording": "soundtrack/Didn't-I-Do-Well.mp3",
+            "score": 0.509
+          }
+        ],
+        "answers": {
+          "pick": {
+            "soundtrack/Didn't-I-Do-Well.mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_choice": "soundtrack/Didn't-I-Do-Well.mp3",
+          "pick_reversed": {
+            "soundtrack/Didn't-I-Do-Well.mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_reversed_choice": "soundtrack/Didn't-I-Do-Well.mp3",
+          "same": [
+            0.94
+          ]
+        }
+      }
+    },
+    "Film/Didn't-I-Do-Well-James-Newton-Howard.mscz": {
+      "song": "howa_Didnt_I_Do_Well__Red_Sparrow.json",
+      "status": "linked",
+      "recording": "soundtrack/Didn't-I-Do-Well.mp3",
+      "variants": {
+        "full": "soundtrack/Didn't-I-Do-Well.mp3"
+      },
+      "variant": "full",
+      "confidence": 1.0,
+      "p_same": 0.95,
+      "p_none": 0.0,
+      "consistent": true,
+      "why": "picked with high confidence",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "45a2b5bc62b4cd8d",
+        "candidates": [
+          {
+            "recording": "soundtrack/Didn't-I-Do-Well.mp3",
+            "score": 0.518
+          }
+        ],
+        "answers": {
+          "pick": {
+            "soundtrack/Didn't-I-Do-Well.mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_choice": "soundtrack/Didn't-I-Do-Well.mp3",
+          "pick_reversed": {
+            "soundtrack/Didn't-I-Do-Well.mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_reversed_choice": "soundtrack/Didn't-I-Do-Well.mp3",
+          "same": [
+            0.95
+          ]
+        }
+      }
+    },
+    "Film/Disney/A_Dream_Is_A_Wish_Your_Heart_Makes.mscz": {
+      "song": "disn_A_Dream_Is_a_Wish_Your_Heart_Makes__from_2015_Disneys_Cinderella.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.97,
+      "p_same": null,
+      "p_none": 0.985,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "aad8d3571cd96c5d",
+        "candidates": [
+          {
+            "recording": "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3",
+            "score": 0.083
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3": 0.02,
+            "none": 0.98
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3": 0.01,
+            "none": 0.99
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.03
+          ]
+        }
+      }
+    },
+    "Film/Disney/Colours_of_the_wind_-_Pocahontas.mscz": {
+      "song": "kart_colours_of_the_wind.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.56,
+      "p_same": null,
+      "p_none": 0.78,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [
+        {
+          "recording": "Sahara Winds.mp3",
+          "p": 0.22,
+          "p_same": 0.19
+        }
+      ],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "10f87452e9623074",
+        "candidates": [
+          {
+            "recording": "Sahara Winds.mp3",
+            "score": 0.186
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Sahara Winds.mp3": 0.23,
+            "none": 0.77
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Sahara Winds.mp3": 0.21,
+            "none": 0.79
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.19
+          ]
+        }
+      }
+    },
+    "Film/Disney/Part_of_Your_World.mscz": {
+      "song": "menk_Part_of_Your_World__The_Little_Mermaid.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.981,
+      "p_same": null,
+      "p_none": 0.985,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "b08299dd0ef7f12c",
+        "candidates": [
+          {
+            "recording": "country/My Little Javelin.mp3",
+            "score": 0.165
+          },
+          {
+            "recording": "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3",
+            "score": 0.094
+          },
+          {
+            "recording": "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3",
+            "score": 0.086
+          },
+          {
+            "recording": "SFdomNYC/Let Me Touch Your Fire (Sn0wmass Remix).mp3",
+            "score": 0.083
+          }
+        ],
+        "answers": {
+          "pick": {
+            "country/My Little Javelin.mp3": 0.01,
+            "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3": 0.0,
+            "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.0,
+            "SFdomNYC/Let Me Touch Your Fire (Sn0wmass Remix).mp3": 0.0,
+            "none": 0.99
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "SFdomNYC/Let Me Touch Your Fire (Sn0wmass Remix).mp3": 0.0,
+            "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.0,
+            "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3": 0.0,
+            "country/My Little Javelin.mp3": 0.02,
+            "none": 0.98
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.06,
+            0.03,
+            0.03,
+            0.02
+          ]
+        }
+      }
+    },
+    "Film/Disney/You'll_Be_In_My_Heart_Broadway.mscz": {
+      "song": "coll_Youll_Be_In_My_Heart__Tarzan__The_Broadway_Musical.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.94,
+      "p_same": null,
+      "p_none": 0.97,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "fce3e97af64fd105",
+        "candidates": [
+          {
+            "recording": "country/My Little Javelin.mp3",
+            "score": 0.11
+          }
+        ],
+        "answers": {
+          "pick": {
+            "country/My Little Javelin.mp3": 0.03,
+            "none": 0.97
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "country/My Little Javelin.mp3": 0.03,
+            "none": 0.97
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.04
+          ]
+        }
+      }
+    },
+    "Film/Disney/love-led-us-here.mscz": {
+      "song": "weil_Love_Led_Us_Here__Muppet_Treasure_Island.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.955,
+      "p_same": null,
+      "p_none": 0.97,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "2b03354eba85891a",
+        "candidates": [
+          {
+            "recording": "Zouk/full/Baby Love.mp3",
+            "score": 0.09
+          },
+          {
+            "recording": "Zouk/Prism Of Love.mp3",
+            "score": 0.085
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/full/Baby Love.mp3": 0.02,
+            "Zouk/Prism Of Love.mp3": 0.01,
+            "none": 0.97
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/Prism Of Love.mp3": 0.0,
+            "Zouk/full/Baby Love.mp3": 0.03,
+            "none": 0.97
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.07,
+            0.05
+          ]
+        }
+      }
+    },
+    "Film/ForLoveOfAPrincess.mscz": {
+      "song": "horn_FOR_THE_LOVE_OF_A_PRINCESS__From_The_Movie_BRAVEHEART.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "5fa863bb4f4c66e1",
+        "candidates": [
+          {
+            "recording": "Zouk/full/Baby Love.mp3",
+            "score": 0.122
+          },
+          {
+            "recording": "Zouk/Prism Of Love.mp3",
+            "score": 0.116
+          },
+          {
+            "recording": "Zouk/Baby Love 48000 1_01.mp3",
+            "score": 0.099
+          },
+          {
+            "recording": "Zouk/full/Not Another Love Song (prod By Ozzie).mp3",
+            "score": 0.084
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/full/Baby Love.mp3": 0.0,
+            "Zouk/Prism Of Love.mp3": 0.0,
+            "Zouk/Baby Love 48000 1_01.mp3": 0.0,
+            "Zouk/full/Not Another Love Song (prod By Ozzie).mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/full/Not Another Love Song (prod By Ozzie).mp3": 0.0,
+            "Zouk/Baby Love 48000 1_01.mp3": 0.0,
+            "Zouk/Prism Of Love.mp3": 0.0,
+            "Zouk/full/Baby Love.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.03,
+            0.03,
+            0.03,
+            0.03
+          ]
+        }
+      }
+    },
+    "Film/Honor_Him_Now_We_Are_Free.mscz": {
+      "song": "zimm_Honor_Him__Now_We_Are_Free__Gladiator.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "57e3500162501cd2",
+        "candidates": [
+          {
+            "recording": "Zouk/SAKIMA - What I Know Now (feat. AOBeats).mp3",
+            "score": 0.112
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/SAKIMA - What I Know Now (feat. AOBeats).mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/SAKIMA - What I Know Now (feat. AOBeats).mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.01
+          ]
+        }
+      }
+    },
+    "Film/Lida_Rose__Will_I_Ever_Tell_You__The_Music_Man-combine.mscz": {
+      "song": "film_Lida_Rose__Will_I_Ever_Tell_You__From_The_Music_Man_by_Meridith_Wilson.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "61fd0bdb2a9f1d98",
+        "candidates": [
+          {
+            "recording": "Rihanna/Rihanna - Man Down (Audio)_vocals_split_by_lalalai.mp3",
+            "score": 0.138
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Rihanna/Rihanna - Man Down (Audio)_vocals_split_by_lalalai.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Rihanna/Rihanna - Man Down (Audio)_vocals_split_by_lalalai.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.01
+          ]
+        }
+      }
+    },
+    "Film/StarTrek-FirstContact.mscz": {
+      "song": "camp_Theme_from_Star_Trek_First_Contact__for_Piano.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.88,
+      "p_same": null,
+      "p_none": 0.92,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "5de50fa49b80a50d",
+        "candidates": [
+          {
+            "recording": "Sahara's Stars and Stripes.mp3",
+            "score": 0.169
+          },
+          {
+            "recording": "Zouk/full/Stars by Sophie Beem.mp3",
+            "score": 0.089
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Sahara's Stars and Stripes.mp3": 0.02,
+            "Zouk/full/Stars by Sophie Beem.mp3": 0.04,
+            "none": 0.94
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/full/Stars by Sophie Beem.mp3": 0.07,
+            "Sahara's Stars and Stripes.mp3": 0.03,
+            "none": 0.9
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.12,
+            0.16
+          ]
+        }
+      }
+    },
+    "Film/Star_Trek_-_The_Motion_Picture_-_Jerry_Goldsmith_Full_Arr._Piano.mscz": {
+      "song": "schu_Star_Trek__The_Motion_Picture.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "49b376b417705dc5",
+        "candidates": [
+          {
+            "recording": "Zouk/full/Stars by Sophie Beem.mp3",
+            "score": 0.101
+          },
+          {
+            "recording": "Sahara's Stars and Stripes.mp3",
+            "score": 0.1
+          },
+          {
+            "recording": "Zouk/full/the weeknd - starboy (matt kali cover remix).mp3",
+            "score": 0.089
+          },
+          {
+            "recording": "Zouk/Stars by Sophie Beem 48000 1_01.mp3",
+            "score": 0.086
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/full/Stars by Sophie Beem.mp3": 0.0,
+            "Sahara's Stars and Stripes.mp3": 0.0,
+            "Zouk/full/the weeknd - starboy (matt kali cover remix).mp3": 0.0,
+            "Zouk/Stars by Sophie Beem 48000 1_01.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/Stars by Sophie Beem 48000 1_01.mp3": 0.0,
+            "Zouk/full/the weeknd - starboy (matt kali cover remix).mp3": 0.0,
+            "Sahara's Stars and Stripes.mp3": 0.0,
+            "Zouk/full/Stars by Sophie Beem.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.06,
+            0.07,
+            0.03,
+            0.07
+          ]
+        }
+      }
+    },
+    "Gershwin/Concerto_in_F_Easy__George_Gershwin.mscz": {
+      "song": "gers_Gershwin_Concerto_in_F__Arr_IRM.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.92,
+      "p_same": null,
+      "p_none": 0.96,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "f4190009911121cf",
+        "candidates": [
+          {
+            "recording": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+            "score": 0.237
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 0.04,
+            "none": 0.96
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 0.04,
+            "none": 0.96
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.03
+          ]
+        }
+      }
+    },
+    "Gershwin/Rhapsody_in_Blue_Piano_solo.mscz": {
+      "song": "gers_Rhapsody_in_Blue.json",
+      "status": "linked",
+      "recording": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+      "variants": {
+        "full": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3"
+      },
+      "variant": "full",
+      "confidence": 1.0,
+      "p_same": 0.95,
+      "p_none": 0.0,
+      "consistent": true,
+      "why": "picked with high confidence",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "089662e12ca789c1",
+        "candidates": [
+          {
+            "recording": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+            "score": 0.809
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_choice": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+          "pick_reversed": {
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_reversed_choice": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+          "same": [
+            0.95
+          ]
+        }
+      }
+    },
+    "Gershwin/Rhapsody_in_blue__George_Gershwin.mscz": {
+      "song": "gers_Rhapsody_in_Blue_Piano_and_Orchestra.json",
+      "status": "linked",
+      "recording": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+      "variants": {
+        "full": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3"
+      },
+      "variant": "full",
+      "confidence": 1.0,
+      "p_same": 0.96,
+      "p_none": 0.0,
+      "consistent": true,
+      "why": "picked with high confidence",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "a67175b2b9eb80ef",
+        "candidates": [
+          {
+            "recording": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+            "score": 0.741
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_choice": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+          "pick_reversed": {
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_reversed_choice": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+          "same": [
+            0.96
+          ]
+        }
+      }
+    },
+    "Gershwin/The_Man_I_Love_-_Piano_Solo_-_arr._George_Gershwin.mscz": {
+      "song": "gers_THE_MAN_I_LOVE.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.989,
+      "p_same": null,
+      "p_none": 0.99,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "be4263eb323de765",
+        "candidates": [
+          {
+            "recording": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+            "score": 0.272
+          },
+          {
+            "recording": "Rihanna/Rihanna - Man Down (Audio)_vocals_split_by_lalalai.mp3",
+            "score": 0.255
+          },
+          {
+            "recording": "Zouk/full/Baby Love.mp3",
+            "score": 0.179
+          },
+          {
+            "recording": "Zouk/Prism Of Love.mp3",
+            "score": 0.17
+          },
+          {
+            "recording": "Zouk/Baby Love 48000 1_01.mp3",
+            "score": 0.145
+          },
+          {
+            "recording": "Zouk/full/Not Another Love Song (prod By Ozzie).mp3",
+            "score": 0.123
+          },
+          {
+            "recording": "Zouk/Not Another Love Song (prod By Ozzie) 48000 1_01.mp3",
+            "score": 0.11
+          },
+          {
+            "recording": "Zouk/Benta_-_Lover_In_Dark_AObeats_Remix[MP3Fiber.com].mp3",
+            "score": 0.098
+          },
+          {
+            "recording": "Zouk/full/Benta - Lover In Dark (AObeats Remix).mp3",
+            "score": 0.098
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 0.01,
+            "Rihanna/Rihanna - Man Down (Audio)_vocals_split_by_lalalai.mp3": 0.0,
+            "Zouk/full/Baby Love.mp3": 0.0,
+            "Zouk/Prism Of Love.mp3": 0.0,
+            "Zouk/Baby Love 48000 1_01.mp3": 0.0,
+            "Zouk/full/Not Another Love Song (prod By Ozzie).mp3": 0.0,
+            "Zouk/Not Another Love Song (prod By Ozzie) 48000 1_01.mp3": 0.0,
+            "Zouk/Benta_-_Lover_In_Dark_AObeats_Remix[MP3Fiber.com].mp3": 0.0,
+            "Zouk/full/Benta - Lover In Dark (AObeats Remix).mp3": 0.0,
+            "none": 0.99
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/full/Benta - Lover In Dark (AObeats Remix).mp3": 0.0,
+            "Zouk/Benta_-_Lover_In_Dark_AObeats_Remix[MP3Fiber.com].mp3": 0.0,
+            "Zouk/Not Another Love Song (prod By Ozzie) 48000 1_01.mp3": 0.0,
+            "Zouk/full/Not Another Love Song (prod By Ozzie).mp3": 0.0,
+            "Zouk/Baby Love 48000 1_01.mp3": 0.0,
+            "Zouk/Prism Of Love.mp3": 0.0,
+            "Zouk/full/Baby Love.mp3": 0.0,
+            "Rihanna/Rihanna - Man Down (Audio)_vocals_split_by_lalalai.mp3": 0.0,
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 0.01,
+            "none": 0.99
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.03,
+            0.03,
+            0.03,
+            0.04,
+            0.04,
+            0.03,
+            0.04,
+            0.04,
+            0.04
+          ]
+        }
+      }
+    },
+    "Liszt/Hungarian_Rhapsody_No._2-modified.mscz": {
+      "song": "lisz_Hungarian_Rhapsody_No_2_in_C_Minor__Friska.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.98,
+      "p_same": null,
+      "p_none": 0.99,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:01",
+        "key": "569436d663b8c1e9",
+        "candidates": [
+          {
+            "recording": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+            "score": 0.192
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 0.01,
+            "none": 0.99
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 0.01,
+            "none": 0.99
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.02
+          ]
+        }
+      }
+    },
+    "Liszt/Schubert_Serenade_-_Standchen.mscz": {
+      "song": "lisz_Serenade_Standchen__Schubert.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.981,
+      "p_same": null,
+      "p_none": 0.985,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "cd24179b75ebfbb4",
+        "candidates": [
+          {
+            "recording": "country/Stand Our Ground.mp3",
+            "score": 0.141
+          },
+          {
+            "recording": "country/Stand Our Ground ext v1.1.1.mp3",
+            "score": 0.123
+          },
+          {
+            "recording": "country/Stand Our Ground ext v1.mp3",
+            "score": 0.123
+          },
+          {
+            "recording": "country/Stand Our Ground ext v2.mp3",
+            "score": 0.123
+          }
+        ],
+        "answers": {
+          "pick": {
+            "country/Stand Our Ground.mp3": 0.01,
+            "country/Stand Our Ground ext v1.1.1.mp3": 0.0,
+            "country/Stand Our Ground ext v1.mp3": 0.0,
+            "country/Stand Our Ground ext v2.mp3": 0.0,
+            "none": 0.99
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "country/Stand Our Ground ext v2.mp3": 0.0,
+            "country/Stand Our Ground ext v1.mp3": 0.0,
+            "country/Stand Our Ground ext v1.1.1.mp3": 0.0,
+            "country/Stand Our Ground.mp3": 0.02,
+            "none": 0.98
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.1,
+            0.25,
+            0.19,
+            0.22
+          ]
+        }
+      }
+    },
+    "Liszt/Sonetto_104_del_Petrarca_Annes_de_plerinage_II_S.161.mscz": {
+      "song": "lisz_Sonetto_104_del_Petrarca_Annes_de_plerinage_II_S161.json",
+      "status": "review",
+      "recording": "Moszkowski/mosz-II/mosz-II-retime.wav",
+      "variants": {
+        "full": "Moszkowski/mosz-II/mosz-II-retime.wav"
+      },
+      "variant": "full",
+      "confidence": 0.29,
+      "p_same": 0.51,
+      "p_none": 0.355,
+      "consistent": true,
+      "why": "picked, but its same-composition check is 0.51",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "fe5f266f2ed1e39a",
+        "candidates": [
+          {
+            "recording": "Moszkowski/mosz-II/mosz-II-retime.wav",
+            "score": 0.106
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Moszkowski/mosz-II/mosz-II-retime.wav": 0.65,
+            "none": 0.35
+          },
+          "pick_choice": "Moszkowski/mosz-II/mosz-II-retime.wav",
+          "pick_reversed": {
+            "Moszkowski/mosz-II/mosz-II-retime.wav": 0.64,
+            "none": 0.36
+          },
+          "pick_reversed_choice": "Moszkowski/mosz-II/mosz-II-retime.wav",
+          "same": [
+            0.51
+          ]
+        }
+      }
+    },
+    "Liszt/Two_Legends_No._2__St._Francis_of_Paola_walking_on_the_waves.mscz": {
+      "song": "lisz_II_St_Franois_de_Paule_marchant_sur_les_flots__Der_h_Franziskus_auf_den_Wogen_schreitend.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.98,
+      "p_same": null,
+      "p_none": 0.99,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "b57c355812ca8a93",
+        "candidates": [
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.08
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.01,
+            "none": 0.99
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.01,
+            "none": 0.99
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.02
+          ]
+        }
+      }
+    },
+    "Moszkowski/Piano_Concerto_No._2_Op._59-ABRIDGED.mscz": {
+      "song": "mosz_Piano_Concerto_No_2__Abridged.json",
+      "status": "linked",
+      "recording": "Moszkowski/Moszkowski/Moritz Moszkowski Piano Concerto in E major, Op 59.mp3",
+      "variants": {
+        "full": "Moszkowski/Moszkowski/Moritz Moszkowski Piano Concerto in E major, Op 59.mp3",
+        "no_piano": "Moszkowski/Moszkowski/Moritz Moszkowski Piano Concerto in E major, Op 59_no_piano_split_by_lalalai.mp3"
+      },
+      "variant": "no_piano",
+      "confidence": 0.899,
+      "p_same": 0.9,
+      "p_none": 0.025,
+      "consistent": true,
+      "why": "picked with high confidence",
+      "alternatives": [
+        {
+          "recording": "Moszkowski/mosz-II/mosz-II-retime.wav",
+          "p": 0.065,
+          "p_same": 0.85
+        }
+      ],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "692960b244545e57",
+        "candidates": [
+          {
+            "recording": "Moszkowski/Moszkowski/Moritz Moszkowski Piano Concerto in E major, Op 59.mp3",
+            "score": 0.748
+          },
+          {
+            "recording": "Moszkowski/Moszkowski/audio/Track 2_001.wav",
+            "score": 0.318
+          },
+          {
+            "recording": "Moszkowski/Moszkowski/audio/Track 2_002.wav",
+            "score": 0.318
+          },
+          {
+            "recording": "Moszkowski/Moszkowski/audio/Track 2_003.wav",
+            "score": 0.318
+          },
+          {
+            "recording": "Moszkowski/Moszkowski/audio/Track 1_001.wav",
+            "score": 0.197
+          },
+          {
+            "recording": "Moszkowski/Moszkowski/audio/Track 1_002.wav",
+            "score": 0.197
+          },
+          {
+            "recording": "Moszkowski/Moszkowski/audio/Track 1_003.wav",
+            "score": 0.197
+          },
+          {
+            "recording": "Moszkowski/mosz-II/mosz-II-retime.wav",
+            "score": 0.181
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Moszkowski/Moszkowski/Moritz Moszkowski Piano Concerto in E major, Op 59.mp3": 0.92,
+            "Moszkowski/Moszkowski/audio/Track 2_001.wav": 0.0,
+            "Moszkowski/Moszkowski/audio/Track 2_002.wav": 0.0,
+            "Moszkowski/Moszkowski/audio/Track 2_003.wav": 0.0,
+            "Moszkowski/Moszkowski/audio/Track 1_001.wav": 0.0,
+            "Moszkowski/Moszkowski/audio/Track 1_002.wav": 0.0,
+            "Moszkowski/Moszkowski/audio/Track 1_003.wav": 0.0,
+            "Moszkowski/mosz-II/mosz-II-retime.wav": 0.05,
+            "none": 0.03
+          },
+          "pick_choice": "Moszkowski/Moszkowski/Moritz Moszkowski Piano Concerto in E major, Op 59.mp3",
+          "pick_reversed": {
+            "Moszkowski/mosz-II/mosz-II-retime.wav": 0.08,
+            "Moszkowski/Moszkowski/audio/Track 1_003.wav": 0.0,
+            "Moszkowski/Moszkowski/audio/Track 1_002.wav": 0.0,
+            "Moszkowski/Moszkowski/audio/Track 1_001.wav": 0.0,
+            "Moszkowski/Moszkowski/audio/Track 2_003.wav": 0.0,
+            "Moszkowski/Moszkowski/audio/Track 2_002.wav": 0.0,
+            "Moszkowski/Moszkowski/audio/Track 2_001.wav": 0.0,
+            "Moszkowski/Moszkowski/Moritz Moszkowski Piano Concerto in E major, Op 59.mp3": 0.9,
+            "none": 0.02
+          },
+          "pick_reversed_choice": "Moszkowski/Moszkowski/Moritz Moszkowski Piano Concerto in E major, Op 59.mp3",
+          "same": [
+            0.9,
+            0.38,
+            0.45,
+            0.41,
+            0.43,
+            0.46,
+            0.42,
+            0.85
+          ]
+        }
+      }
+    },
+    "Pop/All_I_Want_For_Christmas_Is_You.mscz": {
+      "song": "sowa_All_I_Want_For_Christmas_Is_You.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.828,
+      "p_same": null,
+      "p_none": 0.885,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [
+        {
+          "recording": "soundtrack/22 - All In A Day's Work.mp3",
+          "p": 0.115,
+          "p_same": 0.23
+        }
+      ],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "6362b37fa55bb410",
+        "candidates": [
+          {
+            "recording": "soundtrack/22 - All In A Day's Work.mp3",
+            "score": 0.132
+          },
+          {
+            "recording": "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3",
+            "score": 0.081
+          }
+        ],
+        "answers": {
+          "pick": {
+            "soundtrack/22 - All In A Day's Work.mp3": 0.1,
+            "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3": 0.0,
+            "none": 0.9
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3": 0.0,
+            "soundtrack/22 - All In A Day's Work.mp3": 0.13,
+            "none": 0.87
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.23,
+            0.02
+          ]
+        }
+      }
+    },
+    "Pop/Billie Eilish - Ocean Eyes.mid.mscz": {
+      "song": "eili_Ocean_Eyes.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "066f4463c105ee3f",
+        "candidates": [
+          {
+            "recording": "Zouk/zouk-me-playlist/original/When I Close My Eyes.mp3",
+            "score": 0.097
+          },
+          {
+            "recording": "Zouk/zouk-me-playlist/original/Mafie Zouker - When I Close My Eyes.mp3",
+            "score": 0.089
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/zouk-me-playlist/original/When I Close My Eyes.mp3": 0.0,
+            "Zouk/zouk-me-playlist/original/Mafie Zouker - When I Close My Eyes.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/zouk-me-playlist/original/Mafie Zouker - When I Close My Eyes.mp3": 0.0,
+            "Zouk/zouk-me-playlist/original/When I Close My Eyes.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.03,
+            0.04
+          ]
+        }
+      }
+    },
+    "Pop/Fireflies_-_Owl_City.mscz": {
+      "song": "city_Fireflies.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.947,
+      "p_same": null,
+      "p_none": 0.965,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "5edf783c2d7b6c67",
+        "candidates": [
+          {
+            "recording": "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3",
+            "score": 0.133
+          },
+          {
+            "recording": "SFdomNYC/Let Me Touch Your Fire (Sn0wmass Remix).mp3",
+            "score": 0.117
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3": 0.01,
+            "SFdomNYC/Let Me Touch Your Fire (Sn0wmass Remix).mp3": 0.03,
+            "none": 0.96
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "SFdomNYC/Let Me Touch Your Fire (Sn0wmass Remix).mp3": 0.02,
+            "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3": 0.01,
+            "none": 0.97
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.13,
+            0.12
+          ]
+        }
+      }
+    },
+    "Pop/LetItBe-JBV.mscz": {
+      "song": "mcca_Let_It_Be.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "b17cee78554460cd",
+        "candidates": [
+          {
+            "recording": "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3",
+            "score": 0.123
+          },
+          {
+            "recording": "SFdomNYC/Let Me Touch Your Fire (Sn0wmass Remix).mp3",
+            "score": 0.108
+          },
+          {
+            "recording": "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3",
+            "score": 0.096
+          },
+          {
+            "recording": "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3",
+            "score": 0.088
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3": 0.0,
+            "SFdomNYC/Let Me Touch Your Fire (Sn0wmass Remix).mp3": 0.0,
+            "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.0,
+            "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3": 0.0,
+            "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.0,
+            "SFdomNYC/Let Me Touch Your Fire (Sn0wmass Remix).mp3": 0.0,
+            "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.05,
+            0.04,
+            0.03,
+            0.04
+          ]
+        }
+      }
+    },
+    "Pop/Shape of You - piano-solo.mscz": {
+      "song": "shee_Shape_of_You__PianoSolo.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "ebf201a71075eb3e",
+        "candidates": [
+          {
+            "recording": "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3",
+            "score": 0.122
+          },
+          {
+            "recording": "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3",
+            "score": 0.088
+          },
+          {
+            "recording": "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3",
+            "score": 0.085
+          },
+          {
+            "recording": "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3",
+            "score": 0.081
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3": 0.0,
+            "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.0,
+            "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3": 0.0,
+            "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3": 0.0,
+            "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3": 0.0,
+            "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.0,
+            "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.02,
+            0.03,
+            0.03,
+            0.04
+          ]
+        }
+      }
+    },
+    "Pop/Shape of You.mscz": {
+      "song": "shee_Shape_of_You__RiMix.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.985,
+      "p_same": null,
+      "p_none": 0.99,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "043c360e00f3390d",
+        "candidates": [
+          {
+            "recording": "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3",
+            "score": 0.111
+          },
+          {
+            "recording": "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3",
+            "score": 0.08
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3": 0.0,
+            "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.01,
+            "none": 0.99
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.01,
+            "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3": 0.0,
+            "none": 0.99
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.03,
+            0.04
+          ]
+        }
+      }
+    },
+    "Pop/empire-state-of-mind-part-ii-broken-down-alicia-keys-from-the-element-of-freedom-2010.mscz": {
+      "song": "keys_Empire_State_of_Mind_Part_II_Broken_Down__from_The_Element_of_Freedom_2010.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.981,
+      "p_same": null,
+      "p_none": 0.985,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "c663e9408edf6473",
+        "candidates": [
+          {
+            "recording": "Zouk/Get Down.mp3.mp3",
+            "score": 0.12
+          },
+          {
+            "recording": "Rihanna/Rihanna - Man Down (Audio)_vocals_split_by_lalalai.mp3",
+            "score": 0.114
+          },
+          {
+            "recording": "Zouk/PLS&TY - Down For Me.mp3",
+            "score": 0.112
+          },
+          {
+            "recording": "Moszkowski/mosz-II/mosz-II-retime.wav",
+            "score": 0.099
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/Get Down.mp3.mp3": 0.0,
+            "Rihanna/Rihanna - Man Down (Audio)_vocals_split_by_lalalai.mp3": 0.0,
+            "Zouk/PLS&TY - Down For Me.mp3": 0.0,
+            "Moszkowski/mosz-II/mosz-II-retime.wav": 0.01,
+            "none": 0.99
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Moszkowski/mosz-II/mosz-II-retime.wav": 0.02,
+            "Zouk/PLS&TY - Down For Me.mp3": 0.0,
+            "Rihanna/Rihanna - Man Down (Audio)_vocals_split_by_lalalai.mp3": 0.0,
+            "Zouk/Get Down.mp3.mp3": 0.0,
+            "none": 0.98
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.03,
+            0.03,
+            0.03,
+            0.14
+          ]
+        }
+      }
+    },
+    "Pop/love-needs-a-heart-jackson-browne.mscz": {
+      "song": "brow_Love_Needs_A_Heart.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "8445721b0d0d8752",
+        "candidates": [
+          {
+            "recording": "Zouk/full/Baby Love.mp3",
+            "score": 0.147
+          },
+          {
+            "recording": "Zouk/Prism Of Love.mp3",
+            "score": 0.14
+          },
+          {
+            "recording": "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3",
+            "score": 0.124
+          },
+          {
+            "recording": "Zouk/Baby Love 48000 1_01.mp3",
+            "score": 0.119
+          },
+          {
+            "recording": "Zouk/full/Not Another Love Song (prod By Ozzie).mp3",
+            "score": 0.101
+          },
+          {
+            "recording": "Zouk/Not Another Love Song (prod By Ozzie) 48000 1_01.mp3",
+            "score": 0.09
+          },
+          {
+            "recording": "Zouk/Benta_-_Lover_In_Dark_AObeats_Remix[MP3Fiber.com].mp3",
+            "score": 0.081
+          },
+          {
+            "recording": "Zouk/full/Benta - Lover In Dark (AObeats Remix).mp3",
+            "score": 0.081
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/full/Baby Love.mp3": 0.0,
+            "Zouk/Prism Of Love.mp3": 0.0,
+            "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3": 0.0,
+            "Zouk/Baby Love 48000 1_01.mp3": 0.0,
+            "Zouk/full/Not Another Love Song (prod By Ozzie).mp3": 0.0,
+            "Zouk/Not Another Love Song (prod By Ozzie) 48000 1_01.mp3": 0.0,
+            "Zouk/Benta_-_Lover_In_Dark_AObeats_Remix[MP3Fiber.com].mp3": 0.0,
+            "Zouk/full/Benta - Lover In Dark (AObeats Remix).mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/full/Benta - Lover In Dark (AObeats Remix).mp3": 0.0,
+            "Zouk/Benta_-_Lover_In_Dark_AObeats_Remix[MP3Fiber.com].mp3": 0.0,
+            "Zouk/Not Another Love Song (prod By Ozzie) 48000 1_01.mp3": 0.0,
+            "Zouk/full/Not Another Love Song (prod By Ozzie).mp3": 0.0,
+            "Zouk/Baby Love 48000 1_01.mp3": 0.0,
+            "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3": 0.0,
+            "Zouk/Prism Of Love.mp3": 0.0,
+            "Zouk/full/Baby Love.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.05,
+            0.06,
+            0.05,
+            0.08,
+            0.04,
+            0.05,
+            0.05,
+            0.06
+          ]
+        }
+      }
+    },
+    "Rachmaninoff/Prelude_in_C-sharp_Minor.mscz": {
+      "song": "rach_Prelude_in_Csharp_Minor__Op_3___No_2.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "ff6bf03e9881dc98",
+        "candidates": [
+          {
+            "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+            "score": 0.314
+          },
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.274
+          },
+          {
+            "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+            "score": 0.251
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+            "score": 0.192
+          },
+          {
+            "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+            "score": 0.189
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3",
+            "score": 0.174
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3",
+            "score": 0.173
+          },
+          {
+            "recording": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+            "score": 0.129
+          },
+          {
+            "recording": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
+            "score": 0.128
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav",
+            "score": 0.086
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.02,
+            0.03,
+            0.03,
+            0.03,
+            0.03,
+            0.03,
+            0.03,
+            0.03,
+            0.03,
+            0.03
+          ]
+        }
+      }
+    },
+    "Rachmaninoff/Prelude_in_G_Minor_Op._23_No._5.mscz": {
+      "song": "rach_Prlude_in_G_Minor__Op_23___No_5.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "740597428e120019",
+        "candidates": [
+          {
+            "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+            "score": 0.161
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+            "score": 0.147
+          },
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.14
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3",
+            "score": 0.133
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3",
+            "score": 0.132
+          },
+          {
+            "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+            "score": 0.128
+          },
+          {
+            "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+            "score": 0.104
+          },
+          {
+            "recording": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+            "score": 0.102
+          },
+          {
+            "recording": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
+            "score": 0.101
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.02,
+            0.04,
+            0.03,
+            0.03,
+            0.04,
+            0.03,
+            0.04,
+            0.04,
+            0.03
+          ]
+        }
+      }
+    },
+    "Rachmaninoff/Prelude_in_G_sharp_minor_Op._32_No._12.mscz": {
+      "song": "rach_Prelude_G_Minor__Op_32.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "39b40374a02fb375",
+        "candidates": [
+          {
+            "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+            "score": 0.138
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+            "score": 0.126
+          },
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.121
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3",
+            "score": 0.115
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3",
+            "score": 0.114
+          },
+          {
+            "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+            "score": 0.111
+          },
+          {
+            "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+            "score": 0.089
+          },
+          {
+            "recording": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+            "score": 0.088
+          },
+          {
+            "recording": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
+            "score": 0.087
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.02,
+            0.03,
+            0.04,
+            0.03,
+            0.03,
+            0.04,
+            0.04,
+            0.04,
+            0.03
+          ]
+        }
+      }
+    },
+    "Rachmaninoff/Rach-2/I/Piano_Concerto_2_First-master.mscz": {
+      "song": "rach_Piano_Concerto_No_2__First_Movement.json",
+      "status": "linked",
+      "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+      "variants": {
+        "full": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+        "no_piano": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato_no_piano_split_by_lalalai.mp3"
+      },
+      "variant": "no_piano",
+      "confidence": 1.0,
+      "p_same": 0.98,
+      "p_none": 0.0,
+      "consistent": true,
+      "why": "picked with high confidence",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "e2d7f6aaba5058f7",
+        "candidates": [
+          {
+            "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+            "score": 0.399
+          },
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.347
+          },
+          {
+            "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+            "score": 0.319
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+            "score": 0.285
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3",
+            "score": 0.259
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3",
+            "score": 0.257
+          },
+          {
+            "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+            "score": 0.232
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav",
+            "score": 0.185
+          },
+          {
+            "recording": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+            "score": 0.181
+          },
+          {
+            "recording": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
+            "score": 0.179
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav",
+            "score": 0.161
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav",
+            "score": 0.154
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 1.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav": 0.0,
+            "none": 0.0
+          },
+          "pick_choice": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+          "pick_reversed": {
+            "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_reversed_choice": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+          "same": [
+            0.98,
+            0.06,
+            0.08,
+            0.03,
+            0.04,
+            0.05,
+            0.04,
+            0.04,
+            0.05,
+            0.05,
+            0.04,
+            0.04
+          ]
+        }
+      }
+    },
+    "Rachmaninoff/Rach-2/II/Piano_Concerto_2_Second.mscz": {
+      "song": "rach_Piano_Concerto_No_2__Second_Movement.json",
+      "status": "linked",
+      "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+      "variants": {
+        "full": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+        "no_piano": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio _no_piano_split_by_lalalai.mp3"
+      },
+      "variant": "no_piano",
+      "confidence": 1.0,
+      "p_same": 0.97,
+      "p_none": 0.0,
+      "consistent": true,
+      "why": "picked with high confidence",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "7729942b2c8b52ba",
+        "candidates": [
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.46
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+            "score": 0.402
+          },
+          {
+            "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+            "score": 0.4
+          },
+          {
+            "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+            "score": 0.32
+          },
+          {
+            "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+            "score": 0.302
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3",
+            "score": 0.26
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3",
+            "score": 0.258
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav",
+            "score": 0.228
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav",
+            "score": 0.185
+          },
+          {
+            "recording": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+            "score": 0.182
+          },
+          {
+            "recording": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
+            "score": 0.18
+          },
+          {
+            "recording": "Moszkowski/mosz-II/mosz-II-retime.wav",
+            "score": 0.179
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 1.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Moszkowski/mosz-II/mosz-II-retime.wav": 0.0,
+            "none": 0.0
+          },
+          "pick_choice": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+          "pick_reversed": {
+            "Moszkowski/mosz-II/mosz-II-retime.wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_reversed_choice": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+          "same": [
+            0.97,
+            0.04,
+            0.07,
+            0.1,
+            0.05,
+            0.04,
+            0.05,
+            0.05,
+            0.05,
+            0.06,
+            0.07,
+            0.08
+          ]
+        }
+      }
+    },
+    "Rachmaninoff/Rach-2/III/Piano_Concerto_2_Third-master.mscz": {
+      "song": "rach_Piano_Concerto_No_2__Third_Movement.json",
+      "status": "linked",
+      "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+      "variants": {
+        "full": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+        "no_piano": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegr_no_piano_split_by_lalalai.mp3"
+      },
+      "variant": "no_piano",
+      "confidence": 1.0,
+      "p_same": 0.98,
+      "p_none": 0.0,
+      "consistent": true,
+      "why": "picked with high confidence",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "faef89dd8adbac38",
+        "candidates": [
+          {
+            "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+            "score": 0.408
+          },
+          {
+            "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+            "score": 0.362
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3",
+            "score": 0.355
+          },
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.315
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+            "score": 0.258
+          },
+          {
+            "recording": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
+            "score": 0.242
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3",
+            "score": 0.235
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav",
+            "score": 0.214
+          },
+          {
+            "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+            "score": 0.21
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav",
+            "score": 0.168
+          },
+          {
+            "recording": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+            "score": 0.164
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav",
+            "score": 0.146
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 1.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "none": 0.0
+          },
+          "pick_choice": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+          "pick_reversed": {
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_reversed_choice": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+          "same": [
+            0.98,
+            0.07,
+            0.05,
+            0.08,
+            0.05,
+            0.04,
+            0.05,
+            0.05,
+            0.05,
+            0.04,
+            0.05,
+            0.04
+          ]
+        }
+      }
+    },
+    "Rachmaninoff/Rach-3/I/Piano_Concerto_3_First-master.mscz": {
+      "song": "rach_Piano_Concerto_No_3__First_Movement.json",
+      "status": "linked",
+      "recording": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+      "variants": {
+        "full": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+        "no_piano": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto_no_piano_split_by_lalalai.wav"
+      },
+      "variant": "no_piano",
+      "confidence": 0.572,
+      "p_same": 0.97,
+      "p_none": 0.0,
+      "consistent": false,
+      "why": "the probability is spread over 2 recordings of this composition",
+      "alternatives": [
+        {
+          "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3",
+          "p": 0.395,
+          "p_same": 0.97
+        }
+      ],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "b425aeffd019b124",
+        "candidates": [
+          {
+            "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+            "score": 0.355
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+            "score": 0.323
+          },
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.309
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3",
+            "score": 0.294
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3",
+            "score": 0.291
+          },
+          {
+            "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+            "score": 0.283
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav",
+            "score": 0.21
+          },
+          {
+            "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+            "score": 0.208
+          },
+          {
+            "recording": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+            "score": 0.204
+          },
+          {
+            "recording": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
+            "score": 0.202
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav",
+            "score": 0.183
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav",
+            "score": 0.174
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.56,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.44,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav": 0.0,
+            "none": 0.0
+          },
+          "pick_choice": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3",
+          "pick_reversed": {
+            "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.77,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.23,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "none": 0.0
+          },
+          "pick_reversed_choice": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+          "same": [
+            0.03,
+            0.08,
+            0.04,
+            0.97,
+            0.1,
+            0.04,
+            0.06,
+            0.17,
+            0.97,
+            0.33,
+            0.06,
+            0.05
+          ]
+        }
+      }
+    },
+    "Rachmaninoff/Rach-3/II/Piano_Concerto_3_Second-master.mscz": {
+      "song": "rach_Piano_Concerto_No_3__Second_Movement.json",
+      "status": "linked",
+      "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+      "variants": {
+        "full": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+        "no_piano": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto_no_piano_split_by_lalalai.wav"
+      },
+      "variant": "no_piano",
+      "confidence": 0.485,
+      "p_same": 0.97,
+      "p_none": 0.0,
+      "consistent": false,
+      "why": "the probability is spread over 2 recordings of this composition; Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav preferred: a valid recording with a piano-removed stem",
+      "alternatives": [
+        {
+          "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+          "p": 0.525,
+          "p_same": 0.98
+        }
+      ],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "7ad06e514b8f1b09",
+        "candidates": [
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+            "score": 0.406
+          },
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.388
+          },
+          {
+            "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+            "score": 0.325
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3",
+            "score": 0.269
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3",
+            "score": 0.267
+          },
+          {
+            "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+            "score": 0.26
+          },
+          {
+            "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+            "score": 0.256
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav",
+            "score": 0.23
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav",
+            "score": 0.193
+          },
+          {
+            "recording": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+            "score": 0.188
+          },
+          {
+            "recording": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
+            "score": 0.186
+          },
+          {
+            "recording": "Moszkowski/mosz-II/mosz-II-retime.wav",
+            "score": 0.168
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.63,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.37,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Moszkowski/mosz-II/mosz-II-retime.wav": 0.0,
+            "none": 0.0
+          },
+          "pick_choice": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+          "pick_reversed": {
+            "Moszkowski/mosz-II/mosz-II-retime.wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.58,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.42,
+            "none": 0.0
+          },
+          "pick_reversed_choice": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+          "same": [
+            0.98,
+            0.03,
+            0.04,
+            0.1,
+            0.09,
+            0.04,
+            0.97,
+            0.05,
+            0.05,
+            0.15,
+            0.15,
+            0.08
+          ]
+        }
+      }
+    },
+    "Rachmaninoff/Rach-3/III/Piano_Concerto_3_Third-master.mscz": {
+      "song": "rach_Piano_Concerto_No_3__Third_Movement.json",
+      "status": "linked",
+      "recording": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
+      "variants": {
+        "full": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
+        "no_piano": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto_no_piano_split_by_lalalai.wav"
+      },
+      "variant": "no_piano",
+      "confidence": 0.496,
+      "p_same": 0.98,
+      "p_none": 0.0,
+      "consistent": false,
+      "why": "the probability is spread over 2 recordings of this composition",
+      "alternatives": [
+        {
+          "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3",
+          "p": 0.465,
+          "p_same": 0.98
+        }
+      ],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "0db300a3850d4264",
+        "candidates": [
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3",
+            "score": 0.388
+          },
+          {
+            "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+            "score": 0.377
+          },
+          {
+            "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+            "score": 0.32
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+            "score": 0.292
+          },
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.278
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3",
+            "score": 0.265
+          },
+          {
+            "recording": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
+            "score": 0.263
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav",
+            "score": 0.234
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav",
+            "score": 0.189
+          },
+          {
+            "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+            "score": 0.188
+          },
+          {
+            "recording": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+            "score": 0.184
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav",
+            "score": 0.165
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.52,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.48,
+            "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "none": 0.0
+          },
+          "pick_choice": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3",
+          "pick_reversed": {
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.59,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.41,
+            "none": 0.0
+          },
+          "pick_reversed_choice": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
+          "same": [
+            0.98,
+            0.03,
+            0.04,
+            0.1,
+            0.05,
+            0.1,
+            0.98,
+            0.05,
+            0.05,
+            0.22,
+            0.13,
+            0.05
+          ]
+        }
+      }
+    },
+    "Rachmaninoff/Rhapsody_on_a_theme_of_Paganini_Variation_18_Piano_Solo.mscz": {
+      "song": "rach_Rhapsody_on_a_Theme_of_Paganini__Var_XVIII.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.988,
+      "p_same": null,
+      "p_none": 0.99,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "a83d3438b073d73b",
+        "candidates": [
+          {
+            "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+            "score": 0.219
+          },
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.191
+          },
+          {
+            "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+            "score": 0.175
+          },
+          {
+            "recording": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+            "score": 0.174
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+            "score": 0.084
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 0.01,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "none": 0.99
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 0.01,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "none": 0.99
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.02,
+            0.03,
+            0.03,
+            0.02,
+            0.03
+          ]
+        }
+      }
+    },
+    "Rachmaninoff/Vocalise-Rach-Piano-Cello.mscz": {
+      "song": "rach_VocaliseRachPianoCello.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "7dd6881e38fb2a21",
+        "candidates": [
+          {
+            "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+            "score": 0.252
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+            "score": 0.23
+          },
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.22
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3",
+            "score": 0.209
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3",
+            "score": 0.207
+          },
+          {
+            "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+            "score": 0.201
+          },
+          {
+            "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+            "score": 0.154
+          },
+          {
+            "recording": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+            "score": 0.151
+          },
+          {
+            "recording": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
+            "score": 0.149
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav",
+            "score": 0.148
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav",
+            "score": 0.129
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav",
+            "score": 0.123
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： III. Finale. Alla breve.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.03,
+            0.04,
+            0.04,
+            0.04,
+            0.04,
+            0.04,
+            0.05,
+            0.05,
+            0.05,
+            0.05,
+            0.05,
+            0.04
+          ]
+        }
+      }
+    },
+    "Rachmaninoff/Vocalise_No.14_from_Fourteen_Songs_Op.34_Piano_Solo.mscz": {
+      "song": "rach_Vocalise.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "d170fd48c53b1216",
+        "candidates": [
+          {
+            "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+            "score": 0.097
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
+            "score": 0.088
+          },
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.084
+          },
+          {
+            "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3",
+            "score": 0.08
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： I. Allegro ma non tanto.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.03,
+            0.03,
+            0.03,
+            0.03
+          ]
+        }
+      }
+    },
+    "Rachmaninoff/pagvar18.mscz": {
+      "song": "rach_Rhapsody_on_a_Theme_of_Paganini__Var_XVIII_Piano_and_Orchestra.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 0.994,
+      "p_same": null,
+      "p_none": 0.995,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "80a4a7e85a352171",
+        "candidates": [
+          {
+            "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
+            "score": 0.21
+          },
+          {
+            "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
+            "score": 0.182
+          },
+          {
+            "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
+            "score": 0.167
+          },
+          {
+            "recording": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+            "score": 0.167
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav",
+            "score": 0.13
+          },
+          {
+            "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+            "score": 0.118
+          },
+          {
+            "recording": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
+            "score": 0.116
+          },
+          {
+            "recording": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
+            "score": 0.114
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav",
+            "score": 0.113
+          },
+          {
+            "recording": "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav",
+            "score": 0.108
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Ohlsson/Symphonic-Dances/06 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - III. Lento assai - Allegro vivace - Lento assai - Come prima - Allegro vivace.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav": 0.0,
+            "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav": 0.0,
+            "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav": 0.0,
+            "Ohlsson/Symphonic-Dances/04 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - I. Non allegro.wav": 0.0,
+            "Rhapsody/Rhapsody In Blue_ Gershwin.mp3": 0.01,
+            "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3": 0.0,
+            "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3": 0.0,
+            "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3": 0.0,
+            "none": 0.99
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.03,
+            0.03,
+            0.03,
+            0.03,
+            0.03,
+            0.03,
+            0.04,
+            0.04,
+            0.04,
+            0.03
+          ]
+        }
+      }
+    },
+    "Radiohead/You-piano-solo.mscz": {
+      "song": "radi_You.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "a52147a133e13b1a",
+        "candidates": [
+          {
+            "recording": "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3",
+            "score": 0.203
+          },
+          {
+            "recording": "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3",
+            "score": 0.147
+          },
+          {
+            "recording": "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3",
+            "score": 0.142
+          },
+          {
+            "recording": "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3",
+            "score": 0.135
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3": 0.0,
+            "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.0,
+            "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3": 0.0,
+            "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3": 0.0,
+            "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3": 0.0,
+            "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.0,
+            "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.05,
+            0.05,
+            0.04,
+            0.06
+          ]
+        }
+      }
+    },
+    "River_Flows_In_You.mscz": {
+      "song": "laur_River_Flows_In_You.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "5350f684ccde66c2",
+        "candidates": [
+          {
+            "recording": "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3",
+            "score": 0.126
+          },
+          {
+            "recording": "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3",
+            "score": 0.091
+          },
+          {
+            "recording": "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3",
+            "score": 0.088
+          },
+          {
+            "recording": "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3",
+            "score": 0.084
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3": 0.0,
+            "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.0,
+            "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3": 0.0,
+            "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3": 0.0,
+            "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3": 0.0,
+            "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.0,
+            "Zouk/full/Disclosure - You & Me (Flume Remix).mp3.mp3": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.03,
+            0.03,
+            0.03,
+            0.04
+          ]
+        }
+      }
+    },
+    "Stravinsky/stravinsky_rite_of_spring.mscz": {
+      "song": "stra_The_Rite_of_Spring.json",
+      "status": "linked",
+      "recording": "Stravinsky_ Le sacre du printemps The Rite of Spring - Jaap van Zweden - Full concert in HD(1).mp3",
+      "variants": {
+        "full": "Stravinsky_ Le sacre du printemps The Rite of Spring - Jaap van Zweden - Full concert in HD(1).mp3"
+      },
+      "variant": "full",
+      "confidence": 1.0,
+      "p_same": 0.98,
+      "p_none": 0.0,
+      "consistent": true,
+      "why": "picked with high confidence",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "175fc3de0091ca43",
+        "candidates": [
+          {
+            "recording": "Stravinsky_ Le sacre du printemps The Rite of Spring - Jaap van Zweden - Full concert in HD(1).mp3",
+            "score": 0.456
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Stravinsky_ Le sacre du printemps The Rite of Spring - Jaap van Zweden - Full concert in HD(1).mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_choice": "Stravinsky_ Le sacre du printemps The Rite of Spring - Jaap van Zweden - Full concert in HD(1).mp3",
+          "pick_reversed": {
+            "Stravinsky_ Le sacre du printemps The Rite of Spring - Jaap van Zweden - Full concert in HD(1).mp3": 1.0,
+            "none": 0.0
+          },
+          "pick_reversed_choice": "Stravinsky_ Le sacre du printemps The Rite of Spring - Jaap van Zweden - Full concert in HD(1).mp3",
+          "same": [
+            0.98
+          ]
+        }
+      }
+    },
+    "scriabin-waltz-op1-first-edition.mscz": {
+      "song": "scri_Valse_F_Minor__Op_1.json",
+      "status": "none",
+      "recording": null,
+      "confidence": 1.0,
+      "p_same": null,
+      "p_none": 1.0,
+      "consistent": true,
+      "why": "no candidate is this composition",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-13T12:49:02",
+        "key": "d40854b1b8e4f14e",
+        "candidates": [
+          {
+            "recording": "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav",
+            "score": 0.082
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "none": 1.0
+          },
+          "pick_choice": "none",
+          "pick_reversed": {
+            "Ohlsson/Symphonic-Dances/05 - Sergey Vassilievich Rachmaninoff Symphonic Dances, Op. 45 - II. Andante con moto (Tempo di valse).wav": 0.0,
+            "none": 1.0
+          },
+          "pick_reversed_choice": "none",
+          "same": [
+            0.02
+          ]
+        }
+      }
+    }
+  }
+}
