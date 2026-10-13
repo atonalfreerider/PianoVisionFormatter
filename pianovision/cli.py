@@ -11,6 +11,7 @@
     hands     hand edits recorded on the headset -> the scores (pull | review | apply)
     gui       the Piano Library window (library, build, push to the headset, hand edits)
     accompaniment  Note Waterfall's companion audio: the scores' orchestra rendered by MuseScore with Muse Sounds
+    arrangement    the measure alignment of a simplified part made from an arrangement (scores.json), as a report
 """
 
 from __future__ import annotations
@@ -120,6 +121,8 @@ def _print_build(rep, dry: bool, lib: Optional[Library] = None) -> None:
     _list("FAILED", [f"{r}: {e}" for r, e in rep.failed], 50)
     _list("moved aside to the attic", rep.attic)
     _list("Note Waterfall parts written", rep.parts, 8)
+    _list("simplified parts from arrangements (alignment reports)", [f"{o}  <- {r}: {how}"
+                                                                     for r, o, how in rep.arrangements])
     _p(f"{rep.kept + len(rep.resaved)} up to date"
        + (f" ({len(rep.resaved)} of them saved again, output kept)" if rep.resaved else "")
        + f", {len(rep.written)} written, {len(rep.adopted)} adopted, "
@@ -469,6 +472,35 @@ def cmd_accompaniment(args) -> int:
     return 1 if failures else 0
 
 
+def cmd_arrangement(args) -> int:
+    """The alignment report of every score whose simplified part comes from an arrangement (or of the named ones);
+    renders both scores, writes nothing unless ``--write`` (the report files ``build`` writes)."""
+    from .arrangement import report_markdown
+    from .convert import convert_mscz
+    from .render import Compat
+    lib = _library(args)
+    scan = scan_library(lib.cfg.scores)
+    rels = [r for r, o in sorted(lib.options.items()) if o.simplified_from]
+    if args.scores_:
+        rels = [lib._resolve_rel(s, scan) for s in args.scores_]
+    if not rels:
+        _p("no score has an arrangement (simplified_from in scores.json)")
+        return 0
+    for rel in rels:
+        opts = lib.render_options(rel)
+        if not opts or "arrangement" not in opts:
+            _p(f"{rel}: no simplified_from in scores.json")
+            continue
+        e = lib.manifest.entries.get(rel) or {}
+        c = convert_mscz(os.path.join(lib.cfg.scores, rel), Compat.from_dict(lib._verify_compat(e)),
+                         lib.cfg.orchestra, lib.cfg.simplified, parts=True, options=opts)
+        out = e.get("output") or c.name
+        _p(report_markdown(c.arrangement, out))
+        if args.write:
+            _p(f"written: {lib.write_arrangement_report(rel, out, c.arrangement)}")
+    return 0
+
+
 def cmd_gui(args) -> int:
     from .gui import run_gui
     return run_gui(args)
@@ -593,6 +625,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--keep-wav", action="store_true", help="keep the rendered WAVs in the scratch folder")
     p.set_defaults(fn=cmd_accompaniment)
 
+    p = sub.add_parser("arrangement",
+                       help="the measure alignment of simplified parts made from arrangements (scores.json): report")
+    p.add_argument("scores_", nargs="*", metavar="SCORE", help="the orchestral scores (default: every one with "
+                                                                "simplified_from)")
+    p.add_argument("--write", action="store_true",
+                   help="also write the report to <output>/.arrangements/ (build does this too)")
+    p.set_defaults(fn=cmd_arrangement)
+
     p = sub.add_parser("gui", help="the Piano Library window: library, build, push to the headset, hand edits")
     p.add_argument("--read-only", action="store_true",
                    help="only show the library: every action that writes (build, push, rename, hand edits) is off")
@@ -602,8 +642,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.set_defaults(fn=cmd_gui)
 
     args = ap.parse_args(argv)
+    from .buildopts import OptionsError
     try:
         return args.fn(args)
-    except (FileNotFoundError, KeyError) as e:
+    except (FileNotFoundError, KeyError, OptionsError) as e:
         _p(f"error: {e}")
         return 2

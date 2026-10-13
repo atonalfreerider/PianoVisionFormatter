@@ -148,6 +148,25 @@ class Relabel:
 
 
 @dataclass
+class Technique:
+    """Start a part's staves with a playing technique (a ``PlayTechAnnotation`` before their first note or rest), e.g.
+    pizzicato for basses a MIDI import wrote for a harp: ``technique`` is MuseScore's playTechType, ``text`` what it
+    shows."""
+    part: str
+    technique: str
+    text: str = ""
+    why: str = ""
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Technique":
+        return cls(part=str(d["part"]), technique=str(d["technique"]), text=str(d.get("text", "")),
+                   why=d.get("why", ""))
+
+    def to_dict(self) -> dict:
+        return {"part": self.part, "technique": self.technique, "text": self.text, "why": self.why}
+
+
+@dataclass
 class ScoreOptions:
     mute_vocals: bool = True                 # vocal staves (instrumentId voice.*) are not part of the companion
     piano_orchestral: str = "auto"           # "auto": muted when the score has other instruments; "mute"; "play"
@@ -155,10 +174,14 @@ class ScoreOptions:
     play_parts: List[str] = field(default_factory=list)     # instruments to play although they would be muted
     relabel: List[Relabel] = field(default_factory=list)
     reset_reverb: bool = True                # drop the saved reverb sends: Muse Sounds' own per-instrument levels
+    techniques: List[Technique] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = dataclasses.asdict(self)
         d["relabel"] = [r.to_dict() for r in self.relabel]
+        d["techniques"] = [t.to_dict() for t in self.techniques]
+        if not self.techniques:
+            d.pop("techniques")              # (the cache keys of scores without techniques stay as they were)
         return d
 
 
@@ -183,7 +206,8 @@ def score_options(defaults: dict, per_score: Optional[dict]) -> ScoreOptions:
                      mute_parts=[str(p) for p in d.get("mute_parts", [])],
                      play_parts=[str(p) for p in d.get("play_parts", [])],
                      relabel=[Relabel.from_dict(r) for r in d.get("relabel", [])],
-                     reset_reverb=bool(d.get("reset_reverb", True)))
+                     reset_reverb=bool(d.get("reset_reverb", True)),
+                     techniques=[Technique.from_dict(t) for t in d.get("techniques", [])])
     if o.piano_orchestral not in ("auto", "mute", "play"):
         raise AccompanimentError(f"piano_orchestral must be auto, mute or play, not {o.piano_orchestral!r}")
     return o
@@ -224,9 +248,11 @@ class Analysis:
         return sum(self.staves[i].notes for i in self.parts[pid].staves)
 
 
-def analyse(path: str, compat: Optional[dict] = None) -> Analysis:
-    """Render ``path`` as the library does and classify its staves the way the formatter does."""
-    from .convert import score_root
+def analyse(path: str, compat: Optional[dict] = None, options: Optional[dict] = None) -> Analysis:
+    """Render ``path`` as the library does and classify its staves the way the formatter does (``options``: the
+    score's build options, :mod:`pianovision.buildopts`: its piano staves, title and composer)."""
+    from .convert import _named, score_root
+    from .handsplit import apply_piano_options
     from .metadata import title_artist
     from .mscx import read_score
     from .pvjson import (TRACK_ORCHESTRAL, TRACK_PRIMARY, TRACK_SIMPLIFIED, TempoIndex, classify_tracks,
@@ -235,6 +261,7 @@ def analyse(path: str, compat: Optional[dict] = None) -> Analysis:
     c = Compat.from_dict(compat)
     score = read_score(path)
     mid = render_score(score, c)
+    apply_piano_options(mid, options)
     piano, orch = classify_tracks(mid, True)
     kinds = {i: {TRACK_PRIMARY: KIND_PIANO, TRACK_SIMPLIFIED: KIND_SIMPLIFIED, TRACK_ORCHESTRAL: KIND_ORCHESTRAL}[t]
              for i, t in piano}
@@ -272,7 +299,7 @@ def analyse(path: str, compat: Optional[dict] = None) -> Analysis:
             info.spans.extend((t0, t0) for t0 in ons)
         info.spans.sort()
         staves.append(info)
-    title, artist = title_artist(score_root(path), path, c.metadata)
+    title, artist = _named(*title_artist(score_root(path), path, c.metadata), options)
     return Analysis(staves=staves, parts=parts, end_time=end, title=title, artist=artist)
 
 
@@ -439,10 +466,17 @@ def relabel_mscx(mscx: bytes, relabels: Sequence[Relabel],
         im = _INSTR_RE.search(text, m.end(), end)
         idm = re.search(r'\bid="([^"]*)"', im.group(1)) if im else None
         if idm is None or idm.group(1) != r.old:
+            # an instrument the part only changes to (a clarinet in A for some passages): its changes are relabelled
             have = idm.group(1) if idm else None
-            raise AccompanimentError(f"relabel: Part {r.part}'s instrument is {have!r}, not {r.old!r} "
-                                     f"(update {OPTIONS_NAME})")
-        text, _ = _relabel_instrument(text, m.end(), end, r, f"Part {r.part}")
+            blocks = _staff_blocks(text)
+            changes = any(f'id="{r.old}"' in ic.group(0)
+                          for i in (part_staves or {}).get(r.part, ()) if i < len(blocks)
+                          for ic in _IC_RE.finditer(text, *blocks[i]))
+            if not changes:
+                raise AccompanimentError(f"relabel: Part {r.part}'s instrument is {have!r}, not {r.old!r}, and it "
+                                         f"has no instrument change to {r.old!r} (update {OPTIONS_NAME})")
+        else:
+            text, _ = _relabel_instrument(text, m.end(), end, r, f"Part {r.part}")
         if part_staves and part_staves.get(r.part):
             blocks = _staff_blocks(text)
             for i in sorted(part_staves[r.part], reverse=True):     # from the end: earlier offsets stay valid
@@ -457,6 +491,31 @@ def relabel_mscx(mscx: bytes, relabels: Sequence[Relabel],
 
 _IC_RE = re.compile(r"<InstrumentChange>.*?</InstrumentChange>", re.S)
 _STAFF_RE = re.compile(r'<Staff id="[^"]*">')
+_FIRST_CR_RE = re.compile(r"<(?:Chord|Rest|MeasureRepeat)\b")
+
+
+def add_techniques(mscx: bytes, techniques: Sequence[Technique],
+                   part_staves: Dict[str, Sequence[int]]) -> bytes:
+    """The score with each technique's part starting with it: a ``PlayTechAnnotation`` before the first chord or rest
+    of each of the part's staves (in its first measure's first voice).  Every other byte stays."""
+    text = mscx.decode("utf-8")
+    for t in techniques:
+        staves = list(part_staves.get(t.part) or ())
+        if not staves:
+            raise AccompanimentError(f"techniques: the score has no part {t.part!r}")
+        label = t.text or t.technique
+        el = (f"<PlayTechAnnotation><playTechType>{t.technique}</playTechType><text>{label}</text>"
+              f"</PlayTechAnnotation>")
+        for i in sorted(staves, reverse=True):          # from the end: earlier offsets stay valid
+            blocks = _staff_blocks(text)
+            if i >= len(blocks):
+                continue
+            b0, b1 = blocks[i]
+            m = _FIRST_CR_RE.search(text, b0, b1)
+            if m is None:
+                continue
+            text = text[:m.start()] + el + text[m.start():]
+    return text.encode("utf-8")
 
 
 def _staff_blocks(text: str) -> List[Tuple[int, int]]:
@@ -522,8 +581,12 @@ def write_copy(src: str, dst: str, a: Analysis, plan: MutePlan, o: ScoreOptions,
                     continue
                 data = zin.read(n)
                 if n == main:
-                    data = mscx_override if mscx_override is not None else relabel_mscx(data, relabels,
-                                                                                         part_staves(a))
+                    if mscx_override is not None:
+                        data = mscx_override
+                    else:
+                        data = relabel_mscx(data, relabels, part_staves(a))
+                        if o.techniques:
+                            data = add_techniques(data, o.techniques, part_staves(a))
                 elif n == "audiosettings.json":
                     data = edit_audiosettings(data, instrument_tracks(a, relabels), muted, renames_for(relabels),
                                               o.reset_reverb, dry)
@@ -1118,15 +1181,18 @@ class Candidate:
     path: str
     song: str                 # PianoVision JSON name
     entry: dict
+    options: Optional[dict] = None    # the score's build options (scores.json), as convert_mscz takes them
 
     @property
     def stem(self) -> str:
         return self.song[:-5] if self.song.lower().endswith(".json") else self.song
 
 
-def candidates(manifest: dict, scores_dir: str, only: Sequence[str] = ()) -> List[Candidate]:
+def candidates(manifest: dict, scores_dir: str, only: Sequence[str] = (), lib=None) -> List[Candidate]:
     """Scores whose parts file has orchestra notes (the manifest's parts statistics), optionally filtered by
-    globs matched against the score's path (relative to the scores folder) or its song name."""
+    globs matched against the score's path (relative to the scores folder) or its song name; ``lib``: the
+    library, for the scores' build options."""
+    from .buildopts import without_arrangement
     out = []
     for rel, e in sorted(manifest.get("entries", {}).items()):
         notes = ((e.get("parts") or {}).get("notes") or {}).get("orchestra", 0)
@@ -1135,7 +1201,8 @@ def candidates(manifest: dict, scores_dir: str, only: Sequence[str] = ()) -> Lis
         if only and not any(fnmatch.fnmatch(rel, g) or fnmatch.fnmatch(e["output"], g)
                             or fnmatch.fnmatch(e["output"][:-5], g) for g in only):
             continue
-        out.append(Candidate(rel=rel, path=os.path.join(scores_dir, rel), song=e["output"], entry=e))
+        out.append(Candidate(rel=rel, path=os.path.join(scores_dir, rel), song=e["output"], entry=e,
+                             options=without_arrangement(lib.render_options(rel)) if lib is not None else None))
     return out
 
 
@@ -1173,7 +1240,7 @@ def process(c: Candidate, s: Settings, defaults: dict, per_score: Dict[str, dict
     out_dir, work_root = s.path("out_dir"), s.path("work_dir")
     o = score_options(defaults, per_score.get(c.rel))
     score_sha = _sha256_file(c.path)
-    a = analyse(c.path, _verify_compat(c.entry))
+    a = analyse(c.path, _verify_compat(c.entry), c.options)
     plan = plan_mutes(a, o)
     tools = tools_signature(s)
     encode = {"bitrate": s.bitrate, "lufs": s.lufs, "true_peak": s.true_peak, "sample_rate": MP3_SAMPLE_RATE,
@@ -1474,6 +1541,9 @@ def report_markdown(state: dict, settings: Settings) -> str:
                          f"MIDI {'–'.join(map(str, x.get('pitches', [])))}; {x.get('why', '')}")
         else:
             L.append("- **Relabelled:** nothing")
+        for x in (r.get("options") or {}).get("techniques") or []:
+            L.append(f"  - part {x['part']} ({parts.get(x['part'], {}).get('name', '')}) starts {x['technique']} "
+                     f"(\"{x.get('text') or x['technique']}\"): {x.get('why', '')}")
         fb = r.get("fallback") or []
         L.append("- **Basic sounds (no Muse Sounds instrument):** "
                  + (", ".join(f"{v['name']} [{v['instrument']}]" + (" (silent)" if v["verdict"] == "silent" else "")
@@ -1556,9 +1626,9 @@ def listing(lib, s: Settings, only: Sequence[str] = (), log: Log = print) -> int
     with open(os.path.join(lib.out, ".manifest.json"), encoding="utf-8") as f:
         manifest = json.load(f)
     defaults, per_score = load_options(s.options)
-    for c in candidates(manifest, lib.cfg.scores, only):
+    for c in candidates(manifest, lib.cfg.scores, only, lib):
         o = score_options(defaults, per_score.get(c.rel))
-        a = analyse(c.path, _verify_compat(c.entry))
+        a = analyse(c.path, _verify_compat(c.entry), c.options)
         plan = plan_mutes(a, o)
         ren = renames_for(o.relabel)
         log(f"{c.rel} -> {c.stem}.mp3  ({_mmss(a.end_time)})")
@@ -1569,6 +1639,8 @@ def listing(lib, s: Settings, only: Sequence[str] = (), log: Log = print) -> int
                 "plays" + (f" (play_parts; would be muted: {plan.kept[pid]})" if pid in plan.kept else ""))
             log(f"  part {pid:>3}  {p.name[:34]:34}  [{ins}]  staves {','.join(str(i + 1) for i in p.staves)}  "
                 f"{a.part_notes(pid)} notes  {'/'.join(kinds)}  {state}")
+        for t in o.techniques:
+            log(f"  part {t.part:>3}  starts {t.technique} ({t.text or t.technique})")
         for cf in plan.conflicts:
             log(f"  conflict: {cf}")
     return 0
@@ -1594,7 +1666,7 @@ def run(lib, s: Settings, only: Sequence[str] = (), force: bool = False, dry_run
     unknown = sorted(set(per_score) - {r for r in manifest.get("entries", {})})
     for u in unknown:
         log(f"warning: {OPTIONS_NAME} has options for {u!r}, which is not in the library")
-    cands = candidates(manifest, lib.cfg.scores, only)
+    cands = candidates(manifest, lib.cfg.scores, only, lib)
     log(f"{len(cands)} score(s) with an accompaniment" + (f" matching {', '.join(only)}" if only else ""))
     state = load_state(out_dir)
     state.setdefault("scores", {})

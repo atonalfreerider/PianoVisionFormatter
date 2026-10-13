@@ -241,6 +241,39 @@ class RelabelTest(unittest.TestCase):
         out = A.relabel_mscx(MSCX.encode(), [r]).decode()
         self.assertEqual(ET.fromstring(out.encode()).find(".//InstrumentChange/Instrument").get("id"), "a-clarinet")
 
+    def test_an_instrument_the_part_only_changes_to(self):
+        # a B-flat clarinet part that changes to the clarinet in A for some passages: only the changes are relabelled
+        mscx = MSCX.replace('<Instrument id="a-clarinet">\n        <instrumentId>wind.reed.clarinet.a</instrumentId>',
+                            '<Instrument id="bb-clarinet">\n        <instrumentId>wind.reed.clarinet.bflat</instrumentId>')
+        self.assertNotEqual(mscx, MSCX)
+        r = A.Relabel(part="5", old="a-clarinet", new="bb-clarinet", musicxml="wind.reed.clarinet.bflat")
+        out = A.relabel_mscx(mscx.encode(), [r], {"4": [0], "5": [1]}).decode()
+        root = ET.fromstring(out.encode())
+        ic = root.find(".//InstrumentChange/Instrument")
+        self.assertEqual((ic.get("id"), ic.findtext("instrumentId")), ("bb-clarinet", "wind.reed.clarinet.bflat"))
+        self.assertEqual(out, mscx.replace('<Instrument id="a-clarinet"><instrumentId>wind.reed.clarinet.a',
+                                           '<Instrument id="bb-clarinet"><instrumentId>wind.reed.clarinet.bflat'))
+        with self.assertRaises(A.AccompanimentError):           # no staff map: nothing to relabel there
+            A.relabel_mscx(mscx.encode(), [r])
+
+    def test_techniques_start_the_part(self):
+        t = A.Technique(part="4", technique="pizzicato", text="pizz.")
+        out = A.add_techniques(MSCX.encode(), [t], {"4": [0], "5": [1]}).decode()
+        el = ("<PlayTechAnnotation><playTechType>pizzicato</playTechType><text>pizz.</text>"
+              "</PlayTechAnnotation>")
+        self.assertEqual(out, MSCX.replace("<Measure><voice><Chord><durationType>whole</durationType><Note><pitch>40",
+                                           f"<Measure><voice>{el}<Chord><durationType>whole</durationType>"
+                                           f"<Note><pitch>40"))
+        # a staff that starts with a rest gets it before the rest
+        out = A.add_techniques(MSCX.encode(), [A.Technique(part="5", technique="pizzicato")], {"5": [1]}).decode()
+        self.assertIn("<voice><PlayTechAnnotation><playTechType>pizzicato</playTechType><text>pizzicato</text>"
+                      "</PlayTechAnnotation><Rest>", out)
+        with self.assertRaises(A.AccompanimentError):
+            A.add_techniques(MSCX.encode(), [A.Technique(part="9", technique="pizzicato")], {"5": [1]})
+        o = A.score_options({}, {"techniques": [{"part": 4, "technique": "pizzicato", "text": "pizz."}]})
+        self.assertEqual(o.techniques[0].to_dict()["part"], "4")
+        self.assertNotIn("techniques", A.score_options({}, {}).to_dict())     # the cache keys of others stay
+
     def test_a_relabel_that_does_not_fit_the_score_fails(self):
         with self.assertRaises(A.AccompanimentError):
             A.relabel_mscx(MSCX.encode(), [A.Relabel(part="4", old="harp", new="violoncellos", musicxml="x")])

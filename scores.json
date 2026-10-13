@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "Per-score options of `python3 -m pianovision build` (pianovision/buildopts.py). Keys of 'scores' are score",
+    "paths relative to the scores folder; keys starting with '_' are comments. Only what build makes of a score",
+    "changes, never the score.",
+    "  title, composer   the song's title and composer (PianoVision's name/artist and the output name)",
+    "  piano_staves      the staves (1-based) that are the piano part, right hand first; the others are orchestra",
+    "  hands             'staves' (default) or 'split': the piano part's notes to the hands by pitch and reach",
+    "  simplified_from   a piano arrangement (score path) that becomes the simplified part, measure-aligned",
+    "  measure_map       'auto', or {pin: [[arr, orch], ...], fill: [orch, ...], drop: [arr, ...]} with measures",
+    "                    as the scores number them ('12', '12-30', '395:2' = the second pass): see the report in",
+    "                    <output>/.arrangements/ and `python3 -m pianovision arrangement`"
+  ],
+  "scores": {
+    "Gershwin/Rhapsody_in_blue__George_Gershwin.mscz": {
+      "title": "Rhapsody in Blue (Piano and Orchestra)",
+      "composer": "Gershwin",
+      "_title": "its own title would collide with the piano solo (gers_Rhapsody_in_Blue.json); its metadata's workTitle says 'Second Rhapsody' (wrong)",
+      "simplified_from": "Gershwin/Rhapsody_in_Blue_Piano_solo.mscz",
+      "measure_map": "auto",
+      "_simplified_from": "the piano solo arrangement, measure-aligned, is the default (simplified) part; the measures it leaves out play the orchestral score's Solo Piano part"
+    },
+    "Rachmaninoff/pagvar18.mscz": {
+      "title": "Rhapsody on a Theme of Paganini - Var. XVIII (Piano and Orchestra)",
+      "composer": "Rachmaninoff",
+      "_title": "a MIDI import without title or composer; named like the piano solo version (rach_Rhapsody_on_a_Theme_of_Paganini__Var_XVIII.json), which stays a song of its own",
+      "piano_staves": [11, 12],
+      "hands": "split",
+      "_piano": "'Piano, Roland Piano' (staves 11-12) is the solo piano: alone in m. 1-12, about a quarter of its onsets coincide with the orchestra's. The import wrote both hands on staff 11 (clef changes every measure; staff 12 has the overflow), so the hands are split by pitch and reach. 'Piano' (staff 1) holds one stray E-flat 5 in m. 33 doubling the violins: orchestra by its program"
+    }
+  }
+}

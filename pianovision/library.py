@@ -32,6 +32,7 @@ from .render import Compat
 
 MANIFEST_NAME = ".manifest.json"
 ATTIC_NAME = ".attic"
+ARRANGEMENTS_DIR = ".arrangements"      # alignment reports of simplified parts made from arrangements
 CONFIG_NAME = "pianovision.toml"
 DEFAULT_DEVICE_DIR = "/sdcard/Android/data/com.ZarApps.PianoVision/files"
 DEFAULT_HANDS_DIR = "/sdcard/Android/data/com.atonalfreerider.notewaterfall/files/HandEdits"
@@ -54,6 +55,7 @@ class Config:
     path: str = ""                     # the config file this came from
     hands_dir: str = DEFAULT_HANDS_DIR # Note Waterfall's hand-edit sidecars on the headset
     waterfall_deploy: str = ""         # command that deploys songs to Note Waterfall (given --only NAME...)
+    options: str = ""                  # per-score build options (scores.json, pianovision.buildopts)
 
 
 def find_config(explicit: Optional[str] = None) -> Optional[str]:
@@ -87,7 +89,7 @@ def load_config(path: Optional[str] = None, **overrides) -> Config:
                  adb=dev.get("adb", "adb"), orchestra=conv.get("orchestra", True),
                  simplified=conv.get("simplified", True), jobs=int(conv.get("jobs", 0)), path=cfg_path or "",
                  hands_dir=hands.get("device_dir", DEFAULT_HANDS_DIR),
-                 waterfall_deploy=hands.get("waterfall_deploy", ""))
+                 waterfall_deploy=hands.get("waterfall_deploy", ""), options=p(conv.get("options", "scores.json")))
     for k, v in overrides.items():
         if v is not None:
             setattr(cfg, k, os.path.abspath(os.path.expanduser(v)) if k in ("scores", "output") else v)
@@ -216,12 +218,14 @@ class Manifest:
 # worker jobs (top level so they can run in a process pool)
 # ------------------------------------------------------------------------------
 
-def _job_render(path: str, compat: Optional[dict], orchestra: bool, simplified: bool) -> dict:
+def _job_render(path: str, compat: Optional[dict], orchestra: bool, simplified: bool,
+                options: Optional[dict] = None) -> dict:
     from .convert import convert_mscz, output_name
     try:
-        c = convert_mscz(path, Compat.from_dict(compat), orchestra, simplified, parts=True)
+        c = convert_mscz(path, Compat.from_dict(compat), orchestra, simplified, parts=True, options=options)
         return {"title": c.title, "artist": c.artist, "name": c.name, "data": c.data,
-                "legacy_name": output_name(path, legacy=True), "parts": c.parts}
+                "legacy_name": output_name(path, legacy=True, options=options), "parts": c.parts,
+                "arrangement": c.arrangement}
     except Exception as e:                                   # a broken score must not stop the build
         return {"error": f"{type(e).__name__}: {e}"}
 
@@ -254,7 +258,8 @@ def resave_candidates(e: dict, version: int) -> List[dict]:
     return out
 
 
-def _job_resaved(path: str, candidates: List[dict], target: str, orchestra: bool, simplified: bool) -> dict:
+def _job_resaved(path: str, candidates: List[dict], target: str, orchestra: bool, simplified: bool,
+                 options: Optional[dict] = None) -> dict:
     """The first of ``candidates`` (knobs) under which the score renders to exactly the file ``target``
     (``{"compat": knobs, ...render}``; ``{"compat": None}`` if none does)."""
     from .convert import convert_mscz
@@ -262,10 +267,10 @@ def _job_resaved(path: str, candidates: List[dict], target: str, orchestra: bool
         with open(target, "rb") as f:
             want = f.read()
         for c in candidates:
-            r = convert_mscz(path, Compat.from_dict(c), orchestra, simplified, parts=True)
+            r = convert_mscz(path, Compat.from_dict(c), orchestra, simplified, parts=True, options=options)
             if r.data == want:
                 return {"compat": c, "title": r.title, "artist": r.artist, "name": r.name, "data": r.data,
-                        "parts": r.parts}
+                        "parts": r.parts, "arrangement": r.arrangement}
     except Exception as e:
         return {"compat": None, "error": f"{type(e).__name__}: {e}"}
     return {"compat": None}
@@ -273,7 +278,7 @@ def _job_resaved(path: str, candidates: List[dict], target: str, orchestra: bool
 
 def _job_verify(path: str, compat: Optional[dict], target: str, orchestra: bool, simplified: bool,
                 do_calibrate: bool, parts_target: Optional[str] = None, content: str = "",
-                entry: Optional[dict] = None) -> dict:
+                entry: Optional[dict] = None, options: Optional[dict] = None) -> dict:
     """Re-render and compare with the pinned output; with ``parts_target`` also with the parts file there
     (``parts``: identical | differs | missing).  ``entry``: the manifest entry; when the score changed since
     its output was made, the knobs ``build`` tries for a re-saved score (:func:`resave_candidates`) are
@@ -285,13 +290,15 @@ def _job_verify(path: str, compat: Optional[dict], target: str, orchestra: bool,
     try:
         with open(target, "rb") as f:
             want = f.read()
-        c = convert_mscz(path, Compat.from_dict(compat), orchestra, simplified, parts=parts_target is not None)
+        c = convert_mscz(path, Compat.from_dict(compat), orchestra, simplified, parts=parts_target is not None,
+                         options=options)
         extra0 = {}
         if c.data != want and entry is not None and content_hash(path) != entry.get("content"):
             for k in resave_candidates(entry, file_version(load_mscx_bytes(path))):
                 if k == (compat or {}):
                     continue                                 # rendered just above
-                c2 = convert_mscz(path, Compat.from_dict(k), orchestra, simplified, parts=parts_target is not None)
+                c2 = convert_mscz(path, Compat.from_dict(k), orchestra, simplified, parts=parts_target is not None,
+                                  options=options)
                 if c2.data == want:
                     c, extra0 = c2, {"resaved": k}
                     break
@@ -345,6 +352,8 @@ class Report:
     parts: List[str] = field(default_factory=list)       # Note Waterfall parts files written (NoteWaterfall/...)
     resaved: List[Tuple[str, str, str]] = field(default_factory=list)     # (rel, output, how): score saved again,
                                                                           # its output kept (byte for byte)
+    arrangements: List[Tuple[str, str, str]] = field(default_factory=list)  # (rel, report file, summary): the
+                                                                          # simplified parts made from arrangements
 
 
 def _knobs_text(knobs: dict) -> str:
@@ -357,6 +366,11 @@ def _knobs_text(knobs: dict) -> str:
     if knobs.get("metadata") == "file":
         words.append("title from the file name")
     return ", ".join(words) or "its knobs"
+
+
+def _digest(d: dict) -> str:
+    import hashlib
+    return hashlib.sha256(json.dumps(d, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
 
 
 def _stem_tokens(rel: str) -> List[str]:
@@ -372,6 +386,9 @@ class Library:
         os.makedirs(self.out, exist_ok=True)
         self.manifest = Manifest.load(os.path.join(self.out, MANIFEST_NAME))
         self._attic_dir: Optional[str] = None
+        from . import buildopts
+        self.options = buildopts.load(config.options)          # per-score build options (scores.json)
+        self._optsigs: Dict[str, Optional[dict]] = {}
 
     # -- helpers ----------------------------------------------------------------
     def out_path(self, name: str) -> str:
@@ -439,6 +456,11 @@ class Library:
             report.parts.append(parts_rel(e["output"]))
         e["parts"] = {"format": doc["format"], "revision": PARTS_REVISION, "sha256": bytes_hash(data), "content": e.get("content"),
                       "output_sha256": e.get("output_sha256"), **parts_stats(doc)}
+        sig = self._optsigs[rel] if rel in self._optsigs else self.options_signature(rel)
+        if sig:
+            e["options"] = sig                     # the build options (and arrangement) the parts were made with
+        else:
+            e.pop("options", None)
 
     def parts_summary(self) -> dict:
         """Counts over the manifest: scores with parts, with a simplified part, with orchestra notes, with lyrics
@@ -454,6 +476,81 @@ class Library:
                 "orchestra_notes": sum(p.get("notes", {}).get("orchestra", 0) for p in ps),
                 "lyrics": len(lyr), "lyrics_piano": sum(1 for x in lyr if "piano" in x.get("sources", [])),
                 "lyrics_vocal": sum(1 for x in lyr if "vocal" in x.get("sources", []))}
+
+    # -- per-score build options (scores.json, pianovision.buildopts) ----------------------
+    def render_options(self, rel: str) -> Optional[dict]:
+        """The score's build options as :func:`pianovision.convert.convert_mscz` takes them (None: none); an
+        arrangement is rendered with its own entry's knobs."""
+        o = self.options.get(rel)
+        if o is None:
+            return None
+        arr_compat = None
+        if o.simplified_from and o.simplified_from in self.manifest.entries:
+            arr_compat = self._verify_compat(self.manifest.entries[o.simplified_from])
+        return o.render_options(self.cfg.scores, arr_compat) or None
+
+    def options_signature(self, rel: str) -> Optional[dict]:
+        """What the manifest records of the options a score was built with: a hash of the options that make its
+        song (title, composer, piano staves, hands) and, with an arrangement, which score it is, the hash of its
+        content, its knobs and the hash of the arrangement options.  None without options."""
+        from .arrangement import ARRANGEMENT_REVISION
+        from .convert import content_hash
+        o = self.options.get(rel)
+        if o is None:
+            return None
+        song = {k: v for k, v in o.raw.items() if k in ("title", "composer", "piano_staves", "hands")}
+        sig: Dict[str, object] = {"song": _digest(song)}
+        if o.simplified_from:
+            path = os.path.join(self.cfg.scores, o.simplified_from)
+            try:
+                content = content_hash(path)
+            except (OSError, zipfile.BadZipFile):
+                content = "missing"
+            ro = self.render_options(rel) or {}
+            sig["arrangement"] = {"score": o.simplified_from, "content": content,
+                                  "compat": (ro.get("arrangement") or {}).get("compat"),
+                                  "options": _digest({k: o.raw.get(k) for k in ("simplified_from", "measure_map")}),
+                                  "revision": ARRANGEMENT_REVISION}
+        return sig
+
+    def _options_actions(self, actions: List["Action"]) -> List["Action"]:
+        """Scores whose build options (or arrangement) changed since they were built: the song is rendered again when
+        options that make it changed, else only the parts file (an arrangement edited or re-aligned)."""
+        out = []
+        entries = self.manifest.entries
+        for a in actions:
+            if a.kind in ("render", "move", "retire", "conflict"):
+                if a.kind in ("render", "move"):
+                    self._optsigs[a.rel] = self.options_signature(a.rel)
+                out.append(a)
+                continue
+            e = entries.get(a.rel)
+            sig = self.options_signature(a.rel)
+            self._optsigs[a.rel] = sig
+            have = (e or {}).get("options")
+            if e is None or sig == have:
+                out.append(a)
+            elif (sig or {}).get("song") != (have or {}).get("song"):
+                out.append(Action("render", a.rel, "build options changed (scores.json)", compat=self._verify_compat(e)))
+            elif a.kind == "keep":
+                out.append(Action("parts", a.rel, "arrangement changed (scores.json or the arrangement's score)",
+                                  compat=self._verify_compat(e)))
+            else:
+                out.append(a)
+        return out
+
+    def write_arrangement_report(self, rel: str, output: str, rep: dict) -> str:
+        """``<output>/.arrangements/<song stem>.md`` and ``.json``: the alignment report of a simplified part made
+        from an arrangement (:mod:`pianovision.arrangement`); returns the .md path."""
+        from .arrangement import report_markdown
+        folder = os.path.join(self.out, ARRANGEMENTS_DIR)
+        os.makedirs(folder, exist_ok=True)
+        stem = output[:-5] if output.endswith(".json") else output
+        md = os.path.join(folder, stem + ".md")
+        atomic_write(md, report_markdown(rep, output).encode("utf-8"))
+        atomic_write(os.path.join(folder, stem + ".json"),
+                     (json.dumps(rep, indent=1, ensure_ascii=False) + "\n").encode("utf-8"))
+        return md
 
     def _jobs(self, jobs: Optional[int]) -> int:
         return max(1, jobs or self.cfg.jobs or os.cpu_count() or 1)
@@ -550,7 +647,7 @@ class Library:
             stem = os.path.join(self.cfg.scores, rel)[:-5]
             why = "excluded (renamed to .zip)" if os.path.exists(stem + ".zip") else "score deleted"
             actions.append(Action("retire", rel, why))
-        return actions
+        return self._options_actions(actions)
 
     # -- build --------------------------------------------------------------------
     def build(self, force: bool = False, only: Optional[List[str]] = None, dry_run: bool = False,
@@ -596,7 +693,8 @@ class Library:
 
         todo = [a for a in actions if a.kind in ("render", "parts")]
         results = self._pool_map(_job_render, [(scan.sources[a.rel].path, a.compat, self.cfg.orchestra,
-                                                self.cfg.simplified) for a in todo], jobs, "rendering")
+                                                self.cfg.simplified, self.render_options(a.rel)) for a in todo],
+                                 jobs, "rendering")
         resaved = self._resaved_outputs(scan, todo, results, keep_rels, jobs)
         taken = set(m.outputs())
         new_by_name: Dict[str, List[Tuple[Action, dict]]] = {}
@@ -653,6 +751,14 @@ class Library:
                 owner_rel = owner_rel or a.rel
                 self._store(a.rel, scan.sources[a.rel], target, r, "rendered", a.reason, report)
 
+        for a, r in zip(todo, results):
+            if r.get("arrangement") and a.rel in m.entries and not r.get("error"):
+                rep = r["arrangement"]
+                md = self.write_arrangement_report(a.rel, m.entries[a.rel]["output"], rep)
+                n = rep["measures"]
+                report.arrangements.append((a.rel, os.path.relpath(md, self.out),
+                                            f"{n['mapped']} of {n['arrangement']} arrangement measures mapped, "
+                                            f"{n['filled']} orchestral measures filled, {n['dropped']} dropped"))
         if prune_orphans:
             self._retire_orphans(self.orphans(), report)
         m.save()
@@ -699,8 +805,9 @@ class Library:
                 cands = resave_candidates(e, file_version(load_mscx_bytes(path)))
                 if cands:
                     checks.append((a.rel, path, cands, self.out_path(e["output"])))
-        res = self._pool_map(_job_resaved, [(path, cands, target, self.cfg.orchestra, self.cfg.simplified)
-                                            for _rel, path, cands, target in checks], jobs, "checking re-saved scores")
+        res = self._pool_map(_job_resaved, [(path, cands, target, self.cfg.orchestra, self.cfg.simplified,
+                                             self.render_options(rel))
+                                            for rel, path, cands, target in checks], jobs, "checking re-saved scores")
         for (rel, _path, _cands, _target), r in zip(checks, res):
             if r.get("compat") is not None:
                 found[rel] = {"how": "output kept: " + _knobs_text(r["compat"]), "compat": r["compat"],
@@ -837,7 +944,7 @@ class Library:
             if not os.path.exists(path):
                 continue
             rules = "v2" if only else (self._verify_compat(e) or {}).get("metadata", "v2")
-            want = output_name(path, rules=rules)
+            want = output_name(path, rules=rules, options=self.render_options(rel))
             if want == e["output"] or want in taken:
                 continue
             done.append((rel, e["output"], want))
@@ -867,7 +974,8 @@ class Library:
         args = [(os.path.join(self.cfg.scores, rel), self._verify_compat(m.entries[rel]),
                  self.out_path(m.entries[rel]["output"]), self.cfg.orchestra, self.cfg.simplified, calibrate,
                  self.parts_path(m.entries[rel]["output"]), m.entries[rel].get("content") or "",
-                 m.entries[rel] if m.entries[rel].get("reproducible") is not False else None)
+                 m.entries[rel] if m.entries[rel].get("reproducible") is not False else None,
+                 self.render_options(rel))
                 for rel in rels]
         results = self._pool_map(_job_verify, args, jobs, "verifying")
         out = []

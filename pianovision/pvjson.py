@@ -290,7 +290,22 @@ def classify_tracks(mid: MidiFile, orchestra_mode: bool) -> Tuple[List[Tuple[int
         piano_tracks = [(0, TRACK_PRIMARY)]
         if len(mid.tracks) > 1:
             piano_tracks.append((1, TRACK_PRIMARY))
+    forced = getattr(mid, "piano_staves", None)      # the score's build options name its piano part (buildopts)
+    if forced:
+        piano_tracks = [(t, TRACK_PRIMARY) for t in forced]
+        orchestra_tracks = [(t, p) for t, p in _orchestra_programs(mid) if t not in forced] if orchestra_mode else []
     return piano_tracks, orchestra_tracks
+
+
+def _orchestra_programs(mid: MidiFile) -> List[Tuple[int, int]]:
+    """(track, its first orchestra program) of every track that has one."""
+    out = []
+    for track_idx, track in enumerate(mid.tracks):
+        for msg in track:
+            if msg.type == 'program_change' and is_valid_orchestra_instrument(msg.program):
+                out.append((track_idx, msg.program))
+                break
+    return out
 
 
 def piano_hand(piano_tracks: List[Tuple[int, int]], track_idx: int, track_type: int) -> int:

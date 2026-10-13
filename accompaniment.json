@@ -7,12 +7,24 @@
     "  piano_orchestral  'auto' (muted when the score also has the orchestra), 'mute' or 'play'",
     "  mute_parts        Part ids to mute as well; play_parts: Part ids to play although they would be muted",
     "  reset_reverb      drop the reverb sends saved for the basic sounds (Muse Sounds' own levels), default true",
-    "  relabel           [{part, from, to, instrumentId, why}]: the Part's instrument 'from' (its id attribute)",
-    "                    plays as 'to' (a MuseScore instrument id) with that instrumentId; see `python3 -m",
-    "                    pianovision accompaniment --list` for the Part ids"
+    "  relabel           [{part, from, to, instrumentId, why}]: the Part's instrument 'from' (its id attribute, or an",
+    "                    instrument it changes to) plays as 'to' (a MuseScore instrument id) with that instrumentId;",
+    "                    see `python3 -m pianovision accompaniment --list` for the Part ids",
+    "  techniques        [{part, technique, text, why}]: the part's staves start with that playing technique",
+    "                    (MuseScore's playTechType, e.g. 'pizzicato'; 'text' is what it shows)"
   ],
   "defaults": {"mute_vocals": true, "piano_orchestral": "auto", "reset_reverb": true},
   "scores": {
+    "Gershwin/Rhapsody_in_blue__George_Gershwin.mscz": {
+      "play_parts": ["19"],
+      "_play_parts": "the Percussion staff (drumset on channel 10, program 0) is counted as piano by the formatter; it plays here",
+      "relabel": [
+        {"part": "23", "from": "strings", "to": "violins", "instrumentId": "strings.group", "why": "'Violin I' plays the generic Strings ensemble [added after the probe: basic sounds otherwise]"},
+        {"part": "3", "from": "a-clarinet", "to": "bb-clarinet", "instrumentId": "wind.reed.clarinet.bflat", "why": "the changes to Clarinet in A (m. 25-91, 243-346): Muse Sounds has the B♭ clarinet (same sounding pitches) [added after the probe: basic sounds otherwise]"},
+        {"part": "4", "from": "a-clarinet", "to": "bb-clarinet", "instrumentId": "wind.reed.clarinet.bflat", "why": "the changes to Clarinet in A (m. 25-91, 243-346): Muse Sounds has the B♭ clarinet (same sounding pitches) [added after the probe: basic sounds otherwise]"}
+      ],
+      "_basic_sounds": "Timpani, Percussion (steel drums, cymbal, drum set, tubular bells), Tubular Bells and Banjo keep the basic sounds: no Muse Sounds Percussion or Guitars library is installed. Muse Sounds' saxophones do not reach the alto's D3 (12 notes) or the tenor's A2 (4 notes), its trumpet not the B♭5 of Trumpet 1,2 (1 note): silent there"
+    },
     "Moszkowski/Piano_Concerto_No._2_Op._59-ABRIDGED.mscz": {
       "relabel": [
         {"part": "3", "from": "a-clarinet", "to": "bb-clarinet", "instrumentId": "wind.reed.clarinet.bflat", "why": "Clarinet in A: Muse Sounds has the B♭ clarinet (same sounding pitches) [added after the probe: basic sounds otherwise]"},
@@ -48,6 +60,21 @@
         {"part": "3", "from": "a-clarinet", "to": "bb-clarinet", "instrumentId": "wind.reed.clarinet.bflat", "why": "Clarinet in A: Muse Sounds has the B♭ clarinet (same sounding pitches) [added after the probe: basic sounds otherwise]"},
         {"part": "9", "from": "tenor-trombone", "to": "trombone", "instrumentId": "brass.trombone", "why": "Tenor Trombone: Muse Sounds has the Trombone [added after the probe: basic sounds otherwise]"},
         {"part": "10", "from": "bass-trombone", "to": "trombone", "instrumentId": "brass.trombone", "why": "workaround: Muse Sounds 0.105.8's Bass Trombone writes NaN samples into the whole mix about 1 s after its short ff notes (19 dropouts of 93 ms; LAME then refuses the file) [added]"}
+      ]
+    },
+    "Rachmaninoff/pagvar18.mscz": {
+      "mute_parts": ["1"],
+      "_mute_parts": "'Piano' (staff 1) is one stray E-flat 5 of the MIDI import (m. 33), doubling the violins; the solo piano is 'Piano, Roland Piano' (scores.json piano_staves), muted as the piano part",
+      "relabel": [
+        {"part": "11", "from": "bass-guitar", "to": "violins", "instrumentId": "strings.group", "why": "'Bass Guitar, Violins' (MIDI 60-94) is the violins"},
+        {"part": "13", "from": "violoncello", "to": "violoncellos", "instrumentId": "strings.group", "why": "'Violoncello, Pizz Cellos' (MIDI 37-58) is the cellos section, pizzicato"},
+        {"part": "14", "from": "violas", "to": "violoncellos", "instrumentId": "strings.group", "why": "'Violas, Cellos' (MIDI 49-70) is the cellos"},
+        {"part": "15", "from": "harp", "to": "contrabasses", "instrumentId": "strings.group", "why": "'Harp, Pizz Basses' (MIDI 29-46) is the double basses, pizzicato"},
+        {"part": "16", "from": "violoncellos", "to": "contrabasses", "instrumentId": "strings.group", "why": "'Violoncellos, Bass' (MIDI 37, long notes) is the double basses"}
+      ],
+      "techniques": [
+        {"part": "13", "technique": "pizzicato", "text": "pizz.", "why": "'Pizz Cellos': plucked quarter notes"},
+        {"part": "15", "technique": "pizzicato", "text": "pizz.", "why": "'Pizz Basses': plucked quarter notes"}
       ]
     },
     "Rachmaninoff/Rach-3/I/Piano_Concerto_3_First-master.mscz": {
