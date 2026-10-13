@@ -73,6 +73,21 @@ class PlanMutesTest(unittest.TestCase):
         with self.assertRaises(A.AccompanimentError):
             A.plan_mutes(a, A.ScoreOptions(mute_parts=["99"]))
 
+    def test_a_vocal_line_the_formatter_finds_is_a_vocal_staff(self):
+        # Doctor My Eyes: the solo is written for a piano instrument; the formatter calls it a vocal line
+        a = analysis(staff(0, "1", A.KIND_VOCAL, 5), staff(1, "2", A.KIND_PIANO, 5), staff(2, "3", A.KIND_ORCHESTRA, 5),
+                     instruments={"1": [("piano", "keyboard.piano")]})
+        self.assertEqual(A.plan_mutes(a, A.ScoreOptions()).muted, {"2": ["piano part (original)"],
+                                                                  "1": ["vocal staff (mute_vocals)"]})
+        self.assertEqual(set(A.plan_mutes(a, A.ScoreOptions(mute_vocals=False)).muted), {"2"})
+
+    def test_a_vocal_line_alone_is_no_accompaniment(self):
+        # Love Has No Pride: the orchestra part has the soprano's line and nothing else
+        manifest = {"entries": {"a.mscz": {"output": "a.json", "parts": {"notes": {"orchestra": 40}, "vocal": 40}},
+                                "b.mscz": {"output": "b.json", "parts": {"notes": {"orchestra": 50}, "vocal": 10}},
+                                "c.mscz": {"output": "c.json", "parts": {"notes": {"orchestra": 7}}}}}
+        self.assertEqual([c.rel for c in A.candidates(manifest, "/scores")], ["b.mscz", "c.mscz"])
+
     def test_a_staff_with_notes_muted_with_its_instrument_is_a_conflict(self):
         a = analysis(staff(0, "1", A.KIND_PIANO, 5), staff(1, "1", A.KIND_OTHER, 3), staff(2, "2", A.KIND_OTHER, 4))
         plan = A.plan_mutes(a, A.ScoreOptions())

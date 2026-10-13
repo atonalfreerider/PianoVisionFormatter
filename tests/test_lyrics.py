@@ -117,16 +117,20 @@ class LyricsTest(unittest.TestCase):
         self.assertEqual(got, [(0, 72, "top"), (0, 55, "low")])
 
     def test_a_vocal_staffs_lyric_goes_onto_the_piano_note_that_doubles_it(self):
-        # a soprano (a voice: lands in no part) over a piano that doubles it at pitch and an octave up
+        # a soprano (a voice: in Note Waterfall's orchestra) over a piano that doubles it at pitch and an octave up
         voice = ("Soprano", 52, [[quarters((72, [lyric("Ah")]), (74, [lyric("men", "begin")]),
                                            (76, [lyric("no")]), (77, [lyric("more", ticks="1/4")]))]])
         rh = [[[sung("quarter", 64, 72), chord("quarter", 86), chord("quarter", 67), chord("quarter", 77)]]]
         c, _ = self.convert(rh, parts=(voice,))
         P = c.parts["parts"]
+        self.assertEqual(sung_notes(P["orchestra"]["right"]),
+                         [(0, 72, "Ah", "single", False, True), (Q, 74, "men", "begin", False, True),
+                          (2 * Q, 76, "no", "single", False, True), (3 * Q, 77, "more", "single", True, True)])
+        # "no": the piano does not double it (67 is neither 76 nor an octave away)
         self.assertEqual(sung_notes(P["original"]["right"]),
                          [(0, 72, "Ah", "single", False, False), (Q, 86, "men", "begin", False, False),
                           (3 * Q, 77, "more", "single", True, False)])
-        self.assertEqual(c.parts["lyrics"], {"syllables": 3, "verses": 1, "staves": ["Soprano"],
+        self.assertEqual(c.parts["lyrics"], {"syllables": 4, "verses": 1, "staves": ["Soprano"],
                                              "sources": ["vocal"]})
 
     def test_a_vocal_staff_in_the_orchestra_is_sung_there_and_copied(self):
@@ -145,15 +149,16 @@ class LyricsTest(unittest.TestCase):
         self.assertEqual(c.parts["lyrics"]["sources"], ["vocal"])
         self.assertEqual(c.parts["lyrics"]["syllables"], 2)
 
-    def test_a_voice_in_the_piano_part_is_still_a_vocal_staff(self):
-        # a voice whose track name makes it a piano staff (as a voice part with a piano channel does): its notes
-        # are in the original part (the left hand here), sung, and the piano's right hand carries the copy
+    def test_a_voice_named_like_a_piano_is_still_a_vocal_staff(self):
+        # a voice whose track name says piano is not a piano staff (pvjson.staff_roles): its notes are in the
+        # orchestra, sung, and the piano's right hand carries the copy
         voice = ("Voice piano", 52, [[quarters((72, [lyric("oh")]), 74, 76, 77)]])
         rh = [quarters(72, 74, 76, 77)]
         c, _ = self.convert(rh, parts=(voice,))
         P = c.parts["parts"]
-        self.assertIn((0, 72, "oh", "single", False, True), sung_notes(P["original"]["left"]))
+        self.assertEqual(sung_notes(P["orchestra"]["right"]), [(0, 72, "oh", "single", False, True)])
         self.assertEqual(sung_notes(P["original"]["right"]), [(0, 72, "oh", "single", False, False)])
+        self.assertEqual(P["original"]["left"][0]["note"], 48)        # the piano's own left hand
         self.assertEqual(c.parts["lyrics"]["sources"], ["vocal"])
 
     def test_the_simplified_part_carries_the_lyrics(self):

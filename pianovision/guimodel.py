@@ -45,6 +45,7 @@ STATUS = {
     "edited": ("edited", "accent"),
     "missing": ("output missing", "accent"),
     "parts": ("parts to write", "accent"),
+    "staves": ("staves to check", "accent"),
     "moved": ("moved", "accent"),
     "failed": ("failed", "error"),
     "pinned": ("pinned", "dim-label"),
@@ -55,7 +56,7 @@ STATUS = {
 }
 # per-app state on the headset -> label
 APP_STATE = {"current": "current", "old": "old version", "missing": "not on headset", "": "—"}
-NEEDS_BUILD = ("new", "edited", "missing", "parts", "moved", "failed", "retire")
+NEEDS_BUILD = ("new", "edited", "missing", "parts", "staves", "moved", "failed", "retire")
 
 
 # ==============================================================================
@@ -181,7 +182,7 @@ def _parts_name(output: str) -> str:
 
 def _score_status(action, entry: Optional[dict], failed: Optional[dict], src) -> Tuple[str, str]:
     kind, reason = action.kind, action.reason
-    if failed is not None and kind in ("render", "parts") and src is not None \
+    if failed is not None and kind in ("render", "parts", "staves") and src is not None \
             and failed.get("mtime") == src.mtime and failed.get("size") == src.size:
         return "failed", failed.get("error", "")
     if kind == "keep":
@@ -190,6 +191,8 @@ def _score_status(action, entry: Optional[dict], failed: Optional[dict], src) ->
         return "current", ""
     if kind == "parts":
         return "parts", reason
+    if kind == "staves":
+        return "staves", reason + ": rendered again, the output changes only if its staves are classified anew"
     if kind == "move":
         return "moved", f"from {action.old_rel}"
     if kind == "conflict":
@@ -284,7 +287,8 @@ def summary_lines(snap: Snapshot) -> List[str]:
     c = snap.counts
     scores = sum(v for k, v in c.items() if k not in ("excluded", "invalid", "retire"))
     first = f"{scores} scores: {c.get('current', 0) + c.get('pinned', 0)} up to date"
-    extra = [(k, STATUS[k][0]) for k in ("new", "edited", "missing", "parts", "moved", "failed", "conflict", "retire")]
+    extra = [(k, STATUS[k][0]) for k in ("new", "edited", "missing", "parts", "staves", "moved", "failed", "conflict",
+                                          "retire")]
     first += "".join(f", {c[k]} {label}" for k, label in extra if c.get(k))
     second = []
     if c.get("pinned"):

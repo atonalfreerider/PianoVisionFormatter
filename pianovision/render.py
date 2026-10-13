@@ -1485,6 +1485,8 @@ class Renderer:
         # and its sung syllables, for the notes of the parts file that sing them (pianovision.lyrics)
         from .lyrics import collect_lyrics
         mf.lyrics = collect_lyrics(score, self.repeat_list, pm)
+        # and what each staff is (part, instrument, drums, lyrics), for the staff classification (pianovision.pvjson)
+        mf.staves = staff_facts(score)
         for track in tracks:
             track.sort(key=lambda x: x[0])
             msgs = []
@@ -1541,6 +1543,27 @@ def _lyric_text(lyr) -> str:
     if syl in ("single", "end") and (not text or text[-1] != " "):
         text += " "
     return text
+
+
+def staff_facts(score: Score) -> list:
+    """:class:`pianovision.pvjson.StaffFacts` of every staff of the score, in order (the render's tracks)."""
+    from .pvjson import StaffFacts
+    sung = set()
+    for m in score.measures:
+        for seg in m.segments:
+            if seg.type == SEG_CHORDREST:
+                sung.update(tr // VOICES for tr, cr in seg.elements.items() if cr.is_chord and cr.lyrics)
+    parts = {id(p): i for i, p in enumerate(score.parts)}
+    out = []
+    for staff in score.staves:
+        part = staff.part
+        ins = part.instrument()
+        index = next(k for k, s in enumerate(part.staves) if s is staff)
+        out.append(StaffFacts(part=parts[id(part)], index=index, staves=len(part.staves),
+                              instrument=ins.instrument_id or "",
+                              program=ins.channels[0].program if ins.channels else 0,
+                              drums=ins.use_drumset, sung=staff.idx in sung))
+    return out
 
 
 def render_score(score: Score, compat=None, provenance: bool = False) -> MidiFile:

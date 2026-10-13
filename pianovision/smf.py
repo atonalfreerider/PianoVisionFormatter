@@ -53,6 +53,9 @@ class MidiFile:
     annotations: list = field(default_factory=list, compare=False, repr=False)
     # a render's lyrics (pianovision.lyrics.LyricTimeline) for Note Waterfall's parts file; likewise not MIDI data
     lyrics: Optional[object] = field(default=None, compare=False, repr=False)
+    # a render's staves (pianovision.pvjson.StaffFacts, one per track): what the score says they are, for the
+    # staff classification (empty for a file read from disk: the legacy rules)
+    staves: list = field(default_factory=list, compare=False, repr=False)
 
 
 # --------------------------------------------------------------------------

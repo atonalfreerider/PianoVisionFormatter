@@ -48,8 +48,8 @@ the everyday work without a terminal. It is `python3 -m pianovision gui`; GTK 4 
 (plain GTK 4 when libadwaita is missing), stdlib + PyGObject only.
 
 * **Library:** every score with its composer, title, song file and status (up to date, new,
-  edited, moved, output missing, parts to write, failed, pinned, changed outside, to retire,
-  excluded, not a score), whether it has a simplified part and orchestra, and whether PianoVision
+  edited, moved, output missing, parts to write, staves to check, failed, pinned, changed outside,
+  to retire, excluded, not a score), whether it has a simplified part and orchestra, and whether PianoVision
   and Note Waterfall on the headset have the current version (md5 over adb; Note Waterfall also
   needs the current parts file). Search box (every word must match composer, title, file or status)
   and a filter (needs a build, not current in either app, problems, title changed, ...). The header
@@ -101,6 +101,10 @@ settings) and the output file made from it.
   the older version (see [MuseScore 4.7](#musescore-47)); a pinned JSON stays while the score has the
   same notes. `build` lists these as "score saved again, output kept as it is".
 * **New or edited score:** rendered and written.
+* **Output made under an older staff classification** (see [Which staves are the piano](#which-staves-are-the-piano);
+  the manifest records the revision): the next `build` renders the score again with its entry's knobs and
+  replaces the output only when the score's staves are classified differently now and the render differs;
+  every other output stays byte for byte (`status`: "to check against the revised staff classification").
 * **Moved or renamed score:** recognised by content; it keeps its output name, so the Quest keeps its history for the song.
 * **Excluded score** (renamed to `.zip`) **or deleted score:** its JSON is retired to `PianoVision/.attic/`.
 * **Two scores with the same title:** the second one gets a suffix from its file name, for example `howa_Didnt_I_Do_Well__Red_Sparrow_piano_solo.json`. The old scripts silently overwrote one with the other.
@@ -113,6 +117,34 @@ aren't really scores (for example `Film/Disney/A_Whole_New_World_from_Aladdin.ms
 is a MIDI file) and `.mid` files that no longer have a score.
 
 The `.mid` files next to the scores are no longer needed.
+
+## Which staves are the piano
+
+The score's staves are the MIDI tracks of the render. The old rules, kept for `.mid` input: a staff named
+'piano-simplified', 'piano-orchestral' or '…piano…', or with a program 0-7 on any of its channels, is a piano
+staff (the first of its kind the right hand, the others the left; with none, the first two staves); the
+others with an orchestra program (0-7, 40-51, 64-95, not 112-119) are PianoVision's orchestra. A rendered
+score corrects them with what the score says (`pianovision/pvjson.py`, `staff_roles`):
+
+* **Percussion** (a drumset) is neither piano nor orchestra (Shape of You's tambourine and hand clap, the
+  drum kits of Rach-3 II/III, Imaginary and Fool Like Me were in the left hand).
+* **Vocal staves** go to Note Waterfall's orchestra (`"vocal": 1`), not to PianoVision, whose orchestra
+  never took voices: a voice instrument whatever its other channels play (Love Has No Pride's soprano
+  became the right hand through the program-0 channel its chord symbols play on), and a one-staff piano
+  part with lyrics in a score with a grand-staff piano part (Doctor My Eyes' solo). Only the sung line goes
+  there, not the chord symbols written on the staff.
+* **A piano part's staves stay together:** MuseScore writes the program only on a part's top staff, so the
+  lower staff of a part that is piano by its program is piano too ("Klavier", "Фортепиано").
+* **A choir written on piano staves** (several piano parts, all with lyrics: Doctor My Eyes' soprano/alto and
+  tenor/bass) is reduced like a rehearsal piano: the first part's staves are the right hand, the others the left.
+
+Two piano parts without lyrics (Schubert's Serenade, Vocalise) keep the old hands. Staves named by the build
+options (`scores.json` `piano_staves`) are the piano part as before; of the other staves percussion is still left
+out and voices are vocal staves. Of the library's 146 scores, 9 PianoVision songs changed with these rules (Love
+Has No Pride, A Natural Woman, Doctor My Eyes, Shape of You, Imaginary, Rach-3 II and III, Fool Like Me, and
+Rhapsody in Blue with orchestra, whose percussion was in the left hand) and Fountain of Sorrow's parts file (its
+voice); the rest are byte for byte the same. The companion audio (`accompaniment`) mutes the vocal lines the
+formatter finds with the voices (`mute_vocals`) and skips a score whose orchestra is only a vocal line.
 
 ## Deploying to the Quest
 
@@ -227,10 +259,10 @@ orchestra on its own, so `build` also writes, for every song, a parts file:
 A NOTE has the `tracksV2` fields Note Waterfall reads, with PianoVision's values: `note`,
 `ticksStart`, `durationTicks`, `start`, `duration`, `velocity`, `measureInd`, `accent`.
 Simplified-part notes written on the simplified staves carry `"simplified": 1`; orchestra
-notes carry `"staff"` (the score staff), `"program"` (instruments only) and `"merged": 1`
-where PianoVision's JSON merges them into the hands. The orchestra is the 'piano-orchestral'
-staves (first staff right hand) when the score has any, else the orchestra instruments
-PianoVision's orchestra mode takes, split at middle C. `songMd5` ties the parts to one
+notes carry `"staff"` (the score staff), `"program"` (instruments and vocal staves), `"vocal": 1`
+(vocal staves) and `"merged": 1` where PianoVision's JSON merges them into the hands. The orchestra
+is the 'piano-orchestral' staves (first staff right hand) when the score has any, else the orchestra
+instruments PianoVision's orchestra mode takes and the vocal staves' sung lines, split at middle C. `songMd5` ties the parts to one
 version of the song (the app ignores stale parts); `scoreContent` is the manifest's hash of
 the score. A library built before parts existed gets them on the next `build` without any
 JSON being rewritten; `status` and `build` print how many scores have a simplified part and
@@ -264,7 +296,8 @@ the syllable and `"sung": true`, and the piano part's note struck at the same mo
 at the same pitch, else an octave away (right hand first), a copy; the simplified part carries
 the original part's syllables to its notes of the same onset and pitch. `lyrics` sums them
 up (`null` without lyrics); `status` and `build` print how many scores have lyrics and on
-which kind of staff (11 of the library's 144; one, Love Has No Pride, on a vocal staff). Parts
+which kind of staff (11 of the library's 144; two on vocal staves: Love Has No Pride's soprano and Doctor My
+Eyes' solo). Parts
 revision 3: the next `build` writes every parts file again.
 
 ## Per-score options (scores.json)
@@ -276,7 +309,7 @@ makes of the score changes, never the score.
 | option | what it does |
 |---|---|
 | `title`, `composer` | the song's title and composer: PianoVision's name and artist, and the output name (`<first 4 letters of the composer>_<title>.json`), instead of the score's title frame and metadata |
-| `piano_staves` | the staves (1-based, right hand first) that are the piano part, whatever their names and programs; every other staff is orchestra by its program |
+| `piano_staves` | the staves (1-based, right hand first) that are the piano part, whatever their names and programs; every other staff is orchestra by its program (percussion and voices excepted: [Which staves are the piano](#which-staves-are-the-piano)) |
 | `hands` | `"staves"` (default), or `"split"`: the piano part's notes go to the hands by pitch and reach (`pianovision/handsplit.py`: a beam search over the chords for the split between the hands, costing a hand's span beyond an octave, crossing the other hand's held notes, movement and register), for a MIDI import that wrote both hands on one staff. Hand edits cannot be written into such a score (`hands review` says so) |
 | `simplified_from`, `measure_map` | the simplified part is another score's piano part (a piano arrangement of the same music), measure-aligned (below) |
 

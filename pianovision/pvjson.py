@@ -253,48 +253,176 @@ def is_valid_orchestra_instrument(program: int) -> bool:
 
 
 TRACK_PRIMARY, TRACK_SIMPLIFIED, TRACK_ORCHESTRAL = 1, 2, 3
+VOICE_PROGRAMS = (52, 53, 54)        # General MIDI choir aahs, voice oohs, synth voice
+# Revision of the staff classification (:func:`staff_roles`): 1 the legacy rules (MIDI track names and programs),
+# 2 with the score's parts, drumsets, voices and lyrics.  The library re-checks the outputs made before it.
+STAVES_REVISION = 2
+
+
+@dataclass(frozen=True)
+class StaffFacts:
+    """What the score says about one of its staves (= the render's MIDI track of that index), for
+    :func:`staff_roles`.  The renderer sets ``MidiFile.staves``; a ``.mid`` read from disk has none."""
+    part: int            # the part's index in the score
+    index: int           # the staff's place in its part, 0 = top
+    staves: int          # the part's number of staves
+    instrument: str      # MuseScore instrument id ("keyboard.piano", "voice.soprano", "drum.group.set", ...)
+    program: int         # General MIDI program of the instrument's main channel
+    drums: bool          # a drumset: unpitched percussion, played on MIDI channel 10
+    sung: bool           # some chord of the staff carries a lyric
+
+    @property
+    def voice(self) -> bool:
+        return self.instrument.startswith("voice.") or self.program in VOICE_PROGRAMS
+
+
+@dataclass
+class StaffRoles:
+    """What every staff of a render is (:func:`staff_roles`); tracks are MIDI track indices = content staves."""
+    piano: List[Tuple[int, int]]           # (track, TRACK_*): 'piano', 'piano-simplified', 'piano-orchestral'
+    orchestra: List[Tuple[int, int]]       # (track, program): the instruments PianoVision's orchestra mode takes
+    vocal: List[Tuple[int, int]] = field(default_factory=list)    # (track, program): sung lines
+    hands: Dict[int, int] = field(default_factory=dict)           # piano track -> 0 right hand, 1 left
 
 
 # --------------------------------------------------------------------------
 # notes
 # --------------------------------------------------------------------------
 
-def classify_tracks(mid: MidiFile, orchestra_mode: bool) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
-    """(piano tracks as (track index, TRACK_* type), orchestra tracks as (track index, program)); the
-    MIDI tracks are the score's staves in order."""
+def _legacy_piano_type(track) -> int:
+    """TRACK_* of a piano track by the legacy rules (its name, or a piano program), 0 when it is not one."""
+    found_piano = False
+    track_type = TRACK_PRIMARY
+    for msg in track:
+        if msg.type == 'track_name':
+            name = msg.name.lower()
+            if 'piano-simplified' in name:
+                track_type, found_piano = TRACK_SIMPLIFIED, True
+            elif 'piano-orchestral' in name:
+                track_type, found_piano = TRACK_ORCHESTRAL, True
+            elif 'piano' in name:
+                track_type, found_piano = TRACK_PRIMARY, True
+        elif msg.type == 'program_change' and 0 <= msg.program <= 7:
+            found_piano = True
+    return track_type if found_piano else 0
+
+
+def _orchestra_program(track) -> Optional[int]:
+    for msg in track:
+        if msg.type == 'program_change' and is_valid_orchestra_instrument(msg.program):
+            return msg.program
+    return None
+
+
+def _forced_staves(mid: MidiFile) -> List[int]:
+    """The piano staves the score's build options name (``MidiFile.piano_staves``, 0-based, right hand first;
+    :mod:`pianovision.buildopts`), or []."""
+    return list(getattr(mid, "piano_staves", None) or [])
+
+
+def _legacy_roles(mid: MidiFile) -> StaffRoles:
+    """The legacy rules (``midi_to_json.py``), from the MIDI tracks' names and programs alone; the piano staves
+    the build options name replace the piano part, every other staff with an orchestra program is orchestra."""
     piano_tracks: List[Tuple[int, int]] = []
     orchestra_tracks: List[Tuple[int, int]] = []
+    forced = _forced_staves(mid)
     for track_idx, track in enumerate(mid.tracks):
-        found_piano = False
-        track_type = TRACK_PRIMARY
-        for msg in track:
-            if msg.type == 'track_name':
-                name = msg.name.lower()
-                if 'piano-simplified' in name:
-                    track_type, found_piano = TRACK_SIMPLIFIED, True
-                elif 'piano-orchestral' in name:
-                    track_type, found_piano = TRACK_ORCHESTRAL, True
-                elif 'piano' in name:
-                    track_type, found_piano = TRACK_PRIMARY, True
-            elif msg.type == 'program_change' and 0 <= msg.program <= 7:
-                found_piano = True
-        if found_piano:
-            piano_tracks.append((track_idx, track_type))
-        elif orchestra_mode:
-            for msg in track:
-                if msg.type == 'program_change' and is_valid_orchestra_instrument(msg.program):
-                    orchestra_tracks.append((track_idx, msg.program))
-                    break
-
-    if not piano_tracks:
+        kind = 0 if forced else _legacy_piano_type(track)
+        if kind:
+            piano_tracks.append((track_idx, kind))
+        elif track_idx not in forced:
+            program = _orchestra_program(track)
+            if program is not None:
+                orchestra_tracks.append((track_idx, program))
+    if forced:
+        piano_tracks = [(t, TRACK_PRIMARY) for t in forced]
+    elif not piano_tracks:
         piano_tracks = [(0, TRACK_PRIMARY)]
         if len(mid.tracks) > 1:
             piano_tracks.append((1, TRACK_PRIMARY))
-    forced = getattr(mid, "piano_staves", None)      # the score's build options name its piano part (buildopts)
+    hands = {t: piano_hand(piano_tracks, t, kind) for t, kind in piano_tracks}
+    return StaffRoles(piano_tracks, orchestra_tracks, [], hands)
+
+
+def staff_roles(mid: MidiFile) -> StaffRoles:
+    """The piano, orchestra and vocal staves of a render, and the hand of each piano staff.
+
+    The legacy rules: a staff named 'piano-simplified' / 'piano-orchestral' / '...piano...', or with a program 0-7
+    (on any of its channels), is a piano staff, the first of its kind the right hand and the others the left; with
+    none, the first two staves are; the others with an orchestra program (:func:`is_valid_orchestra_instrument`) are
+    PianoVision's orchestra.  A render (``mid.staves``, :class:`StaffFacts`) corrects them with what the score says:
+
+    * percussion (a drumset) is neither piano nor orchestra: its notes are drum sounds, not pitches;
+    * a voice (a ``voice.*`` instrument or a voice program) is a vocal staff, whatever its other channels play
+      (chord symbols get a piano program); so is a one-staff piano part with lyrics in a score that has a piano
+      part of two or more staves: a vocal line written for a piano instrument above the accompaniment.  Vocal staves
+      go to Note Waterfall's orchestra (:mod:`pianovision.parts`), not to PianoVision, whose orchestra never took
+      voices; only their sung line does (:func:`note_streams`), not the chord symbols written on them;
+    * the staves of a piano part stay together: MuseScore writes the program only on a part's top staff, so a
+      lower staff of a part the program made piano is piano too (a 'Klavier' or 'Фортепиано' part);
+    * the piano staves of several parts that all carry lyrics are a choir written on piano staves: reduced like a
+      rehearsal piano, the first part's staves are the right hand, the other parts' the left.
+
+    Piano staves named by the score's build options (``MidiFile.piano_staves``, ``scores.json``) are the piano part,
+    the first the right hand; of the others, percussion and voices are as above and the rest is orchestra by its
+    program.  A ``.mid`` file keeps the legacy rules (the legacy outputs it reproduces were made by them)."""
+    legacy = _legacy_roles(mid)
+    facts: Optional[List[StaffFacts]] = getattr(mid, "staves", None)
+    if not facts or len(facts) != len(mid.tracks):
+        return legacy
+    forced = _forced_staves(mid)
     if forced:
-        piano_tracks = [(t, TRACK_PRIMARY) for t in forced]
-        orchestra_tracks = [(t, p) for t, p in _orchestra_programs(mid) if t not in forced] if orchestra_mode else []
-    return piano_tracks, orchestra_tracks
+        piano = [(t, TRACK_PRIMARY) for t in forced]
+        orchestra = [(t, p) for t, p in legacy.orchestra if not facts[t].drums and not facts[t].voice]
+        vocal = [(i, f.program) for i, f in enumerate(facts) if i not in forced and not f.drums and f.voice]
+        return StaffRoles(piano, orchestra, vocal, {t: piano_hand(piano, t, TRACK_PRIMARY) for t in forced})
+    kinds = [_legacy_piano_type(track) for track in mid.tracks]
+    grand_piano = any(kinds[i] == TRACK_PRIMARY and f.staves >= 2 and f.index == 0 and not f.drums and not f.voice
+                      for i, f in enumerate(facts))
+    piano: List[Tuple[int, int]] = []
+    orchestra: List[Tuple[int, int]] = []
+    vocal: List[Tuple[int, int]] = []
+    role: Dict[int, int] = {}                  # piano track -> TRACK_*
+    for i, f in enumerate(facts):
+        kind = kinds[i]
+        if f.drums:
+            continue
+        if f.voice or (kind == TRACK_PRIMARY and f.staves == 1 and f.sung and grand_piano):
+            vocal.append((i, f.program))
+            continue
+        if not kind and f.index > 0:
+            kind = role.get(i - f.index, 0)    # the part's top staff
+        if kind:
+            role[i] = kind
+            piano.append((i, kind))
+        else:
+            program = _orchestra_program(mid.tracks[i])
+            if program is not None:
+                orchestra.append((i, program))
+    if not piano:
+        pitched = [i for i, f in enumerate(facts) if not f.drums and i not in dict(vocal)]
+        piano = [(i, TRACK_PRIMARY) for i in pitched[:2]]
+    hands = {t: piano_hand(piano, t, kind) for t, kind in piano}
+    primary = [t for t, kind in piano if kind == TRACK_PRIMARY]
+    parts: List[int] = []
+    for t in primary:
+        if facts[t].part not in parts:
+            parts.append(facts[t].part)
+    if len(parts) >= 2 and all(any(facts[t].sung for t in primary if facts[t].part == p) for p in parts):
+        hands.update((t, 0 if facts[t].part == parts[0] else 1) for t in primary)
+    return StaffRoles(piano, orchestra, vocal, hands)
+
+
+def staves_revised(mid: MidiFile) -> bool:
+    """The render's staves have other roles than the legacy rules gave them (:data:`STAVES_REVISION`)."""
+    return staff_roles(mid) != _legacy_roles(mid)
+
+
+def classify_tracks(mid: MidiFile, orchestra_mode: bool) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
+    """(piano tracks as (track index, TRACK_* type), orchestra tracks as (track index, program)); the
+    MIDI tracks are the score's staves in order (:func:`staff_roles`)."""
+    roles = staff_roles(mid)
+    return roles.piano, (roles.orchestra if orchestra_mode else [])
 
 
 def _orchestra_programs(mid: MidiFile) -> List[Tuple[int, int]]:
@@ -309,7 +437,8 @@ def _orchestra_programs(mid: MidiFile) -> List[Tuple[int, int]]:
 
 
 def piano_hand(piano_tracks: List[Tuple[int, int]], track_idx: int, track_type: int) -> int:
-    """Hand of a piano track, 0 = right, 1 = left: the first track of its type plays the right hand."""
+    """Hand of a piano track by the legacy rule, 0 = right, 1 = left: the first track of its type plays the right
+    hand (:attr:`StaffRoles.hands` has the hands of a render)."""
     same_type = [t[0] for t in piano_tracks if t[1] == track_type]
     return (0 if same_type.index(track_idx) == 0 else 1) if len(same_type) >= 2 else 0
 
@@ -320,7 +449,8 @@ class NoteStreams:
 
     ``primary`` / ``simplified`` / ``orchestral``: the piano staves named 'piano', 'piano-simplified' and
     'piano-orchestral' ([right, left]); ``other_orchestra``: the other orchestra instruments, split into the
-    hands at middle C (collected even when orchestra mode is off: PianoVision's JSON then ignores them).
+    hands at middle C (collected even when orchestra mode is off: PianoVision's JSON then ignores them);
+    ``vocal``: the vocal staves, split the same way (Note Waterfall's orchestra only, :func:`staff_roles`).
     The Note objects are the ones PianoVision's JSON is built from."""
     primary: List[List[Note]]
     simplified: List[List[Note]]
@@ -333,6 +463,8 @@ class NoteStreams:
     max_time_piano: float
     max_time_orchestra: float
     ticks_per_beat: int
+    vocal: List[List[Note]] = field(default_factory=lambda: [[], []])
+    vocal_tracks: List[Tuple[int, int]] = field(default_factory=list)    # (track index, program)
 
 
 def note_streams(mid: MidiFile) -> NoteStreams:
@@ -349,12 +481,13 @@ def note_streams(mid: MidiFile) -> NoteStreams:
     get_measure_for_tick = _measure_lookup(measure_map, tpb)
 
     # the piano tracks do not depend on orchestra mode; the orchestra tracks are all collected
-    piano_tracks, orchestra_tracks = classify_tracks(mid, True)
+    roles = staff_roles(mid)
+    piano_tracks, orchestra_tracks = roles.piano, roles.orchestra
 
     # LEGACY: one active-note table shared by all piano tracks.
     active: Dict[Tuple[int, int], Note] = {}
     for track_idx, track_type in piano_tracks:
-        hand_idx = piano_hand(piano_tracks, track_idx, track_type)
+        hand_idx = roles.hands[track_idx]
         target = {TRACK_PRIMARY: primary, TRACK_SIMPLIFIED: simplified,
                   TRACK_ORCHESTRAL: orchestral}[track_type][hand_idx]
         ticks = 0
@@ -402,8 +535,37 @@ def note_streams(mid: MidiFile) -> NoteStreams:
                     note.duration = t - note.time
                     note.duration_ticks = ticks - note.ticks
 
+    # the vocal staves: the sung line, on the channels of the voice's program (chord symbols written on a vocal staff
+    # play on a channel of their own, MuseScore's "harmony" one, and are not sung); an active-note table of their own
+    # (the others' notes stay as they always were)
+    vocal: List[List[Note]] = [[], []]
+    for track_idx, program in roles.vocal:
+        top = track_idx - mid.staves[track_idx].index          # the part's programs are on its top staff
+        programs: Dict[int, int] = {}
+        for msg in mid.tracks[top]:
+            if msg.type == 'program_change':
+                programs.setdefault(msg.channel, msg.program)
+        ticks = 0
+        active_vocal: Dict[Tuple[int, int], Note] = {}
+        for msg in mid.tracks[track_idx]:
+            ticks += msg.time
+            if msg.channel is None or programs.get(msg.channel, program) != program:
+                continue
+            if msg.type == 'note_on' and msg.velocity > 0:
+                hand_idx = 0 if msg.note >= 60 else 1
+                note = Note(midi=msg.note, time=seconds(ticks), velocity=msg.velocity / 127.0, duration=0,
+                            ticks=ticks, duration_ticks=0, staff=hand_idx + 1, group=get_measure_for_tick(ticks) - 1,
+                            src=getattr(msg, "src", None), raw_velocity=msg.velocity, track=track_idx)
+                vocal[hand_idx].append(note)
+                active_vocal[(msg.channel, msg.note)] = note
+            elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
+                note = active_vocal.pop((msg.channel, msg.note), None)
+                if note is not None:
+                    note.duration = max(seconds(ticks) - note.time, 0)
+                    note.duration_ticks = max(ticks - note.ticks, 0)
+
     return NoteStreams(primary, simplified, orchestral, other_orchestra, measure_map, get_measure_for_tick,
-                       piano_tracks, orchestra_tracks, max_time, max_time_orch, tpb)
+                       piano_tracks, orchestra_tracks, max_time, max_time_orch, tpb, vocal, roles.vocal)
 
 
 def _copy_hands(hands: List[List[Note]]) -> List[List[Note]]:
@@ -678,7 +840,8 @@ def build_song(mid: MidiFile, mscx_root: Optional[ET.Element], source_path: str,
         streams_copy = dataclasses.replace(streams, primary=_copy_hands(streams.primary),
                                            simplified=_copy_hands(streams.simplified),
                                            orchestral=_copy_hands(streams.orchestral),
-                                           other_orchestra=_copy_hands(streams.other_orchestra))
+                                           other_orchestra=_copy_hands(streams.other_orchestra),
+                                           vocal=_copy_hands(streams.vocal))
         originals = {id(c): o for name in ("primary", "simplified", "orchestral", "other_orchestra")
                      for hc, ho in zip(getattr(streams_copy, name), getattr(streams, name)) for c, o in zip(hc, ho)}
     tracks, song_length = get_notes(mid, orchestra_mode, simplified_mode, merge_markers, accents, streams=streams)

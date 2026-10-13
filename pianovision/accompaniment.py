@@ -73,7 +73,7 @@ PROBE_MEASURE_S = 4 * 60.0 / PROBE_BPM      # 4/4 at 120 bpm
 PROBE_SLOT_MEASURES = 3                     # one whole note, two measures' rest for the tail
 
 KIND_PIANO, KIND_SIMPLIFIED, KIND_ORCHESTRAL = "piano", "piano-simplified", "piano-orchestral"
-KIND_ORCHESTRA, KIND_OTHER = "orchestra", "other"
+KIND_ORCHESTRA, KIND_VOCAL, KIND_OTHER = "orchestra", "vocal", "other"
 
 Log = Callable[[str], None]
 
@@ -168,7 +168,8 @@ class Technique:
 
 @dataclass
 class ScoreOptions:
-    mute_vocals: bool = True                 # vocal staves (instrumentId voice.*) are not part of the companion
+    mute_vocals: bool = True                 # vocal staves (instrumentId voice.*, or the formatter's vocal lines:
+                                             # pvjson.staff_roles) are not part of the companion
     piano_orchestral: str = "auto"           # "auto": muted when the score has other instruments; "mute"; "play"
     mute_parts: List[str] = field(default_factory=list)     # more instruments to mute (Part ids)
     play_parts: List[str] = field(default_factory=list)     # instruments to play although they would be muted
@@ -255,17 +256,18 @@ def analyse(path: str, compat: Optional[dict] = None, options: Optional[dict] = 
     from .handsplit import apply_piano_options
     from .metadata import title_artist
     from .mscx import read_score
-    from .pvjson import (TRACK_ORCHESTRAL, TRACK_PRIMARY, TRACK_SIMPLIFIED, TempoIndex, classify_tracks,
-                         extract_tempo_events)
+    from .pvjson import (TRACK_ORCHESTRAL, TRACK_PRIMARY, TRACK_SIMPLIFIED, TempoIndex, extract_tempo_events,
+                         staff_roles)
     from .render import Compat, render_score
     c = Compat.from_dict(compat)
     score = read_score(path)
     mid = render_score(score, c)
     apply_piano_options(mid, options)
-    piano, orch = classify_tracks(mid, True)
+    roles = staff_roles(mid)
     kinds = {i: {TRACK_PRIMARY: KIND_PIANO, TRACK_SIMPLIFIED: KIND_SIMPLIFIED, TRACK_ORCHESTRAL: KIND_ORCHESTRAL}[t]
-             for i, t in piano}
-    kinds.update({i: KIND_ORCHESTRA for i, _p in orch if i not in kinds})
+             for i, t in roles.piano}
+    kinds.update({i: KIND_ORCHESTRA for i, _p in roles.orchestra if i not in kinds})
+    kinds.update({i: KIND_VOCAL for i, _p in roles.vocal if i not in kinds})      # a vocal line, whatever its instrument
     seconds = TempoIndex(extract_tempo_events(mid), mid.ticks_per_beat)   # every track's set_tempo
     staves: List[StaffInfo] = []
     parts: Dict[str, PartInfo] = {}
@@ -334,7 +336,8 @@ def plan_mutes(a: Analysis, o: ScoreOptions) -> MutePlan:
     for st in a.staves:
         if st.kind in piano_kinds:
             mute(st.part, piano_kinds[st.kind])
-    vocal = {pid for pid, p in a.parts.items() if is_vocal(p.instruments)}
+    vocal = {pid for pid, p in a.parts.items() if is_vocal(p.instruments)} | {st.part for st in a.staves
+                                                                               if st.kind == KIND_VOCAL}
     if o.mute_vocals:
         for pid in vocal:
             mute(pid, "vocal staff (mute_vocals)")
@@ -1189,13 +1192,14 @@ class Candidate:
 
 
 def candidates(manifest: dict, scores_dir: str, only: Sequence[str] = (), lib=None) -> List[Candidate]:
-    """Scores whose parts file has orchestra notes (the manifest's parts statistics), optionally filtered by
-    globs matched against the score's path (relative to the scores folder) or its song name; ``lib``: the
-    library, for the scores' build options."""
+    """Scores whose parts file has orchestra notes besides vocal staves' (the manifest's parts statistics),
+    optionally filtered by globs matched against the score's path (relative to the scores folder) or its song name;
+    ``lib``: the library, for the scores' build options."""
     from .buildopts import without_arrangement
     out = []
     for rel, e in sorted(manifest.get("entries", {}).items()):
-        notes = ((e.get("parts") or {}).get("notes") or {}).get("orchestra", 0)
+        p = e.get("parts") or {}
+        notes = (p.get("notes") or {}).get("orchestra", 0) - p.get("vocal", 0)     # a vocal line alone is no accompaniment
         if not notes or not e.get("output"):
             continue
         if only and not any(fnmatch.fnmatch(rel, g) or fnmatch.fnmatch(e["output"], g)

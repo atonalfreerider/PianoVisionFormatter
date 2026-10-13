@@ -225,7 +225,7 @@ def _job_render(path: str, compat: Optional[dict], orchestra: bool, simplified: 
         c = convert_mscz(path, Compat.from_dict(compat), orchestra, simplified, parts=True, options=options)
         return {"title": c.title, "artist": c.artist, "name": c.name, "data": c.data,
                 "legacy_name": output_name(path, legacy=True, options=options), "parts": c.parts,
-                "arrangement": c.arrangement}
+                "arrangement": c.arrangement, "restaffed": c.staves_revised}
     except Exception as e:                                   # a broken score must not stop the build
         return {"error": f"{type(e).__name__}: {e}"}
 
@@ -330,7 +330,9 @@ def _job_verify(path: str, compat: Optional[dict], target: str, orchestra: bool,
 
 @dataclass
 class Action:
-    kind: str                 # keep | render | parts | move | retire | conflict  (parts: only the parts file)
+    # keep | render | parts | staves | move | retire | conflict  (parts: only the parts file; staves: rendered again
+    # with the entry's knobs, the output replaced only when the score's staves have other roles now)
+    kind: str
     rel: str
     reason: str = ""
     old_rel: str = ""
@@ -602,6 +604,7 @@ class Library:
         """``compat_for``: scores whose edit keeps their compatibility settings (hand edits:
         the edit does not touch what the settings model)."""
         from .convert import content_hash, file_hash
+        from .pvjson import STAVES_REVISION
         entries = self.manifest.entries
         actions: List[Action] = []
         wanted = None if not only else set(only)
@@ -637,6 +640,8 @@ class Library:
                 actions.append(Action("render", rel, "output missing", compat=e.get("compat")))
             elif file_hash(out) != e["output_sha256"]:
                 actions.append(Action("conflict", rel, "output was changed outside the pipeline"))
+            elif e.get("staves", 1) < STAVES_REVISION:
+                actions.append(Action("staves", rel, "staff classification revised", compat=self._verify_compat(e)))
             elif not self._parts_current(e):
                 # the output stays byte for byte; only Note Waterfall's parts file is (re)written
                 actions.append(Action("parts", rel, "Note Waterfall parts file missing or out of date",
@@ -687,11 +692,11 @@ class Library:
                 self.to_attic(parts_rel(e["output"]), report)
                 m.retired.append({"source": a.rel, "output": e["output"], "date": _now(), "reason": a.reason})
                 report.retired.append((a.rel, e["output"], a.reason))
-            elif a.kind in ("keep", "parts"):
+            elif a.kind in ("keep", "parts", "staves"):
                 src, e = scan.sources[a.rel], m.entries[a.rel]
                 e.update(mtime=src.mtime, size=src.size)
 
-        todo = [a for a in actions if a.kind in ("render", "parts")]
+        todo = [a for a in actions if a.kind in ("render", "parts", "staves")]
         results = self._pool_map(_job_render, [(scan.sources[a.rel].path, a.compat, self.cfg.orchestra,
                                                 self.cfg.simplified, self.render_options(a.rel)) for a in todo],
                                  jobs, "rendering")
@@ -706,6 +711,9 @@ class Library:
                 # the song's JSON is kept as it is; its parts go with those bytes
                 with open(self.out_path(m.entries[a.rel]["output"]), "rb") as f:
                     self._write_parts(a.rel, r.get("parts"), f.read(), report)
+                continue
+            if a.kind == "staves":
+                self._restaff(a, scan.sources[a.rel], r, report)
                 continue
             if a.rel in resaved:
                 self._keep_resaved(a.rel, scan.sources[a.rel], resaved[a.rel], report)
@@ -814,9 +822,34 @@ class Library:
                               "parts": r.get("parts"), "pinned": False}
         return found
 
+    def _restaff(self, a: Action, src: Source, r: dict, report: Report) -> None:
+        """An unchanged score whose output was made under an older staff classification (``staves`` action): the
+        render (with the entry's knobs) replaces the output when the score's staves have other roles now
+        (:func:`pianovision.pvjson.staves_revised`) and the render differs from it; otherwise the output stays as
+        it is, byte for byte, and its parts file is written again if the render's differs (vocal staves)."""
+        from .pvjson import STAVES_REVISION
+        e = self.manifest.entries[a.rel]
+        current = self._current_output(e)
+        if current is None:
+            report.conflicts.append((a.rel, "output was changed outside the pipeline"))
+            return
+        if r.get("restaffed") and r["data"] != current:
+            if e.get("reproducible") is False:
+                report.conflicts.append((a.rel, "its staves are classified anew, but the renderer does not reproduce "
+                                                "its pinned output (build --force replaces it)"))
+                return
+            self._store(a.rel, src, e["output"], r, "rendered", "staves classified anew", report, compat=a.compat)
+            return
+        e["staves"] = STAVES_REVISION
+        report.kept += 1
+        if r.get("restaffed") or not self._parts_current(e):
+            self._write_parts(a.rel, r.get("parts"), current, report)
+
     def _keep_resaved(self, rel: str, src: Source, info: dict, report: Report) -> None:
+        from .pvjson import STAVES_REVISION
         e = self.manifest.entries[rel]
-        e.update(content=self._hashes.get(rel) or e["content"], mtime=src.mtime, size=src.size)
+        e.update(content=self._hashes.get(rel) or e["content"], mtime=src.mtime, size=src.size,
+                 staves=STAVES_REVISION)
         if info["pinned"]:
             e["reproducible"] = False
         else:
@@ -854,6 +887,7 @@ class Library:
     def _store(self, rel: str, src: Source, name: str, r: dict, origin: str, why: str, report: Report,
                compat: Optional[dict] = None) -> None:
         from .convert import bytes_hash
+        from .pvjson import STAVES_REVISION
         path = self.out_path(name)
         data = r["data"]
         same = False
@@ -867,7 +901,7 @@ class Library:
         e = {"content": self._hashes.get(rel) or self.manifest.entries.get(rel, {}).get("content"),
              "mtime": src.mtime, "size": src.size, "output": name, "output_sha256": bytes_hash(data),
              "title": r["title"], "artist": r["artist"], "default_name": r["name"], "origin": origin,
-             "reproducible": True, "updated": _now()}
+             "reproducible": True, "updated": _now(), "staves": STAVES_REVISION}
         if compat:
             e["compat"] = compat
         self.manifest.entries[rel] = e
@@ -900,10 +934,11 @@ class Library:
     def _adopt(self, rel: str, src: Source, name: str, r: dict, have: bytes, how: str, reproducible: bool,
                report: Report) -> None:
         from .convert import bytes_hash
+        from .pvjson import STAVES_REVISION
         self.manifest.entries[rel] = {
             "content": self._hashes[rel], "mtime": src.mtime, "size": src.size, "output": name,
             "output_sha256": bytes_hash(have), "title": r["title"], "artist": r["artist"], "default_name": r["name"],
-            "origin": "legacy", "reproducible": reproducible, "updated": _now()}
+            "origin": "legacy", "reproducible": reproducible, "updated": _now(), "staves": STAVES_REVISION}
         report.adopted.append((rel, name, how))
         self._write_parts(rel, r.get("parts"), have, report)
 
