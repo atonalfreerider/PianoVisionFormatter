@@ -1594,6 +1594,15 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
     rv.compat = lib._verify_compat(entry)
     compat = Compat.from_dict(rv.compat)
     orchestra, simplified = lib.cfg.orchestra, lib.cfg.simplified
+    # the score's build options (scores.json): the song is rendered with them; the arrangement only makes the parts
+    from .buildopts import without_arrangement
+    options = lib.render_options(rel) if hasattr(lib, "render_options") else None
+    if options and options.get("hands") == "split":
+        rv.error = ("its hands are given by its build options (scores.json: hands \"split\"), not by its staves: "
+                    "hand edits cannot be written into this score")
+        return rv
+    arrangement = (options or {}).get("arrangement")
+    options = without_arrangement(options)
 
     with zipfile.ZipFile(io.BytesIO(mscz)) as z:
         names = z.namelist()
@@ -1602,7 +1611,7 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
         return rv
     try:
         base = convert_mscz(rv.score_path, compat, orchestra, simplified, keep_midi=True, provenance=True,
-                            parts=True)
+                            parts=True, options=options)
     except Exception as e:                                   # a broken score must not stop the others
         rv.error = f"render failed: {type(e).__name__}: {e}"
         return rv
@@ -1669,6 +1678,10 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
         r = EditResult(sc.name, e, "skip")
         results[id(e)] = r
         v = e.part or "pv"
+        if v == "simplified" and arrangement:
+            r.reason = (f"the simplified part is the arrangement {arrangement.get('rel')} (scores.json), not this "
+                        "score: its hands are not written back")
+            continue
         pos = index[v][e.from_hand].get((e.ticks, e.midi, e.occurrence))
         if pos is None:
             if (e.ticks, e.midi) in present[v][e.to_hand]:
@@ -1728,7 +1741,7 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
     try:
         attempt = _Attempt(planner, requests, base_doc, prov, instances, rv.score_path, doc, compat, orchestra,
                            simplified, tmpdir, log, base_parts=base.parts, part_instances=part_instances,
-                           part_prov=pprov, midi=base.midi)
+                           part_prov=pprov, midi=base.midi, options=options)
         final = attempt.run()
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -1793,8 +1806,9 @@ class _Attempt:
     def __init__(self, planner: Planner, requests, base_doc, prov, instances, score_path, doc, compat, orchestra,
                  simplified, tmpdir, log, base_parts: Optional[dict] = None,
                  part_instances: Optional[Dict[str, Dict[int, List[Tuple[str, int]]]]] = None,
-                 part_prov: Optional[dict] = None, midi=None):
+                 part_prov: Optional[dict] = None, midi=None, options: Optional[dict] = None):
         self.planner, self.requests, self.base_doc, self.prov = planner, requests, base_doc, prov
+        self.options = options              # the score's build options (title, piano staves), as the song has them
         self.instances, self.score_path, self.doc, self.compat = instances, score_path, doc, compat
         self.orchestra, self.simplified, self.tmpdir, self.log = orchestra, simplified, tmpdir, log
         # Note Waterfall's parts of the original render: the edited render must have the same parts with only
@@ -1918,7 +1932,7 @@ class _Attempt:
         self.log(f"    render {self.runs}: {len(note_moves)} note(s) changing hands")
         try:
             new = convert_mscz(path, self.compat, self.orchestra, self.simplified, provenance=True,
-                               parts=self.base_parts is not None)
+                               parts=self.base_parts is not None, options=self.options)
         except Exception as e:
             o.problems = [f"the edited score does not render: {type(e).__name__}: {e}"]
             return o

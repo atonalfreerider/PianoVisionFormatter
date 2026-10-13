@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional
 from .metadata import format_output_filename, title_artist
 from .mscx import load_mscx_bytes, read_score
 from .pvjson import build_song
-from .render import Compat, render_score
+from .render import Compat, Renderer
 from .smf import MidiFile, read_midi
 
 
@@ -87,6 +87,8 @@ class Converted:
     # with parts=True and provenance=True: {part: {hand: [NoteSource per note of the parts document]}}, plus
     # "simplified_staff": the simplified part's notes written on the simplified staves (the hand-edit identity)
     parts_provenance: Optional[Dict[str, Dict[str, List[NoteSource]]]] = None
+    # with parts=True and an arrangement in the options: what the alignment did (pianovision.arrangement.report_dict)
+    arrangement: Optional[dict] = None
 
 
 def song_bytes(song: dict) -> bytes:
@@ -101,26 +103,36 @@ def score_root(mscz_path: str) -> ET.Element:
 
 def convert_mscz(mscz_path: str, compat: Optional[Compat] = None, orchestra: bool = True,
                  simplified: bool = True, keep_midi: bool = False, provenance: bool = False,
-                 parts: bool = False) -> Converted:
+                 parts: bool = False, options: Optional[dict] = None) -> Converted:
     """Render ``mscz_path`` directly to PianoVision JSON.
 
     ``provenance`` also returns the score model and, for every tracksV2 note, the
     score note it comes from (:class:`NoteSource`); ``parts`` also returns Note Waterfall's
-    parts of the song (:mod:`pianovision.parts`).  The JSON is the same either way."""
+    parts of the song (:mod:`pianovision.parts`).  The JSON is the same either way.
+    ``options``: the score's build options (:meth:`pianovision.buildopts.BuildOptions.render_options`): its title
+    and composer, its piano staves and hands (:mod:`pianovision.handsplit`), and with ``parts`` the arrangement that
+    becomes the simplified part (:mod:`pianovision.arrangement`; its report in ``Converted.arrangement``)."""
+    from .handsplit import apply_piano_options
     compat = compat or Compat()
     root = score_root(mscz_path)
     score = read_score(mscz_path)
     # the parts' lyrics find the notes that sing them through the notes' provenance (the JSON is the same)
-    midi = render_score(score, compat, provenance=provenance or parts)
+    renderer = Renderer(score, compat, provenance=provenance or parts)
+    midi = renderer.render()
+    apply_piano_options(midi, options)
     prov: Optional[Dict[str, list]] = {} if provenance else None
     parts_out: Optional[dict] = {} if parts else None
     c = _finish(midi, root, mscz_path, orchestra, simplified, keep_midi, compat.metadata, prov,
-                parts_out)
+                parts_out, options)
     if provenance:
         c.score = score
         c.provenance = {hand: [note_source(hand, i, n) for i, n in enumerate(prov[hand])]
                         for hand in ("right", "left")}
     if parts:
+        arrangement = (options or {}).get("arrangement")
+        if arrangement:
+            from .arrangement import apply_arrangement
+            c.arrangement = apply_arrangement(arrangement, score, renderer, midi, parts_out)
         c.parts = parts_out["doc"]
         if provenance:
             c.parts_provenance = _parts_provenance(parts_out)
@@ -148,20 +160,32 @@ def convert_midi(midi_path: str, mscz_path: Optional[str] = None, orchestra: boo
 
 def _finish(midi: MidiFile, root: Optional[ET.Element], path: str, orchestra: bool, simplified: bool,
             keep_midi: bool, rules: str, provenance: Optional[dict] = None,
-            parts: Optional[dict] = None) -> Converted:
+            parts: Optional[dict] = None, options: Optional[dict] = None) -> Converted:
     song = build_song(midi, root, path, orchestra_mode=orchestra, simplified_mode=simplified,
                       legacy_metadata=rules, provenance=provenance, parts=parts)
     title, artist = song["name"], song["artist"]
     if root is not None:
         title, artist = title_artist(root, path, rules)
+    title, artist = _named(title, artist, options)
+    if options and (options.get("title") or options.get("composer")):
+        song["name"], song["artist"] = title, artist
     return Converted(title=title, artist=artist, name=format_output_filename(title, artist, path),
                      data=song_bytes(song), midi=midi if keep_midi else None)
 
 
-def output_name(mscz_path: str, legacy: bool = False, rules: Optional[str] = None) -> str:
+def _named(title: str, artist: str, options: Optional[dict]) -> tuple:
+    """The title and composer, as the build options give them (``title``, ``composer``) or as read."""
+    if not options:
+        return title, artist
+    return options.get("title") or title, options.get("composer") or artist
+
+
+def output_name(mscz_path: str, legacy: bool = False, rules: Optional[str] = None,
+                options: Optional[dict] = None) -> str:
     """The default output file name without rendering the score (``rules``: the title rules as
-    ``Compat.metadata``; ``legacy`` is short for "legacy")."""
+    ``Compat.metadata``; ``legacy`` is short for "legacy"; ``options``: the build options' title and composer)."""
     title, artist = title_artist(score_root(mscz_path), mscz_path, rules or ("legacy" if legacy else "v2"))
+    title, artist = _named(title, artist, options)
     return format_output_filename(title, artist, mscz_path)
 
 

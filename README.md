@@ -20,7 +20,9 @@ python3 -m pianovision watch --deploy   # keep going: rebuild on every save, dep
 ```
 
 Settings live in `pianovision.toml` (scores folder, output folder, device folder,
-orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits). This replaces
+orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits); options for single scores
+(a title, the piano staves, a simplified part from another score) in `scores.json` (see
+[Per-score options](#per-score-options-scoresjson)). This replaces
 `convert_all.sh -m -o -s ~/Documents/MuseScore4/Scores/` followed by
 `sync_pianovision_files.sh`: orchestra and simplified modes are on by default.
 
@@ -37,6 +39,7 @@ orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits). Th
 | `hands pull\|review\|apply [FILE…]` | hand edits recorded with Note Waterfall's HAND REC → the scores, after approval (see below) |
 | `gui [--read-only] [--no-device]` | the Piano Library window (see below) |
 | `accompaniment [--only GLOB…] [--out DIR] [--force] [--dry-run] [--list] [--no-timing]` | Note Waterfall's companion audio: each score's orchestra (everything but the piano part) rendered by MuseScore with Muse Sounds, one mp3 per song (see below) |
+| `arrangement [SCORE…] [--write]` | the measure alignment of a simplified part made from a piano arrangement (`scores.json`), as a report; `build` writes it to `.arrangements/` (see below) |
 
 ## Piano Library (the window)
 
@@ -264,6 +267,68 @@ up (`null` without lyrics); `status` and `build` print how many scores have lyri
 which kind of staff (11 of the library's 144; one, Love Has No Pride, on a vocal staff). Parts
 revision 3: the next `build` writes every parts file again.
 
+## Per-score options (scores.json)
+
+`scores.json` (checked in next to `pianovision.toml`; `[convert] options` names it) holds options for single
+scores, keyed by the score's path below the scores folder (keys starting with `_` are comments). Only what `build`
+makes of the score changes, never the score.
+
+| option | what it does |
+|---|---|
+| `title`, `composer` | the song's title and composer: PianoVision's name and artist, and the output name (`<first 4 letters of the composer>_<title>.json`), instead of the score's title frame and metadata |
+| `piano_staves` | the staves (1-based, right hand first) that are the piano part, whatever their names and programs; every other staff is orchestra by its program |
+| `hands` | `"staves"` (default), or `"split"`: the piano part's notes go to the hands by pitch and reach (`pianovision/handsplit.py`: a beam search over the chords for the split between the hands, costing a hand's span beyond an octave, crossing the other hand's held notes, movement and register), for a MIDI import that wrote both hands on one staff. Hand edits cannot be written into such a score (`hands review` says so) |
+| `simplified_from`, `measure_map` | the simplified part is another score's piano part (a piano arrangement of the same music), measure-aligned (below) |
+
+The manifest records, per score, a hash of the options that make its song and, with an arrangement, the arrangement
+score's content hash and knobs: a change renders the score again; an edited arrangement (or a changed `measure_map`)
+writes only its parts file again (the PianoVision JSON stays byte for byte).
+
+**Simplified parts from arrangements** (`pianovision/arrangement.py`). Rhapsody in Blue with its orchestra gets the
+piano solo arrangement as its simplified part, which Note Waterfall shows by default:
+
+```json
+"Gershwin/Rhapsody_in_blue__George_Gershwin.mscz": {
+  "title": "Rhapsody in Blue (Piano and Orchestra)", "composer": "Gershwin",
+  "simplified_from": "Gershwin/Rhapsody_in_Blue_Piano_solo.mscz", "measure_map": "auto"}
+```
+
+1. **Alignment.** Both scores are unrolled through their repeats and jumps. Every measure as played gets a
+   duration-weighted pitch-class profile, the pitch class of the lowest and the highest sounding note over time
+   (bass line, melody) and its onsets; the arrangement is compared with the orchestral score's piano part and with
+   its piano plus orchestra, whichever is closer (the arrangement folds the orchestra in). A global alignment
+   (Needleman-Wunsch with affine gaps) maps the measures one to one and in order, with cuts on either side; matching
+   distinctive texts (tempo words, sections, rehearsal marks that occur at most twice in each score, words compared
+   loosely) pull it, a different time signature or measure length costs. Then a measure at the edge of a cut that
+   sounds much more like a measure inside the cut moves there; a dropped measure that continues its neighbour's
+   orchestral measure joins it (two arrangement measures over one: a passage written out at half speed); a measure
+   at the edge of a cut that sounds little like its counterpart (the arranger's bridge over the cut) joins the cut.
+   A passage the arrangement plays in another key is reported and filled.
+2. **Retiming.** An arrangement note at (its measure, offset in it) is played at the mapped orchestral measure's
+   start plus that offset, on the orchestral score's clock (its tempo map, pauses and fermatas, as the formatter
+   times its own notes); measures of other lengths are warped through the onsets both sides strike at the same
+   pitch. A note held into a cut ends there; a note held from a dropped measure into a mapped one is struck again
+   where that measure starts. Orchestral measures without counterpart are filled from the orchestral score's own
+   piano part (drum staves left out), so the default view has no holes where the piano plays; their notes end where
+   the arrangement takes over. The companion audio is never retimed: it is rendered from the orchestral score.
+3. **Output.** The parts file's `simplified` part (arrangement notes carry `"simplified": 1`: Note Waterfall counts
+   their hand-edit identity apart from the original part's; filled notes are the original part's own), `"original"`
+   and `"orchestra"` as usual, and `"arrangement": {"score", "revision", "measures": {"mapped", "filled",
+   "dropped"}}`. Hand edits of the arrangement's notes are not written back (`hands review` gives the reason).
+4. **Report:** `<output>/.arrangements/<song>.md` and `.json` (and `python3 -m pianovision arrangement`): the mapped
+   segments with their confidence (mean similarity, and the margin over the same segment shifted by 1-4 measures),
+   the cuts on both sides with what fills them, dropped measures, moved/joined/trimmed measures, time-signature
+   mismatches and the text anchors.
+
+`measure_map` takes overrides where `auto` is wrong, measures written as the scores number them (`"12"`, `"12-30"`,
+`"395:2"` for the second pass through measure 395): `{"pin": [["arrangement", "orchestral"], ...], "fill":
+["orchestral", ...], "drop": ["arrangement", ...]}`; the rest is aligned around them.
+
+For Rhapsody in Blue (419 measures as played against 522): five segments of high confidence (similarity 0.89-1.00)
+cover 418 arrangement measures; the orchestral measures 138-180, 200-254, 256-259 and 472-474 (105) are the
+orchestral piano part's; the arrangement's measure 371 (a B7 bridge over the cut) is dropped; its 11/4 measure 157 is
+orchestral 255, its measures 200-201 are orchestral 302, and five more measures of other lengths are warped.
+
 ## Note Waterfall's companion audio (accompaniment)
 
 `python3 -m pianovision accompaniment` renders, for every score whose parts file has orchestra
@@ -336,6 +401,12 @@ The timing check also decodes each mp3 three ways (ffmpeg's default, without any
 handling, and from a frame in the middle of the file) and reports where it lands against the WAV:
 0 samples. (An mp3 with the usual LAME header plays 1105 samples, 25 ms, late in any decoder that
 ignores the header, and always from a frame index.)
+
+`techniques` start a part's staves with a playing technique in the render copy (a `PlayTechAnnotation`
+before their first note or rest; notes are not changed): `{"part": "15", "technique": "pizzicato", "text":
+"pizz."}` makes a MIDI import's "Harp, Pizz Basses", relabelled to the contrabasses, play pizzicato. A `relabel`
+whose `from` is an instrument the part only changes to (a clarinet in A for some passages) relabels those changes.
+The accompaniment classifies the staves with the score's build options (`scores.json` `piano_staves`).
 
 `play_parts` keeps an instrument the formatter counts as piano playing: the drum staves on MIDI
 channel 10 have program 0, which the formatter's rule takes for a piano (Shape of You, Evanescence,
@@ -416,6 +487,9 @@ pianovision/        the package (stdlib only)
   parts.py            Note Waterfall's parts files (original / simplified piano part, orchestra)
   markers.py          the parts files' markers (rehearsal marks, sections, tempo words) from the score's texts
   lyrics.py           the parts files' sung syllables, on the notes that sing them
+  buildopts.py        per-score build options (scores.json): title, piano staves and hands, simplified_from
+  arrangement.py      a simplified part from a piano arrangement: measure alignment, retiming, report
+  handsplit.py        the hands of a piano part written on one staff (hands: "split")
   convert.py          one score -> JSON
   library.py          manifest, incremental build, adoption of existing outputs
   device.py           adb deploy
@@ -428,8 +502,10 @@ pianovision/        the package (stdlib only)
 desktop/            piano-library.sh (launcher), install-launcher.sh, the icon
 tools/              accompaniment_timing.py (the accompaniment's timing check; numpy, soundfile, librosa)
 pianovision.toml    settings
-accompaniment.json  per-score options of `accompaniment` (relabelled instruments, ...)
-PianoVision/        generated library (git-ignored): *.json, .manifest.json, .attic/, NoteWaterfall/*.parts.json
+scores.json         per-score options of `build` (titles, piano staves, simplified parts from arrangements)
+accompaniment.json  per-score options of `accompaniment` (relabelled instruments, techniques, ...)
+PianoVision/        generated library (git-ignored): *.json, .manifest.json, .attic/, NoteWaterfall/*.parts.json,
+                    .arrangements/ (alignment reports)
 ```
 
 ## Legacy scripts

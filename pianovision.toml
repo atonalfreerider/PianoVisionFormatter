@@ -9,6 +9,7 @@ output = "PianoVision"                              # JSON library + .manifest.j
 orchestra = true      # the old convert_all.sh -o
 simplified = true     # the old convert_all.sh -s
 jobs = 0              # parallel renders, 0 = one per CPU
+options = "scores.json"   # per-score options: titles, piano staves and hands, simplified parts from arrangements
 
 [device]
 dir = "/sdcard/Android/data/com.ZarApps.PianoVision/files"
