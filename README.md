@@ -36,6 +36,7 @@ orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits). Th
 | `convert SCORE.mscz [-o out.json] [--midi out.mid] [--provenance notes.jsonl] [--parts out.parts.json]` | one-off conversion, no library bookkeeping; `--provenance` also writes, per note of the song, the measure, staff, voice, chord and note element it comes from; `--parts` writes Note Waterfall's parts file |
 | `hands pull\|review\|apply [FILE…]` | hand edits recorded with Note Waterfall's HAND REC → the scores, after approval (see below) |
 | `gui [--read-only] [--no-device]` | the Piano Library window (see below) |
+| `accompaniment [--only GLOB…] [--out DIR] [--force] [--dry-run] [--list] [--no-timing]` | Note Waterfall's companion audio: each score's orchestra (everything but the piano part) rendered by MuseScore with Muse Sounds, one mp3 per song (see below) |
 
 ## Piano Library (the window)
 
@@ -247,6 +248,75 @@ one moment is kept once. 83 of the library's 144 songs have markers. Parts files
 before markers existed are rewritten by the next `build` (the manifest records the parts
 revision; the PianoVision JSON is not touched).
 
+## Note Waterfall's companion audio (accompaniment)
+
+`python3 -m pianovision accompaniment` renders, for every score whose parts file has orchestra
+notes, the score itself minus the piano part with MuseScore Studio 4.7 and the Muse Sounds
+libraries, so the audio follows the song's own timeline (tempo map, fermatas, repeats). Run
+`build` first: the scores are the manifest's. Settings are `[accompaniment]` in
+`pianovision.toml`; per-score options are in `accompaniment.json` (checked in, keyed by the
+score's path below the scores folder).
+
+```bash
+python3 -m pianovision accompaniment                  # render what changed, write the report
+python3 -m pianovision accompaniment --list           # Part ids, the formatter's view of each staff, what is muted/relabelled
+python3 -m pianovision accompaniment --only 'Rachmaninoff/*' --force
+```
+
+For each score:
+
+1. **What to mute** comes from the formatter, not from instrument names: the staves
+   `pvjson.classify_tracks` takes for the piano part ('piano' and 'piano-simplified' staves,
+   a staff whose MIDI program is 0-7 (a drum staff on channel 10 has program 0, so it counts
+   too), the first two staves when none is called piano). The 'piano-orchestral' staves are
+   muted too when the score also has the orchestra (`piano_orchestral`), and vocal staves
+   (`mute_vocals`). MuseScore mutes whole instruments: an instrument with a piano-part staff is
+   muted with all its staves (listed as a conflict when another of its staves has notes).
+2. **The render copy** (in `work_dir`; the real score is only read) gets, in its
+   `audiosettings.json`, solo off everywhere, mute on the muted instruments and their volume at
+   -120 dB (MuseScore 4.7.5's command-line export plays muted Muse Sounds tracks), and no saved
+   reverb sends (`reset_reverb`: Muse Sounds' own levels). `relabel` gives an instrument another
+   instrument's sound (its id and instrumentId, the audiosettings track, the part's instrument
+   changes to it) when the score's label has no Muse Sounds instrument or is wrong (a "Lupophone"
+   staff that is the bassoons). Notes are never changed.
+3. **Render**: `mscore -o render.wav --sound-profile MuseSounds copy.mscz`, headless, with
+   MuseScore's config, cache and data folders in `work_dir` (the Muse Sounds engine is linked
+   in). A run that does not load the engine fails instead of rendering the basic sounds, and so
+   does a render with NaN samples (Muse Sounds 0.105.8's Bass Trombone writes them into the whole
+   mix about a second after short ff notes: relabel the instrument).
+4. **Probe**: a probe score with the copy's instruments, one note each in turn (the median,
+   lowest and highest pitch of the part; a percussion staff's drums), rendered with and without
+   the Muse Sounds engine. An instrument that sounds the same both ways has no Muse Sounds
+   instrument and plays MuseScore's basic sounds; a note that is silent with the engine is
+   outside the library instrument's range. Relabelled instruments are probed before and after.
+5. **Checks**: duration against the score (MuseScore's export can run on in silence for
+   minutes: it is cut after the last sound, never before the end of the score), silences where
+   the score has notes, sound where only the muted staves have notes (bleed), peak level; the
+   timing against the formatter's note-on times of the staves that sound
+   (`tools/accompaniment_timing.py`, run with `timing_python`, a Python with numpy, soundfile
+   and librosa: windowed cross-correlation of the onset envelope, median / p5 / p95 lag and
+   drift, + = the audio is later; and where the mp3's audio lands with and without its LAME
+   gapless header). Muse Sounds' samples take 10-60 ms to speak (strings and brass most), which the
+   onset envelope sees as a lag; the probe measures each instrument's attack, and a second render
+   of the score's piano alone with the basic sounds (quick attacks) checks MuseScore's timeline
+   itself against the notes.
+6. **Encode**: a linear gain to `lufs` (-16 LUFS integrated, ffmpeg's loudnorm measurement),
+   capped so the true peak stays at or below `true_peak` (-1 dBTP), no compression; LAME mp3,
+   `bitrate` kbit/s CBR, `<out_dir>/<song>.mp3` named after the PianoVision JSON.
+
+The report is `<out_dir>/accompaniment-report.md`, and `accompaniment-report.json` (which is
+also the cache). A score is rendered again only when its file, its options, the muted
+instruments, MuseScore, the Muse Sounds engine or the encoding settings changed, when its mp3
+is missing or was changed, or when the Muse Sounds libraries changed in a way that can change
+its sound: a library it had was removed or updated, or a library was installed while some of
+its instruments played the basic sounds. So installing Percussion or Harp later renders again
+only the scores with timpani, harp, ... (the libraries are read from the Muse Sounds folder's
+`.instruments` database, read-only).
+
+The mp3s carry a LAME header with the encoder delay and padding. A decoder that honours it
+plays the audio from the first sample; one that ignores it (or a stream that starts after the
+header frame) plays it 1105 samples (25 ms at 44.1 kHz) late.
+
 ## Fidelity
 
 Checked against the 140 existing outputs, which the old scripts made from
@@ -326,11 +396,14 @@ pianovision/        the package (stdlib only)
   device.py           adb deploy
   calibrate.py        compatibility-knob search used by verify --calibrate
   handedits.py        hand edits from Note Waterfall -> the scores (hands pull/review/apply)
+  accompaniment.py    Note Waterfall's companion audio: render copies, MuseScore + Muse Sounds, probe, mp3
   cli.py              python -m pianovision
   gui.py              the Piano Library window (GTK 4 / libadwaita)
   guimodel.py         what the window shows and does, without GTK (statuses, push plans, device status)
 desktop/            piano-library.sh (launcher), install-launcher.sh, the icon
+tools/              accompaniment_timing.py (the accompaniment's timing check; numpy, soundfile, librosa)
 pianovision.toml    settings
+accompaniment.json  per-score options of `accompaniment` (relabelled instruments, ...)
 PianoVision/        generated library (git-ignored): *.json, .manifest.json, .attic/, NoteWaterfall/*.parts.json
 ```
 

@@ -18,3 +18,17 @@ serial = ""           # empty = the attached Quest
 # hand edits recorded with Note Waterfall's HAND REC (python -m pianovision hands pull|review|apply)
 device_dir = "/sdcard/Android/data/com.atonalfreerider.notewaterfall/files/HandEdits"
 waterfall_deploy = "python3 /home/john/Desktop/Note-Waterfall/Tools/deploy_songs.py"   # run with --only <song>... after apply
+
+[accompaniment]
+# Note Waterfall's companion audio (python -m pianovision accompaniment): the scores minus the piano part,
+# rendered by MuseScore with Muse Sounds; per-score options (relabelled instruments, ...) in accompaniment.json
+out_dir = "~/Music/Note Waterfall Accompaniments"   # <song>.mp3 + accompaniment-report.md/.json
+work_dir = "~/.cache/nw-accomp"                     # render copies, WAVs, MuseScore's config/cache/logs
+mscore = "~/.local/bin/mscore"                      # MuseScore Studio 4.7 (AppImage)
+musesampler = "~/.local/share/MuseSampler"          # the Muse Sounds engine; its .config names the libraries
+options = "accompaniment.json"
+bitrate = 256           # kbit/s, constant bit rate
+lufs = -16.0            # integrated loudness target (linear gain, no compression)
+true_peak = -1.0        # dBTP ceiling: the gain is capped so the peaks stay below
+timing_python = "~/miniconda3/envs/midi-retime/bin/python"   # numpy + soundfile + librosa; "" skips the timing check
+timing_script = "tools/accompaniment_timing.py"
