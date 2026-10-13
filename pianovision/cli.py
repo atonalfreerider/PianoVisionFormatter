@@ -10,6 +10,7 @@
     convert   one .mscz -> .json (no library, no manifest)
     hands     hand edits recorded on the headset -> the scores (pull | review | apply)
     gui       the Piano Library window (library, build, push to the headset, hand edits)
+    accompaniment  Note Waterfall's companion audio: the scores' orchestra rendered by MuseScore with Muse Sounds
 """
 
 from __future__ import annotations
@@ -449,6 +450,25 @@ def hands_archive_local(lib: Library, inbox: str, archived, stamp: str) -> None:
             os.replace(os.path.join(inbox, n), os.path.join(done, n))
 
 
+def cmd_accompaniment(args) -> int:
+    from . import accompaniment as A
+    lib = _library(args)
+    s = A.load_settings(lib.cfg.path, out_dir=args.out, work_dir=args.work, timing_python=args.timing_python,
+                        keep_wav=True if args.keep_wav else None)
+    if args.no_timing:
+        s.timing_python = ""
+    if args.list:
+        return A.listing(lib, s, args.only)
+    try:
+        failures = A.run(lib, s, only=args.only, force=args.force, dry_run=args.dry_run, log=_p)
+    except A.AccompanimentError as e:
+        _p(f"error: {e}")
+        return 2
+    if not args.dry_run:
+        _p(f"report: {os.path.join(s.path('out_dir'), A.REPORT_NAME + '.md')}")
+    return 1 if failures else 0
+
+
 def cmd_gui(args) -> int:
     from .gui import run_gui
     return run_gui(args)
@@ -553,6 +573,25 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="command that deploys songs to Note Waterfall (default: [hands] waterfall_deploy)")
     p.add_argument("-v", "--verbose", action="store_true")
     p.set_defaults(fn=cmd_hands)
+
+    p = sub.add_parser("accompaniment",
+                       help="render the orchestral accompaniment (the scores minus the piano part) with MuseScore "
+                            "and Muse Sounds, for Note Waterfall's companion audio")
+    p.add_argument("--only", action="append", default=[], metavar="GLOB",
+                   help="only scores whose path (relative to the scores folder) or song name matches (repeatable)")
+    p.add_argument("--out", help="output folder for the mp3s and the report (default: [accompaniment] out_dir)")
+    p.add_argument("--work", help="scratch folder (default: [accompaniment] work_dir)")
+    p.add_argument("--force", action="store_true", help="render again even if nothing changed")
+    p.add_argument("--dry-run", action="store_true", help="only say which scores would be rendered")
+    p.add_argument("--list", action="store_true",
+                   help="list each score's instruments (Part ids), the formatter's view of their staves and what "
+                        "would be muted and relabelled; renders nothing")
+    p.add_argument("--timing-python", metavar="PY",
+                   help="a Python with numpy, soundfile and librosa for the timing check "
+                        "(default: [accompaniment] timing_python)")
+    p.add_argument("--no-timing", action="store_true", help="skip the timing check")
+    p.add_argument("--keep-wav", action="store_true", help="keep the rendered WAVs in the scratch folder")
+    p.set_defaults(fn=cmd_accompaniment)
 
     p = sub.add_parser("gui", help="the Piano Library window: library, build, push to the headset, hand edits")
     p.add_argument("--read-only", action="store_true",

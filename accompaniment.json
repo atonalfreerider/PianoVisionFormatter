@@ -1,0 +1,92 @@
+{
+  "_comment": [
+    "Options of `python3 -m pianovision accompaniment` (Note Waterfall's companion audio rendered by MuseScore",
+    "with Muse Sounds). Keys of 'scores' are score paths relative to the scores folder; 'defaults' apply to all.",
+    "Only the render copies are changed, never the scores, and never a note.",
+    "  mute_vocals       mute vocal staves (instrumentId voice.*), default true",
+    "  piano_orchestral  'auto' (muted when the score also has the orchestra), 'mute' or 'play'",
+    "  mute_parts        Part ids to mute as well; play_parts: Part ids to play although they would be muted",
+    "  reset_reverb      drop the reverb sends saved for the basic sounds (Muse Sounds' own levels), default true",
+    "  relabel           [{part, from, to, instrumentId, why}]: the Part's instrument 'from' (its id attribute)",
+    "                    plays as 'to' (a MuseScore instrument id) with that instrumentId; see `python3 -m",
+    "                    pianovision accompaniment --list` for the Part ids"
+  ],
+  "defaults": {"mute_vocals": true, "piano_orchestral": "auto", "reset_reverb": true},
+  "scores": {
+    "Moszkowski/Piano_Concerto_No._2_Op._59-ABRIDGED.mscz": {
+      "relabel": [
+        {"part": "3", "from": "a-clarinet", "to": "bb-clarinet", "instrumentId": "wind.reed.clarinet.bflat", "why": "Clarinet in A: Muse Sounds has the B♭ clarinet (same sounding pitches) [added after the probe: basic sounds otherwise]"},
+        {"part": "5", "from": "e-horn", "to": "horn", "instrumentId": "brass.french-horn", "why": "'Horn' in E is a natural horn label for the horns [added after the probe: basic sounds otherwise]"}
+      ]
+    },
+    "Pop/Evanescence — Imaginary [MIDIfind.com].mscz": {
+      "play_parts": ["9"],
+      "_play_parts": "the Drum Kit (channel 10, program 0) is counted as piano by the formatter; it plays here",
+      "mute_vocals": true,
+      "_why": "a sampled 'aah' singing the lyric line would sound wrong; set false to keep the vocal staves"
+    },
+    "Pop/Shape of You.mscz": {
+      "play_parts": ["3", "9"],
+      "_play_parts": "the Tambourine and Hand Clap staves (channel 10, program 0) are counted as piano by the formatter; they play here"
+    },
+    "Rachmaninoff/Rach-2/I/Piano_Concerto_2_First-master.mscz": {
+      "relabel": [
+        {"part": "14", "from": "strings", "to": "violins", "instrumentId": "strings.group", "why": "'Fioliner' (violins) plays the generic Strings ensemble [added after the probe: basic sounds otherwise]"},
+        {"part": "15", "from": "strings", "to": "violins", "instrumentId": "strings.group", "why": "'Fioliner' (violins) plays the generic Strings ensemble [added after the probe: basic sounds otherwise]"},
+        {"part": "16", "from": "strings", "to": "violas", "instrumentId": "strings.group", "why": "'Bratsjer' (violas) plays the generic Strings ensemble [added after the probe: basic sounds otherwise]"},
+        {"part": "17", "from": "strings", "to": "violoncellos", "instrumentId": "strings.group", "why": "'Celloer' (cellos) plays the generic Strings ensemble until its change to Violoncellos [added after the probe: basic sounds otherwise]"},
+        {"part": "19", "from": "strings", "to": "contrabasses", "instrumentId": "strings.group", "why": "'Kontrabasser' (double basses) plays the generic Strings ensemble [added after the probe: basic sounds otherwise]"}
+      ]
+    },
+    "Rachmaninoff/Rach-2/II/Piano_Concerto_2_Second.mscz": {
+      "relabel": [
+        {"part": "3", "from": "a-clarinet", "to": "bb-clarinet", "instrumentId": "wind.reed.clarinet.bflat", "why": "Clarinet in A: Muse Sounds has the B♭ clarinet (same sounding pitches) [added after the probe: basic sounds otherwise]"}
+      ]
+    },
+    "Rachmaninoff/Rach-2/III/Piano_Concerto_2_Third-master.mscz": {
+      "relabel": [
+        {"part": "3", "from": "a-clarinet", "to": "bb-clarinet", "instrumentId": "wind.reed.clarinet.bflat", "why": "Clarinet in A: Muse Sounds has the B♭ clarinet (same sounding pitches) [added after the probe: basic sounds otherwise]"},
+        {"part": "9", "from": "tenor-trombone", "to": "trombone", "instrumentId": "brass.trombone", "why": "Tenor Trombone: Muse Sounds has the Trombone [added after the probe: basic sounds otherwise]"},
+        {"part": "10", "from": "bass-trombone", "to": "trombone", "instrumentId": "brass.trombone", "why": "workaround: Muse Sounds 0.105.8's Bass Trombone writes NaN samples into the whole mix about 1 s after its short ff notes (19 dropouts of 93 ms; LAME then refuses the file) [added]"}
+      ]
+    },
+    "Rachmaninoff/Rach-3/I/Piano_Concerto_3_First-master.mscz": {
+      "relabel": [
+        {"part": "4", "from": "lupophone", "to": "bassoon", "instrumentId": "wind.reed.bassoon", "why": "'Lupophone, Staff-3' (MIDI 34-69) is the bassoons"},
+        {"part": "16", "from": "harp", "to": "violoncellos", "instrumentId": "strings.group", "why": "'Harp, Staff-17' (bass clef, MIDI 35-65) is the cellos"},
+        {"part": "17", "from": "harp", "to": "contrabasses", "instrumentId": "strings.group", "why": "'Harp, Staff-18' (MIDI 28-50) is the double basses"},
+        {"part": "13", "from": "strings", "to": "violins", "instrumentId": "strings.group", "why": "'Violins, Staff-14' plays the generic Strings ensemble [added after the probe: basic sounds otherwise]"},
+        {"part": "14", "from": "strings", "to": "violins", "instrumentId": "strings.group", "why": "'Violins, Staff-15' plays the generic Strings ensemble [added after the probe: basic sounds otherwise]"},
+        {"part": "15", "from": "strings", "to": "violas", "instrumentId": "strings.group", "why": "'Violas, Staff-16' plays the generic Strings ensemble [added after the probe: basic sounds otherwise]"},
+        {"part": "6", "from": "bb-horn-basso", "to": "horn", "instrumentId": "brass.french-horn", "why": "'Horn in B♭ basso' is a natural horn label for the horns [added after the probe: basic sounds otherwise]"},
+        {"part": "20", "from": "bb-horn-basso", "to": "horn", "instrumentId": "brass.french-horn", "why": "'Horn in B♭ basso' is a natural horn label for the horns [added after the probe: basic sounds otherwise]"}
+      ]
+    },
+    "Rachmaninoff/Rach-3/II/Piano_Concerto_3_Second-master.mscz": {
+      "play_parts": ["11", "12"],
+      "_play_parts": "the Drumset staves Platillos (cymbals) and Gr. Cassa (bass drum) are counted as piano by the formatter (channel 10, program 0); they play here",
+      "relabel": [
+        {"part": "6", "from": "bb-horn-basso", "to": "horn", "instrumentId": "brass.french-horn", "why": "'Horn in B♭ basso' is a natural horn label for the horns [added after the probe: basic sounds otherwise]"},
+        {"part": "17", "from": "violin", "to": "violins", "instrumentId": "strings.group", "why": "solo violin used for the first violins section [added: the same fix as the third movement]"},
+        {"part": "18", "from": "violin", "to": "violins", "instrumentId": "strings.group", "why": "solo violin used for the second violins section [added: the same fix as the third movement]"},
+        {"part": "19", "from": "viola", "to": "violas", "instrumentId": "strings.group", "why": "solo viola used for the violas section [added: the same fix as the third movement]"},
+        {"part": "20", "from": "violoncello", "to": "violoncellos", "instrumentId": "strings.group", "why": "solo cello used for the cellos section [added: the same fix as the third movement]"},
+        {"part": "21", "from": "contrabass", "to": "contrabasses", "instrumentId": "strings.group", "why": "solo double bass used for the basses section [added after the probe: basic sounds otherwise]"}
+      ]
+    },
+    "Rachmaninoff/Rach-3/III/Piano_Concerto_3_Third-master.mscz": {
+      "play_parts": ["11", "12", "13"],
+      "_play_parts": "the Drumset staves Tambor (snare), Platillos (cymbals) and Gran casa (bass drum) are counted as piano by the formatter (channel 10, program 0); they play here",
+      "relabel": [
+        {"part": "1", "from": "c-dizi", "to": "flute", "instrumentId": "wind.flutes.flute", "why": "'C Dizi, 2 Flautas' is the flutes"},
+        {"part": "16", "from": "violin", "to": "violins", "instrumentId": "strings.group", "why": "solo violin used for the first violins section"},
+        {"part": "17", "from": "violin", "to": "violins", "instrumentId": "strings.group", "why": "solo violin used for the second violins section"},
+        {"part": "18", "from": "alto-viol", "to": "violas", "instrumentId": "strings.group", "why": "'Alto Viol, Viola' is the violas section"},
+        {"part": "19", "from": "violoncello", "to": "violoncellos", "instrumentId": "strings.group", "why": "solo cello used for the cellos section"},
+        {"part": "20", "from": "contrabass", "to": "contrabasses", "instrumentId": "strings.group", "why": "solo double bass used for the basses section"},
+        {"part": "6", "from": "bb-horn-basso", "to": "horn", "instrumentId": "brass.french-horn", "why": "'Horn in B♭ basso' is a natural horn label for the horns [added after the probe: basic sounds otherwise]"}
+      ],
+      "_drums": "The three Drumset staves (snare, cymbals, bass drum) keep their Drumset instrument and the basic sounds: no Muse Sounds percussion library is installed to check a pitch mapping against."
+    }
+  }
+}
