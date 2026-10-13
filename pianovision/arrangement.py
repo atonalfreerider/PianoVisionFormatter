@@ -2,11 +2,13 @@
 
 A piano-and-orchestra score (Rhapsody in Blue with its orchestra) and a piano solo arrangement of the same piece
 (the arranger folds the orchestra into the piano part, cuts passages, adds a bar here and there) are aligned
-measure to measure; the arrangement's notes are then moved onto the orchestral score's timeline and become the
+measure to measure; the arrangement's notes are then moved onto the orchestral score's measures and become the
 simplified part of its Note Waterfall parts file (:mod:`pianovision.parts`), which Note Waterfall shows by default.
-The orchestral score's own piano part stays the ``original`` part, its orchestra the ``orchestra``; the companion
-audio is rendered from the orchestral score itself, so it already shares the timeline: only the arrangement's
-notes are retimed, never the audio.
+The orchestral score's own piano part stays the ``original`` part, its orchestra the ``orchestra``.  The song plays
+on the arrangement's clock (:mod:`pianovision.timeline`): the orchestral score is rendered with the solo's tempo map
+carried across the alignment, by the formatter and, for the companion audio, by MuseScore.  The same alignment read
+backwards (:class:`Retimer` with ``reverse``) moves an orchestral score's orchestra onto a piano solo's measures
+(``orchestra_from``).
 
 **Alignment** (:func:`align`).  Both scores are unrolled through their repeats and jumps (:class:`Timeline`: one
 :class:`UMeasure` per measure as played).  Every measure gets features (:func:`measure_features`): a
@@ -31,8 +33,8 @@ score's one to one (equal lengths), ``fill`` keeps orchestral measures for the o
 leaves arrangement measures out.  The rest is aligned automatically around them.
 
 **Retiming** (:func:`retime`, :class:`Retimer`).  A note of the arrangement at (its unit, offset in it) is played at
-the orchestral unit's start plus that offset, on the orchestral score's clock: its tempo map, pauses and fermatas,
-exactly as the formatter times its own notes.  Units of another length on the two sides are warped through the
+the orchestral unit's start plus that offset, on the orchestral render's clock (the arrangement's, carried over:
+:mod:`pianovision.timeline`), exactly as the formatter times its own notes.  Units of another length on the two sides are warped through the
 onsets both strike at the same pitch (:func:`unit_warp`).  A note held into a unit that does not follow on in the
 orchestral score (a cut) ends at the cut; a note held from a dropped measure into a mapped one is struck again where
 the mapped measure starts.  Orchestral measures without counterpart are filled from the orchestral score's own piano
@@ -941,57 +943,67 @@ class RetimeStats:
 
 
 class Retimer:
-    """Arrangement MIDI ticks -> orchestral MIDI ticks through an alignment's units (:meth:`note`)."""
+    """Arrangement MIDI ticks -> orchestral MIDI ticks through an alignment's units (:meth:`note`); with ``reverse``
+    the other way round, orchestral ticks -> arrangement ticks (the orchestra of an orchestral score moved onto a
+    piano solo's measures: :mod:`pianovision.timeline`): the same units and warps, read backwards."""
 
-    def __init__(self, al: Alignment, arr_notes: Sequence[SNote] = (), orch_notes: Sequence[SNote] = ()):
+    def __init__(self, al: Alignment, arr_notes: Sequence[SNote] = (), orch_notes: Sequence[SNote] = (),
+                 reverse: bool = False):
         self.al = al
+        self.reverse = reverse
+        self.src, self.dst = (al.orch, al.arr) if reverse else (al.arr, al.orch)
+        warps = [unit_warp(al, u, arr_notes, orch_notes) for u in al.units]
+        # per unit: (source measures, destination measures) and the warp from source to destination offsets
+        self.units: List[Tuple[Tuple[int, int], Tuple[int, int]]] = [(u.orch, u.arr) if reverse else (u.arr, u.orch)
+                                                                     for u in al.units]
+        self.warps = [[(b, a) for a, b in w] for w in warps] if reverse else warps
         self.unit_of: Dict[int, int] = {}
-        for k, u in enumerate(al.units):
-            for i in range(u.arr[0], u.arr[1] + 1):
-                self.unit_of[i] = k
-        self.warps = [unit_warp(al, u, arr_notes, orch_notes) for u in al.units]
+        for k, (s, _d) in enumerate(self.units):
+            for i in range(s[0], s[1] + 1):
+                self.unit_of.setdefault(i, k)
 
     def _follows(self, k: int) -> bool:
         """Unit k+1 follows on from unit k on both sides."""
-        us = self.al.units
-        return k + 1 < len(us) and us[k + 1].arr[0] == us[k].arr[1] + 1 and us[k + 1].orch[0] == us[k].orch[1] + 1
+        us = self.units
+        return (k + 1 < len(us) and us[k + 1][0][0] == us[k][0][1] + 1 and us[k + 1][1][0] == us[k][1][1] + 1)
 
-    def _place(self, k: int, u_arr: int) -> int:
-        """Unrolled arrangement tick inside unit k -> unrolled orchestral tick."""
-        A, O = self.al.arr, self.al.orch
-        u = self.al.units[k]
-        x = u_arr - A.measures[u.arr[0]].utick
-        return O.measures[u.orch[0]].utick + _warp(self.warps[k], x)
+    def _place(self, k: int, u_src: int) -> int:
+        """Unrolled source tick inside unit k -> unrolled destination tick."""
+        S, D = self.src, self.dst
+        s, d = self.units[k]
+        x = u_src - S.measures[s[0]].utick
+        return D.measures[d[0]].utick + _warp(self.warps[k], x)
 
     def note(self, on_tick: int, off_tick: int) -> Optional[Tuple[int, int, str]]:
-        """(on, off) of an arrangement note (its render's MIDI ticks) on the orchestral render's MIDI clock, and how
-        (``mapped`` | ``clipped`` | ``restruck``); None when it is not played (struck in a dropped measure)."""
-        A, O = self.al.arr, self.al.orch
-        u_on = A.utick(on_tick)
-        u_off = max(A.utick(off_tick), u_on)
-        i = A.measure_at(on_tick)
+        """(on, off) of a source note (its render's MIDI ticks) on the destination render's MIDI clock, and how
+        (``mapped`` | ``clipped`` | ``restruck``); None when it is not played (struck in a measure without
+        counterpart)."""
+        S, D = self.src, self.dst
+        u_on = S.utick(on_tick)
+        u_off = max(S.utick(off_tick), u_on)
+        i = S.measure_at(on_tick)
         how = "mapped"
         if i not in self.unit_of:
             k = i + 1
-            while k < len(A.measures) and A.measures[k].utick < u_off and k not in self.unit_of:
+            while k < len(S.measures) and S.measures[k].utick < u_off and k not in self.unit_of:
                 k += 1
-            if k >= len(A.measures) or k not in self.unit_of or u_off - A.measures[k].utick < RESTRIKE_MIN:
+            if k >= len(S.measures) or k not in self.unit_of or u_off - S.measures[k].utick < RESTRIKE_MIN:
                 return None
-            i, u_on, how = k, A.measures[k].utick, "restruck"
+            i, u_on, how = k, S.measures[k].utick, "restruck"
         k = self.unit_of[i]
         on_u = self._place(k, u_on)
         # the end: through the units while they follow on
         end_unit = k
-        while A.measures[self.al.units[end_unit].arr[1]].end_utick < u_off and self._follows(end_unit):
+        while S.measures[self.units[end_unit][0][1]].end_utick < u_off and self._follows(end_unit):
             end_unit += 1
-        u = self.al.units[end_unit]
-        if u_off <= A.measures[u.arr[1]].end_utick:
+        s, d = self.units[end_unit]
+        if u_off <= S.measures[s[1]].end_utick:
             off_u = self._place(end_unit, u_off)
         else:
-            off_u = O.measures[u.orch[1]].end_utick
+            off_u = D.measures[d[1]].end_utick
             how = "clipped" if how == "mapped" else how
-        on_u = min(on_u, O.measures[self.al.units[k].orch[1]].end_utick - 1)
-        return O.tick(on_u), O.tick(max(off_u, on_u)), how
+        on_u = min(on_u, D.measures[self.units[k][1][1]].end_utick - 1)
+        return D.tick(on_u), D.tick(max(off_u, on_u)), how
 
 
 def retime(arr_notes: Dict[str, List[dict]], orch_original: Dict[str, List[dict]], al: Alignment,
@@ -1071,8 +1083,9 @@ def _note_dict(n: dict, on: int, off: int, seconds: Callable[[int], float], tpb:
 # from scores to the parts file
 # ------------------------------------------------------------------------------
 
-ARRANGEMENT_REVISION = 1
-"""Bumped when the alignment or the retiming changes what an arrangement gives (the library rewrites those parts)."""
+ARRANGEMENT_REVISION = 2
+"""Bumped when the alignment or the retiming changes what an arrangement gives (the library rewrites those parts).
+2: the song plays on the arrangement's clock (:mod:`pianovision.timeline`)."""
 
 
 def drum_staves(score) -> set:
@@ -1102,7 +1115,8 @@ class Side:
     tpb: int
 
 
-def side_of(score, renderer, midi, arrangement: bool) -> Side:
+def side_of(score, renderer, midi, arrangement: bool, features: bool = True) -> Side:
+    """``features=False``: the timeline, notes and clock only (no feature sets; the piano's sounding ticks still)."""
     from .pvjson import TempoIndex, extract_tempo_events
     tl = Timeline.from_render(renderer, midi)
     piano, pitched = staff_tracks(score, midi)
@@ -1114,15 +1128,18 @@ def side_of(score, renderer, midi, arrangement: bool) -> Side:
         feats, notes = [pf], pn
     else:
         notes = sounding_notes(midi, pitched, tl)
-        feats = [pf, measure_features(tl, notes)]
+        feats = [pf, measure_features(tl, notes)] if features else [pf]
     return Side(tl, feats, notes, [f.sounding for f in pf],
                 TempoIndex(extract_tempo_events(midi), midi.ticks_per_beat), midi.ticks_per_beat)
 
 
-def render_arrangement(path: str, compat=None) -> Tuple[Side, Dict[str, List[dict]]]:
-    """The arrangement rendered as the library renders it (``compat``: its knobs): its side and its parts
-    document's piano part (the notes of the song the arrangement is on its own, original part)."""
+def render_arrangement(path: str, compat=None, options: Optional[dict] = None
+                       ) -> Tuple[Side, Dict[str, List[dict]]]:
+    """The arrangement rendered as the library renders it (``compat``: its knobs, ``options``: its build options'
+    piano staves and hands): its side and its parts document's piano part (the notes of the song the arrangement is
+    on its own, original part)."""
     from .convert import score_root
+    from .handsplit import apply_piano_options
     from .mscx import read_score
     from .pvjson import build_song
     from .render import Compat, Renderer
@@ -1130,6 +1147,7 @@ def render_arrangement(path: str, compat=None) -> Tuple[Side, Dict[str, List[dic
     score = read_score(path)
     r = Renderer(score, c, provenance=True)
     midi = r.render()
+    apply_piano_options(midi, options)
     parts: Dict[str, Any] = {}
     build_song(midi, score_root(path), path, legacy_metadata=c.metadata, parts=parts)
     return side_of(score, r, midi, True), parts["doc"]["parts"]["original"]
@@ -1143,14 +1161,14 @@ def arrange(orch: Side, arr: Side, measure_map: Any = "auto") -> Alignment:
     return align(S, arr.timeline, orch.timeline, anchors, ov, arr.feats[0], orch.feats, orch.piano_sounding)
 
 
-def apply_arrangement(spec: dict, score, renderer, midi, parts_out: dict) -> dict:
-    """Make the arrangement ``spec`` (``{"path", "rel", "compat", "measure_map"}``, :mod:`pianovision.buildopts`) the
-    simplified part of the orchestral score's parts (``parts_out``: :func:`pianovision.pvjson.build_song`'s
-    ``parts``, its ``doc`` changed in place; ``score``, ``renderer``, ``midi``: the orchestral render).  Returns the
-    report (:func:`report_dict`)."""
-    orch = side_of(score, renderer, midi, False)
-    arr, arr_notes = render_arrangement(spec["path"], spec.get("compat"))
-    al = arrange(orch, arr, spec.get("measure_map", "auto"))
+def apply_arrangement(spec: dict, pr, score, parts_out: dict) -> dict:
+    """Make the arrangement the simplified part of the orchestral score's parts (``parts_out``:
+    :func:`pianovision.pvjson.build_song`'s ``parts`` of the orchestral score rendered on the arrangement's clock,
+    its ``doc`` changed in place).  ``pr``: the pair (:func:`pianovision.timeline.pair`: the alignment, the
+    arrangement's notes, the orchestral side on that clock); ``spec``: the build options' partner (``rel``,
+    ``measure_map``); ``score``: the orchestral score's model.  Returns the report (:func:`report_dict`)."""
+    from .timeline import plan_report
+    al, orch = pr.al, pr.orch
     doc = parts_out["doc"]
     # the cuts are filled with the original part's notes, drum sounds left out (a drum staff counted as piano)
     original = doc["parts"]["original"]
@@ -1159,10 +1177,11 @@ def apply_arrangement(spec: dict, score, renderer, midi, parts_out: dict) -> dic
     if objs and drums:
         original = {hand: [d for d, n in zip(original[hand], objs[h]) if getattr(n, "track", -1) not in drums]
                     for h, hand in enumerate(("right", "left"))}
-    simplified, stats = retime(arr_notes, original, al, orch.seconds, orch.tpb, orch.piano_sounding, arr.notes,
-                               orch.notes)
+    simplified, stats = retime(pr.solo_notes, original, al, orch.seconds, orch.tpb, orch.piano_sounding,
+                               pr.solo.notes, orch.notes)
     doc["simplified"] = True
-    rep = report_dict(al, stats, spec, orch)
+    rep = report_dict(al, stats, spec, orch, kind="simplified")
+    rep["timeline"] = plan_report(pr.plan, pr)
     rest = {k: v for k, v in doc.items() if k != "parts"}
     old = doc["parts"]
     doc.clear()
@@ -1179,6 +1198,25 @@ def apply_arrangement(spec: dict, score, renderer, midi, parts_out: dict) -> dic
     return rep
 
 
+def orchestra_report(spec: dict, pr, stats: RetimeStats, parts_out: Optional[dict] = None) -> dict:
+    """The report of an orchestra from another score (``orchestra_from``): the alignment (the solo as the
+    arrangement), what became of the orchestral notes, the plan; records the partner in the parts document."""
+    from .timeline import plan_report
+    rep = report_dict(pr.al, stats, spec, pr.solo, kind="orchestra", orch=pr.orch)
+    rep["timeline"] = plan_report(pr.plan, pr)
+    if parts_out is not None:
+        doc = parts_out["doc"]
+        rest = {k: v for k, v in doc.items() if k != "parts"}
+        old = doc["parts"]
+        doc.clear()
+        doc.update(rest)
+        doc["orchestraFrom"] = {"score": spec.get("rel") or os.path.basename(spec["path"]),
+                                "revision": ARRANGEMENT_REVISION,
+                                "measures": {k: rep["measures"][k] for k in ("mapped", "filled", "dropped")}}
+        doc["parts"] = old
+    return rep
+
+
 # ------------------------------------------------------------------------------
 # the report
 # ------------------------------------------------------------------------------
@@ -1191,19 +1229,28 @@ def _ranges(tl: Timeline, indices: Sequence[int]) -> List[str]:
     return [_range(tl, a, b) for a, b in _runs(indices)]
 
 
-def report_dict(al: Alignment, stats: RetimeStats, spec: dict, orch: Side) -> dict:
+def report_dict(al: Alignment, stats: RetimeStats, spec: dict, clock: Side, kind: str = "simplified",
+                orch: Optional[Side] = None) -> dict:
     """What the alignment and the retiming did, JSON-ready: measures in score numbers (``n:pass`` for a measure the
-    playback reaches more than once), times in seconds on the orchestral score's clock."""
+    playback reaches more than once), times in seconds on the song's clock (``clock``: the side whose measures the
+    song has: the orchestral score's for ``kind`` "simplified" (``simplified_from``), the solo's for "orchestra"
+    (``orchestra_from``; ``orch``: the orchestral side, for where its piano plays)."""
     A, O = al.arr, al.orch
+    song_tl = O if kind == "simplified" else A
+    orch = orch or clock
 
     def t0(j: int) -> float:
-        return round(float(orch.seconds(O.measures[j].tick)), 2)
+        return round(float(clock.seconds(song_tl.measures[j].tick)), 2)
 
     def t1(j: int) -> float:
-        return round(float(orch.seconds(O.measures[j].end_tick)), 2)
+        return round(float(clock.seconds(song_tl.measures[j].end_tick)), 2)
+
+    def seg_time(s) -> List[float]:
+        r = s.orch if kind == "simplified" else s.arr
+        return [t0(r[0]), t1(r[1])]
 
     segs = [{"arrangement": _range(A, *s.arr), "orchestra": _range(O, *s.orch), "measures": s.length,
-             "time": [t0(s.orch[0]), t1(s.orch[1])], "similarity": round(s.similarity, 3),
+             "time": seg_time(s), "similarity": round(s.similarity, 3),
              "margin": round(s.margin, 3), "confidence": s.confidence} for s in al.segments]
     weak = [{"arrangement": A.label(i), "orchestra": O.label(j), "similarity": round(al.similarity[i][j], 3)}
             for i, j in enumerate(al.mapping) if j is not None and al.similarity[i][j] < 0.45]
@@ -1230,16 +1277,18 @@ def report_dict(al: Alignment, stats: RetimeStats, spec: dict, orch: Side) -> di
                         "mapped_to": O.label(j) if j is not None else None})
     transposed = [{"arrangement": _range(A, *x.arr), "orchestra": _range(O, *x.orch), "semitones": x.semitones,
                    "similarity": round(x.similarity, 3), "was_mapped": x.mapped} for x in al.transposed]
-    fills = [{"orchestra": _range(O, a, b), "measures": b - a + 1, "time": [t0(a), t1(b)],
+    fills = [{"orchestra": _range(O, a, b), "measures": b - a + 1,
+              "time": [t0(a), t1(b)] if kind == "simplified" else None,
               "piano_plays": sum(1 for j in range(a, b + 1) if orch.piano_sounding[j])} for a, b in _runs(al.fills)]
-    drops = [{"arrangement": _range(A, a, b), "measures": b - a + 1} for a, b in _runs(al.drops)]
+    drops = [{"arrangement": _range(A, a, b), "measures": b - a + 1,
+              **({"time": [t0(a), t1(b)]} if kind == "orchestra" else {})} for a, b in _runs(al.drops)]
     moved = [{"arrangement": A.label(i), "from": O.label(j0), "to": O.label(j1),
               "similarity": [round(al.similarity[i][j0], 3), round(al.similarity[i][j1], 3)]}
              for i, j0, j1 in al.moved]
     merged = [{"arrangement": A.label(i), "orchestra": O.label(j)} for i, j in al.merged]
     trimmed = [{"arrangement": A.label(i), "orchestra": O.label(j), "similarity": round(al.similarity[i][j], 3)}
                for i, j in al.trimmed]
-    return {"score": spec.get("rel") or spec.get("path"), "revision": ARRANGEMENT_REVISION,
+    return {"score": spec.get("rel") or spec.get("path"), "kind": kind, "revision": ARRANGEMENT_REVISION,
             "measure_map": spec.get("measure_map", "auto"),
             "measures": {"arrangement": len(A.measures), "orchestra": len(O.measures),
                          "mapped": sum(1 for j in al.mapping if j is not None), "filled": len(al.fills),
@@ -1250,13 +1299,21 @@ def report_dict(al: Alignment, stats: RetimeStats, spec: dict, orch: Side) -> di
 
 
 def report_markdown(rep: dict, song: str = "") -> str:
-    L = [f"# Arrangement: {song or rep.get('score')}", ""]
+    orchestra_from = rep.get("kind") == "orchestra"
+    L = [f"# {'Orchestra' if orchestra_from else 'Arrangement'}: {song or rep.get('score')}", ""]
     m = rep["measures"]
-    L.append(f"Simplified part from *{rep.get('score')}* (measure_map: {json_text(rep.get('measure_map'))}). Measures "
-             f"as played (repeats unrolled; `n:2` = the second pass through measure n): arrangement "
-             f"{m['arrangement']}, orchestral score {m['orchestra']}; {m['mapped']} arrangement measures mapped, "
-             f"{m['filled']} orchestral measures filled from the orchestral piano part, {m['dropped']} arrangement "
-             f"measures dropped.")
+    if orchestra_from:
+        L.append(f"Orchestra from *{rep.get('score')}*, on this piano solo's clock (measure_map: "
+                 f"{json_text(rep.get('measure_map'))}). Measures as played (repeats unrolled; `n:2` = the second "
+                 f"pass through measure n): solo (the arrangement) {m['arrangement']}, orchestral score "
+                 f"{m['orchestra']}; {m['mapped']} solo measures with the orchestra, {m['filled']} orchestral measures "
+                 f"left out (the solo does not have them), {m['dropped']} solo measures without orchestra.")
+    else:
+        L.append(f"Simplified part from *{rep.get('score')}* (measure_map: {json_text(rep.get('measure_map'))}); the "
+                 f"song plays on its clock. Measures as played (repeats unrolled; `n:2` = the second pass through "
+                 f"measure n): arrangement {m['arrangement']}, orchestral score {m['orchestra']}; {m['mapped']} "
+                 f"arrangement measures mapped, {m['filled']} orchestral measures filled from the orchestral piano "
+                 f"part, {m['dropped']} arrangement measures dropped.")
     L.append("")
     L.append("## Mapped segments")
     L.append("")
@@ -1268,7 +1325,8 @@ def report_markdown(rep: dict, song: str = "") -> str:
     L.append("")
     L.append("Similarity: 0..1, the pitch classes sounding, in the bass and on top, of the arrangement against the "
              "orchestral piano part or the piano with the orchestra, whichever is closer. Margin: the segment's mean "
-             "similarity minus its best mean shifted by 1-4 measures (how distinctive the fit is).")
+             "similarity minus its best mean shifted by 1-4 measures (how distinctive the fit is). Times on the "
+             "song's clock.")
     if rep.get("weak"):
         L.append("")
         L.append("Mapped measures that sound little alike (< 0.45; rewritten by the arranger, or worth a look): "
@@ -1288,21 +1346,36 @@ def report_markdown(rep: dict, song: str = "") -> str:
     L.append("## Cuts")
     L.append("")
     if rep["fills"]:
-        L.append("Orchestral measures without counterpart in the arrangement, filled from the orchestral piano part:")
-        L.append("")
-        for f in rep["fills"]:
-            L.append(f"- {f['orchestra']} ({f['measures']} measure{'s' if f['measures'] != 1 else ''}, "
-                     f"{f['time'][0]:.1f}-{f['time'][1]:.1f} s; the piano plays in {f['piano_plays']})")
+        if orchestra_from:
+            L.append("Orchestral measures without counterpart in the solo, left out (their notes are not played, the "
+                     "companion audio is cut there):")
+            L.append("")
+            for f in rep["fills"]:
+                L.append(f"- {f['orchestra']} ({f['measures']} measure{'s' if f['measures'] != 1 else ''})")
+        else:
+            L.append("Orchestral measures without counterpart in the arrangement, filled from the orchestral piano "
+                     "part:")
+            L.append("")
+            for f in rep["fills"]:
+                L.append(f"- {f['orchestra']} ({f['measures']} measure{'s' if f['measures'] != 1 else ''}, "
+                         f"{f['time'][0]:.1f}-{f['time'][1]:.1f} s; the piano plays in {f['piano_plays']})")
     else:
         L.append("Every orchestral measure has a counterpart.")
     L.append("")
     if rep["drops"]:
-        L.append("Arrangement measures without counterpart in the orchestral score (dropped):")
-        L.append("")
-        for d in rep["drops"]:
-            L.append(f"- {d['arrangement']} ({d['measures']} measure{'s' if d['measures'] != 1 else ''})")
+        if orchestra_from:
+            L.append("Solo measures without counterpart in the orchestral score (no orchestra there):")
+            L.append("")
+            for d in rep["drops"]:
+                L.append(f"- {d['arrangement']} ({d['measures']} measure{'s' if d['measures'] != 1 else ''}"
+                         + (f", {d['time'][0]:.1f}-{d['time'][1]:.1f} s" if d.get("time") else "") + ")")
+        else:
+            L.append("Arrangement measures without counterpart in the orchestral score (dropped):")
+            L.append("")
+            for d in rep["drops"]:
+                L.append(f"- {d['arrangement']} ({d['measures']} measure{'s' if d['measures'] != 1 else ''})")
     else:
-        L.append("No arrangement measure dropped.")
+        L.append("No arrangement measure dropped." if not orchestra_from else "Every solo measure has orchestra.")
     L.append("")
     if rep["transposed"]:
         L.append("## Transposed passages (filled from the orchestral piano part)")
@@ -1314,8 +1387,8 @@ def report_markdown(rep: dict, song: str = "") -> str:
     L.append("## Time signatures and lengths")
     L.append("")
     if rep["timesig_mismatches"]:
-        L.append("Mapped measures whose time signature or length differ (the arrangement's notes are warped onto the "
-                 "orchestral measure through the onsets both strike at the same pitch):")
+        L.append("Mapped measures whose time signature or length differ (the notes are warped from one measure onto "
+                 "the other through the onsets both strike at the same pitch):")
         L.append("")
         for x in rep["timesig_mismatches"]:
             L.append(f"- arrangement {x['arrangement']} ({x['arrangement_timesig']}, {x['arrangement_quarters']:g} "
@@ -1338,18 +1411,53 @@ def report_markdown(rep: dict, song: str = "") -> str:
                 L.append(f"- arrangement {x['arrangement']} \"{x['text']}\": not at orchestral {cands} (mapped to "
                          f"{x['mapped_to'] or 'nothing'})")
         L.append("")
+    tl = rep.get("timeline")
+    if tl:
+        L.append("## The clock")
+        L.append("")
+        L.append(timeline_markdown(tl, orchestra_from))
+        L.append("")
     n = rep["notes"]
     L.append("## Notes")
     L.append("")
-    L.append(f"{n['mapped_notes']} arrangement notes placed ({n['clipped_notes']} held into a cut, ended there; "
-             f"{n['restruck_notes']} held from a dropped measure, struck again where the mapped measure starts), "
-             f"{n['dropped_notes']} dropped with their measures; {n['fill_notes']} notes of the orchestral piano part "
-             f"fill the cuts ({n['fill_clipped']} ended where the arrangement takes over).")
+    if orchestra_from:
+        L.append(f"{n['mapped_notes']} orchestral notes placed on the solo's measures ({n['clipped_notes']} held into a "
+                 f"cut, ended there; {n['restruck_notes']} held from a left-out measure, struck again where the next "
+                 f"one starts), {n['dropped_notes']} left out with their measures.")
+    else:
+        L.append(f"{n['mapped_notes']} arrangement notes placed ({n['clipped_notes']} held into a cut, ended there; "
+                 f"{n['restruck_notes']} held from a dropped measure, struck again where the mapped measure starts), "
+                 f"{n['dropped_notes']} dropped with their measures; {n['fill_notes']} notes of the orchestral piano "
+                 f"part fill the cuts ({n['fill_clipped']} ended where the arrangement takes over).")
     if rep["silent_mapped"]:
         L.append("")
         L.append("Mapped measures where the arrangement is silent while the orchestral piano plays: "
                  + ", ".join(rep["silent_mapped"]))
     return "\n".join(L) + "\n"
+
+
+def timeline_markdown(tl: dict, orchestra_from: bool) -> str:
+    """The plan's paragraph (:func:`pianovision.timeline.plan_report`)."""
+    s = (f"The orchestral score plays on the solo's clock: {tl['marks']} tempo marks for its {tl['measures']} measures "
+         f"as played ({tl['mapped']} with the solo's timing, {tl['filled']} with its own scaled to the solo's next "
+         f"to them); {tl['seconds']:.1f} s")
+    if tl.get("own_seconds"):
+        s += f" (its own timing: {tl['own_seconds']:.1f} s)"
+    s += (f". Positions inside a measure within {tl['tolerance_ms']:g} ms of the solo's clock (largest deviation "
+          f"{tl['max_inside_ms']:g} ms)")
+    if tl.get("repeats_spread_ms"):
+        s += f"; repeated measures averaged over their passes (up to {tl['repeats_spread_ms']:g} ms apart)"
+    s += "."
+    if tl.get("clamped"):
+        s += f" Tempo clamped to MuseScore's 5-999 bpm in {', '.join(tl['clamped'])}."
+    if tl.get("stretch"):
+        vals = list(tl["stretch"].values())
+        s += (f" Cut measures stretched by {min(vals):.3f}-{max(vals):.3f} (solo time over the orchestral score's "
+              f"own next to the cut).")
+    if orchestra_from and tl.get("pieces"):
+        s += " Companion audio: " + "; ".join(f"orchestral {p['measures'][0]}-{p['measures'][1]} from {p['at']:.2f} s"
+                                              for p in tl["pieces"]) + "."
+    return s
 
 
 def json_text(v: Any) -> str:

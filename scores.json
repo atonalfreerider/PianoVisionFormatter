@@ -6,10 +6,16 @@
     "  title, composer   the song's title and composer (PianoVision's name/artist and the output name)",
     "  piano_staves      the staves (1-based) that are the piano part, right hand first; the others are orchestra",
     "  hands             'staves' (default) or 'split': the piano part's notes to the hands by pitch and reach",
-    "  simplified_from   a piano arrangement (score path) that becomes the simplified part, measure-aligned",
-    "  measure_map       'auto', or {pin: [[arr, orch], ...], fill: [orch, ...], drop: [arr, ...]} with measures",
+    "  simplified_from   on an orchestral score: a piano solo of the same music (score path); its piano part becomes",
+    "                    the simplified part, measure-aligned, and the song plays on the solo's clock (its tempos)",
+    "  orchestra_from    on a piano solo: an orchestral score of the same music (score path); its orchestra, measure-",
+    "                    aligned, becomes the song's orchestra, on the solo's clock",
+    "  measure_map       'auto', or {pin: [[solo, orch], ...], fill: [orch, ...], drop: [solo, ...]} with measures",
     "                    as the scores number them ('12', '12-30', '395:2' = the second pass): see the report in",
-    "                    <output>/.arrangements/ and `python3 -m pianovision arrangement`"
+    "                    <output>/.arrangements/ and `python3 -m pianovision arrangement`",
+    "  song              false: not a song of its own (build retires its output); it can still be another's partner",
+    "A partner (simplified_from, orchestra_from) is rendered with its own options here; the companion audio",
+    "(`accompaniment`) renders the orchestral score on the solo's clock too (pianovision/timeline.py)."
   ],
   "scores": {
     "Gershwin/Rhapsody_in_blue__George_Gershwin.mscz": {
@@ -18,12 +24,16 @@
       "_title": "its own title would collide with the piano solo (gers_Rhapsody_in_Blue.json); its metadata's workTitle says 'Second Rhapsody' (wrong)",
       "simplified_from": "Gershwin/Rhapsody_in_Blue_Piano_solo.mscz",
       "measure_map": "auto",
-      "_simplified_from": "the piano solo arrangement, measure-aligned, is the default (simplified) part; the measures it leaves out play the orchestral score's Solo Piano part"
+      "_simplified_from": "the piano solo arrangement, measure-aligned, is the default (simplified) part, and its tempos are the song's (the orchestral score's own ending ran too fast); the measures it leaves out play the orchestral score's Solo Piano part, at the orchestral score's own tempo scaled to the solo's next to them"
+    },
+    "Rachmaninoff/Rhapsody_on_a_theme_of_Paganini_Variation_18_Piano_Solo.mscz": {
+      "orchestra_from": "Rachmaninoff/pagvar18.mscz",
+      "measure_map": "auto",
+      "_orchestra_from": "the song is the piano solo (its piano part and tempo) with pagvar18's orchestra, measure-aligned (solo 2-43 = orchestral 1-42), on the solo's clock; the solo's pickup (m. 1) has no orchestra"
     },
     "Rachmaninoff/pagvar18.mscz": {
-      "title": "Rhapsody on a Theme of Paganini - Var. XVIII (Piano and Orchestra)",
-      "composer": "Rachmaninoff",
-      "_title": "a MIDI import without title or composer; named like the piano solo version (rach_Rhapsody_on_a_Theme_of_Paganini__Var_XVIII.json), which stays a song of its own",
+      "song": false,
+      "_song": "only the orchestra of the piano solo's song (orchestra_from above); its own song, rach_Rhapsody_on_a_Theme_of_Paganini__Var_XVIII_Piano_and_Orchestra.json, is retired to the attic",
       "piano_staves": [11, 12],
       "hands": "split",
       "_piano": "'Piano, Roland Piano' (staves 11-12) is the solo piano: alone in m. 1-12, about a quarter of its onsets coincide with the orchestra's. The import wrote both hands on staff 11 (clef changes every measure; staff 12 has the overflow), so the hands are split by pitch and reach. 'Piano' (staff 1) holds one stray E-flat 5 in m. 33 doubling the violins: orchestra by its program"

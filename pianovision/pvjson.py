@@ -323,6 +323,9 @@ def _forced_staves(mid: MidiFile) -> List[int]:
 def _legacy_roles(mid: MidiFile) -> StaffRoles:
     """The legacy rules (``midi_to_json.py``), from the MIDI tracks' names and programs alone; the piano staves
     the build options name replace the piano part, every other staff with an orchestra program is orchestra."""
+    partnered = _with_partner(mid, _legacy_roles)
+    if partnered is not None:
+        return partnered
     piano_tracks: List[Tuple[int, int]] = []
     orchestra_tracks: List[Tuple[int, int]] = []
     forced = _forced_staves(mid)
@@ -342,6 +345,28 @@ def _legacy_roles(mid: MidiFile) -> StaffRoles:
             piano_tracks.append((1, TRACK_PRIMARY))
     hands = {t: piano_hand(piano_tracks, t, kind) for t, kind in piano_tracks}
     return StaffRoles(piano_tracks, orchestra_tracks, [], hands)
+
+
+class _OwnTracks:
+    """A song's MIDI without the tracks another score gave it (``orchestra_from``: :mod:`pianovision.timeline`)."""
+
+    def __init__(self, mid: MidiFile, first: int):
+        self.tracks = mid.tracks[:first]
+        self.ticks_per_beat = mid.ticks_per_beat
+        facts = getattr(mid, "staves", None)
+        self.staves = list(facts[:first]) if facts else facts
+        if getattr(mid, "piano_staves", None):
+            self.piano_staves = mid.piano_staves
+
+
+def _with_partner(mid: MidiFile, roles_of) -> Optional[StaffRoles]:
+    """The roles of a song with tracks from another score (``mid.partner``, :class:`pianovision.timeline.PartnerTracks`):
+    its own tracks' by ``roles_of``, the partner's orchestra and vocal staves as given."""
+    partner = getattr(mid, "partner", None)
+    if partner is None:
+        return None
+    r = roles_of(_OwnTracks(mid, partner.first))
+    return StaffRoles(r.piano, r.orchestra + list(partner.orchestra), r.vocal + list(partner.vocal), r.hands)
 
 
 def staff_roles(mid: MidiFile) -> StaffRoles:
@@ -365,7 +390,11 @@ def staff_roles(mid: MidiFile) -> StaffRoles:
 
     Piano staves named by the score's build options (``MidiFile.piano_staves``, ``scores.json``) are the piano part,
     the first the right hand; of the others, percussion and voices are as above and the rest is orchestra by its
-    program.  A ``.mid`` file keeps the legacy rules (the legacy outputs it reproduces were made by them)."""
+    program.  A ``.mid`` file keeps the legacy rules (the legacy outputs it reproduces were made by them).  Tracks
+    another score gave the song (``orchestra_from``) are its orchestra and vocal staves as that score's say."""
+    partnered = _with_partner(mid, staff_roles)
+    if partnered is not None:
+        return partnered
     legacy = _legacy_roles(mid)
     facts: Optional[List[StaffFacts]] = getattr(mid, "staves", None)
     if not facts or len(facts) != len(mid.tracks):

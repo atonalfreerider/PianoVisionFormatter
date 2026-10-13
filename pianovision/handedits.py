@@ -1594,15 +1594,15 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
     rv.compat = lib._verify_compat(entry)
     compat = Compat.from_dict(rv.compat)
     orchestra, simplified = lib.cfg.orchestra, lib.cfg.simplified
-    # the score's build options (scores.json): the song is rendered with them; the arrangement only makes the parts
-    from .buildopts import without_arrangement
+    # the score's build options (scores.json): the song is rendered with them, a partner score included (it sets the
+    # song's clock, or its orchestra: pianovision.timeline)
     options = lib.render_options(rel) if hasattr(lib, "render_options") else None
     if options and options.get("hands") == "split":
         rv.error = ("its hands are given by its build options (scores.json: hands \"split\"), not by its staves: "
                     "hand edits cannot be written into this score")
         return rv
-    arrangement = (options or {}).get("arrangement")
-    options = without_arrangement(options)
+    partner = (options or {}).get("partner") or {}
+    arrangement = partner if partner.get("kind") == "simplified" else None
 
     with zipfile.ZipFile(io.BytesIO(mscz)) as z:
         names = z.namelist()
@@ -1697,7 +1697,12 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
                 continue
         src = view_prov[v][e.from_hand][pos].note
         if src is None:
-            r.reason = "chord-symbol playback, not a note of the score"
+            pt = getattr(base.midi, "partner", None)
+            if pt is not None and view_prov[v][e.from_hand][pos].track >= pt.first:
+                r.reason = (f"a note of the orchestra from {partner.get('rel')} (scores.json orchestra_from), not of "
+                            "this score")
+            else:
+                r.reason = "chord-symbol playback, not a note of the score"
             continue
         r.where = f"{where(score, src.chord)}  {note_name(e.midi)}"
         q = reqs.get(id(src))

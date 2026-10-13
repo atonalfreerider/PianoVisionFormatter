@@ -53,6 +53,7 @@ STATUS = {
     "excluded": ("excluded", "dim-label"),
     "retire": ("to retire", "warning"),
     "invalid": ("not a score", "error"),
+    "source": ("partner only", "dim-label"),       # scores.json song: false (another song's partner score)
 }
 # per-app state on the headset -> label
 APP_STATE = {"current": "current", "old": "old version", "missing": "not on headset", "": "—"}
@@ -83,7 +84,7 @@ class Row:
 
     @property
     def is_score(self) -> bool:
-        return self.status not in ("excluded", "invalid", "retire")
+        return self.status not in ("excluded", "invalid", "retire", "source")
 
     def matches(self, query: str) -> bool:
         """Every word of ``query`` is in the composer, title, output, score path or status."""
@@ -197,6 +198,8 @@ def _score_status(action, entry: Optional[dict], failed: Optional[dict], src) ->
         return "moved", f"from {action.old_rel}"
     if kind == "conflict":
         return "conflict", reason + " (build --force replaces it)"
+    if kind == "source":
+        return "source", reason
     if kind == "render":
         if reason == "new score":
             return "new", ""
@@ -285,7 +288,7 @@ def _read_title(path: str) -> Tuple[str, str]:
 
 def summary_lines(snap: Snapshot) -> List[str]:
     c = snap.counts
-    scores = sum(v for k, v in c.items() if k not in ("excluded", "invalid", "retire"))
+    scores = sum(v for k, v in c.items() if k not in ("excluded", "invalid", "retire", "source"))
     first = f"{scores} scores: {c.get('current', 0) + c.get('pinned', 0)} up to date"
     extra = [(k, STATUS[k][0]) for k in ("new", "edited", "missing", "parts", "staves", "moved", "failed", "conflict",
                                           "retire")]

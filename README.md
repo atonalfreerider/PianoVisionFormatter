@@ -21,7 +21,7 @@ python3 -m pianovision watch --deploy   # keep going: rebuild on every save, dep
 
 Settings live in `pianovision.toml` (scores folder, output folder, device folder,
 orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits); options for single scores
-(a title, the piano staves, a simplified part from another score) in `scores.json` (see
+(a title, the piano staves, a piano solo and an orchestral score made one song) in `scores.json` (see
 [Per-score options](#per-score-options-scoresjson)). This replaces
 `convert_all.sh -m -o -s ~/Documents/MuseScore4/Scores/` followed by
 `sync_pianovision_files.sh`: orchestra and simplified modes are on by default.
@@ -39,7 +39,7 @@ orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits); op
 | `hands pull\|review\|apply [FILE…]` | hand edits recorded with Note Waterfall's HAND REC → the scores, after approval (see below) |
 | `gui [--read-only] [--no-device]` | the Piano Library window (see below) |
 | `accompaniment [--only GLOB…] [--out DIR] [--force] [--dry-run] [--list] [--no-timing]` | Note Waterfall's companion audio: each score's orchestra (everything but the piano part) rendered by MuseScore with Muse Sounds, one mp3 per song (see below) |
-| `arrangement [SCORE…] [--write]` | the measure alignment of a simplified part made from a piano arrangement (`scores.json`), as a report; `build` writes it to `.arrangements/` (see below) |
+| `arrangement [SCORE…] [--write]` | the measure alignment of a song made with a partner score (`scores.json` `simplified_from`, `orchestra_from`), as a report; `build` writes it to `.arrangements/` (see below) |
 
 ## Piano Library (the window)
 
@@ -140,7 +140,9 @@ score corrects them with what the score says (`pianovision/pvjson.py`, `staff_ro
 
 Two piano parts without lyrics (Schubert's Serenade, Vocalise) keep the old hands. Staves named by the build
 options (`scores.json` `piano_staves`) are the piano part as before; of the other staves percussion is still left
-out and voices are vocal staves. Of the library's 146 scores, 9 PianoVision songs changed with these rules (Love
+out and voices are vocal staves. The staves a song takes from its partner (`orchestra_from`) are its orchestra and
+vocal staves as the partner's own classification says, whatever their names and programs.
+Of the library's 146 scores, 9 PianoVision songs changed with these rules (Love
 Has No Pride, A Natural Woman, Doctor My Eyes, Shape of You, Imaginary, Rach-3 II and III, Fool Like Me, and
 Rhapsody in Blue with orchestra, whose percussion was in the left hand) and Fountain of Sorrow's parts file (its
 voice); the rest are byte for byte the same. The companion audio (`accompaniment`) mutes the vocal lines the
@@ -259,7 +261,8 @@ orchestra on its own, so `build` also writes, for every song, a parts file:
 A NOTE has the `tracksV2` fields Note Waterfall reads, with PianoVision's values: `note`,
 `ticksStart`, `durationTicks`, `start`, `duration`, `velocity`, `measureInd`, `accent`.
 Simplified-part notes written on the simplified staves carry `"simplified": 1`; orchestra
-notes carry `"staff"` (the score staff), `"program"` (instruments and vocal staves), `"vocal": 1`
+notes carry `"staff"` (the score staff; with `orchestra_from` the partner's staves count on after the song's
+own), `"program"` (instruments and vocal staves), `"vocal": 1`
 (vocal staves) and `"merged": 1` where PianoVision's JSON merges them into the hands. The orchestra
 is the 'piano-orchestral' staves (first staff right hand) when the score has any, else the orchestra
 instruments PianoVision's orchestra mode takes and the vocal staves' sung lines, split at middle C. `songMd5` ties the parts to one
@@ -311,56 +314,118 @@ makes of the score changes, never the score.
 | `title`, `composer` | the song's title and composer: PianoVision's name and artist, and the output name (`<first 4 letters of the composer>_<title>.json`), instead of the score's title frame and metadata |
 | `piano_staves` | the staves (1-based, right hand first) that are the piano part, whatever their names and programs; every other staff is orchestra by its program (percussion and voices excepted: [Which staves are the piano](#which-staves-are-the-piano)) |
 | `hands` | `"staves"` (default), or `"split"`: the piano part's notes go to the hands by pitch and reach (`pianovision/handsplit.py`: a beam search over the chords for the split between the hands, costing a hand's span beyond an octave, crossing the other hand's held notes, movement and register), for a MIDI import that wrote both hands on one staff. Hand edits cannot be written into such a score (`hands review` says so) |
-| `simplified_from`, `measure_map` | the simplified part is another score's piano part (a piano arrangement of the same music), measure-aligned (below) |
+| `simplified_from` | on an orchestral score: a piano solo of the same music; its piano part becomes the simplified part, measure-aligned, and the song plays on the solo's clock (below) |
+| `orchestra_from` | on a piano solo: an orchestral score of the same music; its orchestra, measure-aligned, becomes the song's orchestra, on the solo's clock (below) |
+| `measure_map` | the alignment of the two: `"auto"` or overrides (below) |
+| `song` | `false`: the score is not a song of its own. `build` renders nothing for it and retires the output it made before to the attic (`status` lists it as "not a song of its own", the window as "partner only"); it can still be another score's partner |
 
-The manifest records, per score, a hash of the options that make its song and, with an arrangement, the arrangement
-score's content hash and knobs: a change renders the score again; an edited arrangement (or a changed `measure_map`)
-writes only its parts file again (the PianoVision JSON stays byte for byte).
+The manifest records, per score, a hash of the options that make its own render and, with a partner, the partner's
+content hash, knobs and options, the measure map and the revisions of the alignment and the clock: a change renders
+the score again (the partner sets the song's clock or orchestra, so its PianoVision JSON depends on it).
 
-**Simplified parts from arrangements** (`pianovision/arrangement.py`). Rhapsody in Blue with its orchestra gets the
-piano solo arrangement as its simplified part, which Note Waterfall shows by default:
+### Partner scores: a piano solo and an orchestral score as one song
+
+A piano solo and an orchestral score of the same piece make one song (`pianovision/timeline.py`,
+`pianovision/arrangement.py`). The option goes on the score that is the song:
 
 ```json
 "Gershwin/Rhapsody_in_blue__George_Gershwin.mscz": {
   "title": "Rhapsody in Blue (Piano and Orchestra)", "composer": "Gershwin",
-  "simplified_from": "Gershwin/Rhapsody_in_Blue_Piano_solo.mscz", "measure_map": "auto"}
+  "simplified_from": "Gershwin/Rhapsody_in_Blue_Piano_solo.mscz", "measure_map": "auto"},
+"Rachmaninoff/Rhapsody_on_a_theme_of_Paganini_Variation_18_Piano_Solo.mscz": {
+  "orchestra_from": "Rachmaninoff/pagvar18.mscz", "measure_map": "auto"},
+"Rachmaninoff/pagvar18.mscz": {"song": false, "piano_staves": [11, 12], "hands": "split"}
 ```
 
-1. **Alignment.** Both scores are unrolled through their repeats and jumps. Every measure as played gets a
-   duration-weighted pitch-class profile, the pitch class of the lowest and the highest sounding note over time
-   (bass line, melody) and its onsets; the arrangement is compared with the orchestral score's piano part and with
-   its piano plus orchestra, whichever is closer (the arrangement folds the orchestra in). A global alignment
-   (Needleman-Wunsch with affine gaps) maps the measures one to one and in order, with cuts on either side; matching
-   distinctive texts (tempo words, sections, rehearsal marks that occur at most twice in each score, words compared
-   loosely) pull it, a different time signature or measure length costs. Then a measure at the edge of a cut that
-   sounds much more like a measure inside the cut moves there; a dropped measure that continues its neighbour's
-   orchestral measure joins it (two arrangement measures over one: a passage written out at half speed); a measure
-   at the edge of a cut that sounds little like its counterpart (the arranger's bridge over the cut) joins the cut.
-   A passage the arrangement plays in another key is reported and filled.
-2. **Retiming.** An arrangement note at (its measure, offset in it) is played at the mapped orchestral measure's
-   start plus that offset, on the orchestral score's clock (its tempo map, pauses and fermatas, as the formatter
-   times its own notes); measures of other lengths are warped through the onsets both sides strike at the same
-   pitch. A note held into a cut ends there; a note held from a dropped measure into a mapped one is struck again
-   where that measure starts. Orchestral measures without counterpart are filled from the orchestral score's own
-   piano part (drum staves left out), so the default view has no holes where the piano plays; their notes end where
-   the arrangement takes over. The companion audio is never retimed: it is rendered from the orchestral score.
-3. **Output.** The parts file's `simplified` part (arrangement notes carry `"simplified": 1`: Note Waterfall counts
-   their hand-edit identity apart from the original part's; filled notes are the original part's own), `"original"`
-   and `"orchestra"` as usual, and `"arrangement": {"score", "revision", "measures": {"mapped", "filled",
-   "dropped"}}`. Hand edits of the arrangement's notes are not written back (`hands review` gives the reason).
+* `simplified_from` on the orchestral score: the song has the orchestral score's measures, piano part (the
+  `original` part) and orchestra; the solo's piano part is the `simplified` part, which Note Waterfall shows by
+  default. Rhapsody in Blue with its orchestra.
+* `orchestra_from` on the solo: the song has the solo's measures, piano part and tempo; the orchestral score's
+  orchestra (its piano staves left out, as its own `piano_staves` say) is the song's orchestra: Note Waterfall's
+  `orchestra` part, PianoVision's orchestra mode (the orchestra fills the measures where a hand of the piano rests,
+  as for any score) and the companion audio. Paganini's Var. XVIII.
+
+The partner is rendered with its own options (piano staves, hands) and, when it is a song of its own, its manifest
+knobs (a `song: false` score with the default knobs).
+
+1. **Alignment.** The same alignment serves both directions: the solo is aligned with the orchestral score. Both are
+   unrolled through their repeats and jumps. Every measure as played gets a duration-weighted pitch-class profile,
+   the pitch class of the lowest and the highest sounding note over time (bass line, melody) and its onsets; the
+   solo is compared with the orchestral score's piano part and with its piano plus orchestra, whichever is closer
+   (a solo arrangement folds the orchestra in). A global alignment (Needleman-Wunsch with affine gaps) maps the
+   measures one to one and in order, with cuts on either side; matching distinctive texts (tempo words, sections,
+   rehearsal marks that occur at most twice in each score, words compared loosely) pull it, a different time
+   signature or measure length costs. Then a measure at the edge of a cut that sounds much more like a measure inside
+   the cut moves there; a solo measure that continues its neighbour's orchestral measure joins it (two solo measures
+   over one: a passage written out at half speed); a measure at the edge of a cut that sounds little like its
+   counterpart (the arranger's bridge over the cut) joins the cut. A passage the solo plays in another key is
+   reported and filled. `measure_map` takes overrides where `auto` is wrong, measures written as the scores number
+   them (`"12"`, `"12-30"`, `"395:2"` for the second pass through measure 395), always `[solo, orchestral]`
+   whichever score carries the option: `{"pin": [["solo", "orchestral"], ...], "fill": ["orchestral", ...], "drop":
+   ["solo", ...]}`; the rest is aligned around them.
+2. **The clock: the solo's.** The song plays on the piano solo's clock, its tempo map, fermatas and pauses carried
+   across the alignment onto the orchestral score's measures. The orchestral score is rendered on that clock, by the
+   formatter (the song's notes, PianoVision's tempos and measures, the parts file, markers and lyrics) and by MuseScore
+   for the companion audio, from the same edit of the score: its own tempo marks, fermatas and gradual tempo changes
+   get `<play>0</play>`, its breaths and section breaks a pause of 0, and invisible tempo marks ("solo tempo q = …")
+   are written in. Only the formatter's model and the copy MuseScore renders are edited, never the score, and the
+   two render the same tempo map (a test renders the edited copy and compares). The rule, per orchestral measure as
+   played:
+   * a measure the solo plays: the solo's times for its positions, through the alignment's unit (a measure of
+     another length is warped through the onsets both strike at the same pitch; where that warp crowds or stretches
+     part of the measure by more than 3 times its mean, the measure gets the solo's length and the orchestral
+     score's own timing inside);
+   * a measure the solo leaves out (a fill): the orchestral score's own timing (its tempo marks, fermatas and pauses)
+     scaled by the solo's stretch next to the cut: the median of the solo-over-orchestral length of the up to 4
+     measures the solo plays before the cut and after it, interpolated geometrically across the cut (the side there
+     is at the start or the end of the piece).
+
+   A tempo mark goes where a measure starts and wherever inside it the solo's clock bends by more than 5 ms (a
+   fermata, a ritardando), at a position where some staff has a chord or a rest; each measure lands exactly on its
+   length, positions inside it within 5 ms. A measure played more than once has one set of marks (the passes
+   averaged). Marks are rounded to 6 decimals of beats per second (MuseScore 4.7's tempo precision), kept within
+   5-999 bpm, and a measure-start mark equal to the tempo in effect is left out. With `orchestra_from` the song is
+   the solo as it is: the orchestral score, rendered on the solo's clock, gives its orchestra, moved onto the solo's
+   measures through the alignment read backwards (a note in an orchestral measure the solo leaves out is not played,
+   one held into a cut ends there, one held from a left-out measure into a mapped one is struck again); its staves
+   come after the solo's own in the song (the parts file's `staff`), orchestra and vocal staves as that score's own
+   options classify them.
+3. **The simplified part** (`simplified_from`). A solo note at (its measure, offset in it) is played at the mapped
+   orchestral measure's start plus that offset; measures of other lengths are warped through the onsets both sides
+   strike at the same pitch. A note held into a cut ends there; a note held from a dropped measure into a mapped one
+   is struck again where that measure starts. Orchestral measures without counterpart are filled from the orchestral
+   score's own piano part (drum staves left out), so the default view has no holes where the piano plays; their
+   notes end where the solo takes over. Solo notes carry `"simplified": 1` (Note Waterfall counts their hand-edit
+   identity apart from the original part's; filled notes are the original part's own). The parts file has
+   `"arrangement": {"score", "revision", "measures": {"mapped", "filled", "dropped"}}` (with `orchestra_from`:
+   `"orchestraFrom"`, the same keys). Hand edits of the solo's notes are not written back into the orchestral score
+   (`hands review` gives the reason); with `orchestra_from` the solo's own notes take hand edits as usual and the
+   orchestra's do not.
 4. **Report:** `<output>/.arrangements/<song>.md` and `.json` (and `python3 -m pianovision arrangement`): the mapped
-   segments with their confidence (mean similarity, and the margin over the same segment shifted by 1-4 measures),
-   the cuts on both sides with what fills them, dropped measures, moved/joined/trimmed measures, time-signature
-   mismatches and the text anchors.
+   segments with their confidence (mean similarity, and the margin over the same segment shifted by 1-4 measures)
+   and their times on the song's clock, the cuts on both sides, dropped measures, moved/joined/trimmed measures,
+   time-signature mismatches, the text anchors, and the clock: tempo marks, the song's length against the orchestral
+   score's own, the largest deviation inside a measure, the fills' stretch and (with `orchestra_from`) where the
+   companion audio's pieces go.
 
-`measure_map` takes overrides where `auto` is wrong, measures written as the scores number them (`"12"`, `"12-30"`,
-`"395:2"` for the second pass through measure 395): `{"pin": [["arrangement", "orchestral"], ...], "fill":
-["orchestral", ...], "drop": ["arrangement", ...]}`; the rest is aligned around them.
+**Rhapsody in Blue** (419 measures as played against 522): five segments of high confidence (similarity 0.89-1.00)
+cover 418 solo measures; the orchestral measures 138-180, 200-254, 256-259 and 472-474 (105) are the orchestral piano
+part's; the solo's measure 371 (a B7 bridge over the cut) is dropped; its 11/4 measure 157 is orchestral 255, its
+measures 200-201 are orchestral 302, and five more measures of other lengths are warped (the solo's measure 37, the
+run alone, keeps the orchestral measure's own shape inside). On the solo's clock the song lasts 1041.7 s instead of
+the orchestral score's own 1058.7 s (260 tempo marks; the solo has 166), and its ending follows the solo: the last
+42 measures as played (orchestral 469-510) take 77.5 s instead of 67.8 s, measures 469-480 1.07 s each (112 bpm)
+instead of 0.83 s (144 bpm), the Grandioso (487-503) 1.67 s (72 bpm) with the solo's broadenings to 2.05 s instead
+of 1.5 s (80 bpm), and measure 508 the solo's fermata (5.06 s instead of 3.65 s). The fills are stretched 0.84-1.29
+(the tutti 138-180 from 1.06 down to 0.84, 200-254 from 0.84 up to 1.0, 472-474 by 1.29 like their neighbours).
+The clarinet's opening trill and a flute trill play fewer notes at the solo's tempo (MuseScore realises a trill
+by the tempo): 56 orchestra notes fewer, the piano parts unchanged.
 
-For Rhapsody in Blue (419 measures as played against 522): five segments of high confidence (similarity 0.89-1.00)
-cover 418 arrangement measures; the orchestral measures 138-180, 200-254, 256-259 and 472-474 (105) are the
-orchestral piano part's; the arrangement's measure 371 (a B7 bridge over the cut) is dropped; its 11/4 measure 157 is
-orchestral 255, its measures 200-201 are orchestral 302, and five more measures of other lengths are warped.
+**Paganini, Var. XVIII**: the solo (43 measures, 60 bpm, a pickup) and `pagvar18.mscz` (a MIDI import of the
+orchestral recording, 42 measures with its 492 tempo changes) align one to one (solo 2-43 = orchestral 1-42,
+similarity 0.85); the song is the solo with pagvar18's 408 orchestra notes on its clock (2 tempo marks: 60 bpm and
+the final fermata; 129.0 s instead of the recording's 164.2 s), its PianoVision JSON unchanged (the solo's hands
+never rest a whole measure); `rach_Rhapsody_on_a_Theme_of_Paganini__Var_XVIII_Piano_and_Orchestra.json` was retired.
 
 ## Note Waterfall's companion audio (accompaniment)
 
@@ -369,7 +434,24 @@ notes, the score itself minus the piano part with MuseScore Studio 4.7 and the M
 libraries, so the audio follows the song's own timeline (tempo map, fermatas, repeats). Run
 `build` first: the scores are the manifest's. Settings are `[accompaniment]` in
 `pianovision.toml`; per-score options are in `accompaniment.json` (checked in, keyed by the
-score's path below the scores folder).
+score's path below the scores folder: the score MuseScore renders, so with `orchestra_from` the
+orchestral partner's).
+
+**Songs with a partner score** ([Partner scores](#partner-scores-a-piano-solo-and-an-orchestral-score-as-one-song))
+play on the piano solo's clock, and so does their audio: MuseScore renders the orchestral score with the same
+edit the formatter renders the song from (its own tempo marks, fermatas, gradual tempo changes and pauses off, the
+plan's invisible tempo marks in; `<work_dir>/<song>/timeline.mscz`, then the usual copy of it). Writing the tempo
+map into the copy rather than time-stretching a render keeps Muse Sounds' own playing at the new tempo (no
+stretching artefacts, a fermata or a ritardando of the solo played as one, not smeared), and the formatter's
+render of the same edit is MuseScore's timeline note for note. With `simplified_from` the render is the song's
+audio as it is (Rhapsody in Blue). With `orchestra_from` the render is of the partner and is cut into pieces, the
+runs of orchestral measures that follow on in both scores, each placed at the solo's time (silence before the
+first: the solo's pickup; cuts with 10 ms fades where the solo leaves orchestral measures out, silence where the
+solo has measures of its own); the mp3 is named after the solo's song. The report's **Clock** line gives the plan,
+the pieces, and a check of the song itself: every orchestra note of the song's parts file matched with the
+rendered score's note of that pitch on the song's clock (median, p95 and largest difference); the timing check
+then compares the audio with those notes. A song that left the library (its score retired or no longer a song of its
+own) is listed in the report; its mp3 is left in the folder.
 
 ```bash
 python3 -m pianovision accompaniment                  # render what changed, write the report
@@ -520,8 +602,9 @@ pianovision/        the package (stdlib only)
   parts.py            Note Waterfall's parts files (original / simplified piano part, orchestra)
   markers.py          the parts files' markers (rehearsal marks, sections, tempo words) from the score's texts
   lyrics.py           the parts files' sung syllables, on the notes that sing them
-  buildopts.py        per-score build options (scores.json): title, piano staves and hands, simplified_from
-  arrangement.py      a simplified part from a piano arrangement: measure alignment, retiming, report
+  buildopts.py        per-score build options (scores.json): title, piano staves and hands, partner scores
+  arrangement.py      a piano solo aligned with an orchestral score: measure alignment, retiming, report
+  timeline.py         a partner song on the solo's clock: the tempo plan, the edit of the orchestral score, orchestra_from
   handsplit.py        the hands of a piano part written on one staff (hands: "split")
   convert.py          one score -> JSON
   library.py          manifest, incremental build, adoption of existing outputs
@@ -535,10 +618,10 @@ pianovision/        the package (stdlib only)
 desktop/            piano-library.sh (launcher), install-launcher.sh, the icon
 tools/              accompaniment_timing.py (the accompaniment's timing check; numpy, soundfile, librosa)
 pianovision.toml    settings
-scores.json         per-score options of `build` (titles, piano staves, simplified parts from arrangements)
+scores.json         per-score options of `build` (titles, piano staves, partner scores)
 accompaniment.json  per-score options of `accompaniment` (relabelled instruments, techniques, ...)
 PianoVision/        generated library (git-ignored): *.json, .manifest.json, .attic/, NoteWaterfall/*.parts.json,
-                    .arrangements/ (alignment reports)
+                    .arrangements/ (alignment reports of the partner songs)
 ```
 
 ## Legacy scripts

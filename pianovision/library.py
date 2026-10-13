@@ -330,8 +330,9 @@ def _job_verify(path: str, compat: Optional[dict], target: str, orchestra: bool,
 
 @dataclass
 class Action:
-    # keep | render | parts | staves | move | retire | conflict  (parts: only the parts file; staves: rendered again
-    # with the entry's knobs, the output replaced only when the score's staves have other roles now)
+    # keep | render | parts | staves | move | retire | conflict | source  (parts: only the parts file; staves: rendered
+    # again with the entry's knobs, the output replaced only when the score's staves have other roles now; source: a
+    # score that is not a song of its own, only another score's partner: nothing to do)
     kind: str
     rel: str
     reason: str = ""
@@ -355,7 +356,7 @@ class Report:
     resaved: List[Tuple[str, str, str]] = field(default_factory=list)     # (rel, output, how): score saved again,
                                                                           # its output kept (byte for byte)
     arrangements: List[Tuple[str, str, str]] = field(default_factory=list)  # (rel, report file, summary): the
-                                                                          # simplified parts made from arrangements
+                                                                          # songs made with a partner score
 
 
 def _knobs_text(knobs: dict) -> str:
@@ -480,48 +481,66 @@ class Library:
                 "lyrics_vocal": sum(1 for x in lyr if "vocal" in x.get("sources", []))}
 
     # -- per-score build options (scores.json, pianovision.buildopts) ----------------------
+    def is_song(self, rel: str) -> bool:
+        """False for a score whose build options say it is not a song of its own (``song: false``)."""
+        o = self.options.get(rel)
+        return o is None or o.song
+
+    def partner_users(self, rel: str) -> List[str]:
+        """The scores whose partner (simplified_from, orchestra_from) is ``rel``."""
+        return sorted(r for r, o in self.options.items() if o.partner == rel)
+
+    def partner_compat(self, rel: str) -> Optional[dict]:
+        """The knobs a partner score is rendered with: its manifest entry's when it is a song of its own (as it is
+        rendered for its own song), else none (the default knobs)."""
+        if self.is_song(rel) and rel in self.manifest.entries:
+            return self._verify_compat(self.manifest.entries[rel])
+        return None
+
     def render_options(self, rel: str) -> Optional[dict]:
-        """The score's build options as :func:`pianovision.convert.convert_mscz` takes them (None: none); an
-        arrangement is rendered with its own entry's knobs."""
+        """The score's build options as :func:`pianovision.convert.convert_mscz` takes them (None: none); a partner
+        score is rendered with its own build options and knobs (:meth:`partner_compat`)."""
         o = self.options.get(rel)
         if o is None:
             return None
-        arr_compat = None
-        if o.simplified_from and o.simplified_from in self.manifest.entries:
-            arr_compat = self._verify_compat(self.manifest.entries[o.simplified_from])
-        return o.render_options(self.cfg.scores, arr_compat) or None
+        if not o.partner:
+            return o.render_options(self.cfg.scores) or None
+        return o.render_options(self.cfg.scores, self.partner_compat(o.partner), self.options.get(o.partner)) or None
 
     def options_signature(self, rel: str) -> Optional[dict]:
         """What the manifest records of the options a score was built with: a hash of the options that make its
-        song (title, composer, piano staves, hands) and, with an arrangement, which score it is, the hash of its
-        content, its knobs and the hash of the arrangement options.  None without options."""
+        own render (title, composer, piano staves, hands) and, with a partner score, which score it is, what it gives,
+        the hash of its content, its knobs, the hash of its options and the measure map, and the revisions of the
+        alignment and the clock.  None without options."""
         from .arrangement import ARRANGEMENT_REVISION
+        from .buildopts import SONG_KEYS
         from .convert import content_hash
+        from .timeline import TIMELINE_REVISION
         o = self.options.get(rel)
         if o is None:
             return None
-        song = {k: v for k, v in o.raw.items() if k in ("title", "composer", "piano_staves", "hands")}
+        song = {k: v for k, v in o.raw.items() if k in SONG_KEYS}
         sig: Dict[str, object] = {"song": _digest(song)}
-        if o.simplified_from:
-            path = os.path.join(self.cfg.scores, o.simplified_from)
+        if o.partner:
+            path = os.path.join(self.cfg.scores, o.partner)
             try:
                 content = content_hash(path)
             except (OSError, zipfile.BadZipFile):
                 content = "missing"
-            ro = self.render_options(rel) or {}
-            sig["arrangement"] = {"score": o.simplified_from, "content": content,
-                                  "compat": (ro.get("arrangement") or {}).get("compat"),
-                                  "options": _digest({k: o.raw.get(k) for k in ("simplified_from", "measure_map")}),
-                                  "revision": ARRANGEMENT_REVISION}
+            ro = (self.render_options(rel) or {}).get("partner") or {}
+            sig["partner"] = {"score": o.partner, "kind": o.partner_kind, "content": content,
+                              "compat": ro.get("compat"), "options": _digest({"map": o.measure_map,
+                                                                              "partner": ro.get("options")}),
+                              "revision": [ARRANGEMENT_REVISION, TIMELINE_REVISION]}
         return sig
 
     def _options_actions(self, actions: List["Action"]) -> List["Action"]:
-        """Scores whose build options (or arrangement) changed since they were built: the song is rendered again when
-        options that make it changed, else only the parts file (an arrangement edited or re-aligned)."""
+        """Scores whose build options (or partner score) changed since they were built are rendered again (a partner
+        sets the song's clock or orchestra: its PianoVision JSON depends on it)."""
         out = []
         entries = self.manifest.entries
         for a in actions:
-            if a.kind in ("render", "move", "retire", "conflict"):
+            if a.kind in ("render", "move", "retire", "conflict", "source"):
                 if a.kind in ("render", "move"):
                     self._optsigs[a.rel] = self.options_signature(a.rel)
                 out.append(a)
@@ -534,16 +553,15 @@ class Library:
                 out.append(a)
             elif (sig or {}).get("song") != (have or {}).get("song"):
                 out.append(Action("render", a.rel, "build options changed (scores.json)", compat=self._verify_compat(e)))
-            elif a.kind == "keep":
-                out.append(Action("parts", a.rel, "arrangement changed (scores.json or the arrangement's score)",
-                                  compat=self._verify_compat(e)))
             else:
-                out.append(a)
+                p = (sig or {}).get("partner") or (have or {}).get("partner") or {}
+                out.append(Action("render", a.rel, f"partner score changed ({p.get('score', '?')}: its options, its "
+                                                   f"score or the alignment's revision)", compat=self._verify_compat(e)))
         return out
 
     def write_arrangement_report(self, rel: str, output: str, rep: dict) -> str:
-        """``<output>/.arrangements/<song stem>.md`` and ``.json``: the alignment report of a simplified part made
-        from an arrangement (:mod:`pianovision.arrangement`); returns the .md path."""
+        """``<output>/.arrangements/<song stem>.md`` and ``.json``: the alignment report of a song made with a partner
+        score (:mod:`pianovision.arrangement`, :mod:`pianovision.timeline`); returns the .md path."""
         from .arrangement import report_markdown
         folder = os.path.join(self.out, ARRANGEMENTS_DIR)
         os.makedirs(folder, exist_ok=True)
@@ -616,6 +634,12 @@ class Library:
         for rel, src in scan.sources.items():
             e = entries.get(rel)
             selected = wanted is None or rel in wanted
+            if not self.is_song(rel):
+                users = self.partner_users(rel)
+                why = "not a song of its own (scores.json song: false)" + (
+                    f"; the partner of {', '.join(users)}" if users else "")
+                actions.append(Action("retire" if e is not None else "source", rel, why))
+                continue
             if e is None:
                 h = content_hash(src.path)
                 self._hashes[rel] = h
@@ -764,9 +788,15 @@ class Library:
                 rep = r["arrangement"]
                 md = self.write_arrangement_report(a.rel, m.entries[a.rel]["output"], rep)
                 n = rep["measures"]
-                report.arrangements.append((a.rel, os.path.relpath(md, self.out),
-                                            f"{n['mapped']} of {n['arrangement']} arrangement measures mapped, "
-                                            f"{n['filled']} orchestral measures filled, {n['dropped']} dropped"))
+                tl = rep.get("timeline") or {}
+                clock = f"; on the solo's clock: {tl['seconds']:.1f} s, {tl['marks']} tempo marks" if tl else ""
+                if rep.get("kind") == "orchestra":
+                    how = (f"orchestra from {rep['score']}: {n['mapped']} of {n['arrangement']} solo measures, "
+                           f"{n['filled']} orchestral measures left out")
+                else:
+                    how = (f"{n['mapped']} of {n['arrangement']} arrangement measures mapped, {n['filled']} orchestral "
+                           f"measures filled, {n['dropped']} dropped")
+                report.arrangements.append((a.rel, os.path.relpath(md, self.out), how + clock))
         if prune_orphans:
             self._retire_orphans(self.orphans(), report)
         m.save()
