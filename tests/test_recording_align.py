@@ -151,5 +151,39 @@ class AlignRetimeVerifyTest(unittest.TestCase):
         self.assertGreater(float(np.median([by[n]["chroma"] for n in range(3, 13)])), 0.5)
 
 
+@unittest.skipUnless(HAVE, "needs numpy, soundfile and librosa (run with the [recordings] python)")
+class VocalsCheckTest(unittest.TestCase):
+    """The vocals check on a sung line 40 ms later than the score's vocal notes, with a little bleed where it rests."""
+
+    def test_melody_onsets_and_bleed(self):
+        sys.path.insert(0, TOOLS)
+        import recording_align as A
+        tmp = tempfile.mkdtemp(prefix="nw-vocals-test-")
+        try:
+            rng = np.random.RandomState(3)
+            notes, t = [], 0.0
+            while t < 40.0:
+                if int(t) % 10 < 7:                                  # sings 7 s of every 10
+                    notes.append([round(t, 3), 0.45, int(rng.randint(57, 72)), 0.8, "v"])
+                t += 0.5
+            ref = {"song_end": 42.0, "measures": [], "notes": notes}
+            sung = A.synthesize({"song_end": 42.0, "notes": [[n[0] + 0.04, n[1], n[2], n[3], "o"] for n in notes]})
+            sung += (0.003 * rng.randn(len(sung))).astype(np.float32)
+            with open(os.path.join(tmp, "ref.json"), "w") as f:
+                json.dump(ref, f)
+            sf.write(os.path.join(tmp, "v.wav"), sung, A.SR)
+            out = os.path.join(tmp, "v.json")
+            A.main(["vocals", "--ref", os.path.join(tmp, "ref.json"), "--audio", os.path.join(tmp, "v.wav"),
+                    "--out", out])
+            with open(out) as f:
+                v = json.load(f)
+            self.assertGreater(v["melody"]["agree_at_best"], 0.8, v["melody"])
+            self.assertLess(abs(v["melody"]["best_shift_ms"] - 40), 30, v["melody"])
+            self.assertLess(abs(v["onsets"]["median_ms"] - 40), 20, v["onsets"])
+            self.assertLess(v["bleed"]["rest_minus_sung_db"], -20, v["bleed"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -6,8 +6,9 @@ The model runs in another Python (``[recordings] separator_python``, or the firs
 :func:`status` says what is missing.
 
 Cache: ``<stems_dir>/<sha256 of the input, 16 hex>/<model>/vocals.wav`` and ``meta.json`` (input path, size, the
-model, the device, how long it took).  The stem has the input's length and timing (Demucs keeps them), so the
-alignment made from the full mix applies to it unchanged.
+model, the device and settings that worked, how long it took, the GPU's peak memory).  The model runs with the
+Hugging Face hub offline: its weights must already be in the cache.  The stem has the input's length and timing
+(Demucs keeps them), so the alignment made from the full mix applies to it unchanged.
 """
 
 from __future__ import annotations
@@ -111,13 +112,14 @@ def vocals_stem(src: str, stems_dir: str, model: str = "htdemucs_ft", python: st
     os.makedirs(out, exist_ok=True)
     log(f"  separating the vocals of {os.path.basename(src)} ({model}) ...")
     t0 = time.monotonic()
+    env = dict(os.environ, HF_HUB_OFFLINE="1")           # the weights come from the cache; nothing is downloaded
     r = subprocess.run([st["python"], script, "--input", src, "--out-dir", out, "--model", model, "--device", device],
-                       capture_output=True, text=True, timeout=timeout)
+                       capture_output=True, text=True, timeout=timeout, env=env)
     vocals = os.path.join(out, "vocals.wav")
     if r.returncode != 0 or not os.path.isfile(vocals):
         raise RuntimeError(f"separation failed: {(r.stderr or r.stdout)[-1500:]}")
     meta = {"input": os.path.abspath(src), "size": os.path.getsize(src), "model": model, "device": device,
-            "seconds": round(time.monotonic() - t0, 1), "python": st["python"]}
+            "wall_seconds": round(time.monotonic() - t0, 1), "python": st["python"]}
     try:
         with open(os.path.join(out, "tool.json"), encoding="utf-8") as f:
             meta.update(json.load(f))

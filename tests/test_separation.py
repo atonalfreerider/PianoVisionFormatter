@@ -74,6 +74,7 @@ class StemTest(unittest.TestCase):
         with open(os.path.join(os.path.dirname(a), "meta.json")) as f:
             meta = json.load(f)
         self.assertEqual((meta["demucs"], meta["device"], meta["input"]), ("4.0.1", "cuda", self.src))
+        self.assertIn("wall_seconds", meta)
         # another file's content: another stem
         with open(self.src, "ab") as f:
             f.write(b"more")

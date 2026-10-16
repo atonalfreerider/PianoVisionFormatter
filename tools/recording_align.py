@@ -10,6 +10,7 @@ audio and time-stretches it (its ``rubberband`` filter, librubberband).
     recording_align.py retime  --ref ref.json --align align.json --audio FILE [--source REC] --out out.wav
                                [--retune-cents C] [--latency-cache FILE]
     recording_align.py verify  --ref ref.json --audio out.wav [--key K] [--out verify.json]
+    recording_align.py vocals  --ref ref.json --audio vocals.mp3 [--active spans.json] [--out vocals.json]
     recording_align.py latency [--out latency.json]
 
 ``ref.json`` (written by pianovision.recordings): the song's measures as played (``start``/``end`` seconds,
@@ -44,8 +45,8 @@ ffmpeg's rubberband filter whose tempo is switched per operation (``asendcmd``; 
 measured latency later, ``latency``).  The filter does not land the content exactly where it is asked to after
 large tempo changes (tens to hundreds of ms), so the output is compared with the recording resampled through the
 plan (timing exact) in 3 s windows, and the stretch is run again with the operations' targets moved by that error,
-up to 5 passes, until 95 % of the windows are within 8 ms (``passes``, ``fidelity_p95_ms``; the best pass is kept).  ``--retune-cents``:
-also pitch-shifted by that many cents.
+up to 5 passes, until 95 % of the windows are within 8 ms (``passes``, ``fidelity_p95_ms``; the best pass is
+kept).  ``--retune-cents``: also pitch-shifted by that many cents.
 
 **verify.**  The retimed audio against the song's notes, on the song's clock: per measure the chroma agreement
 (cosine similarity against the synthesis, rescaled so 0 is chance and 1 identical) and the onset lag (cross-
@@ -53,6 +54,10 @@ correlation of the onset envelopes within +-150 ms).  Timing over the whole song
 chroma against the synthesis' that agrees best in 8 s windows every 4 s (within +-500 ms; windows whose best shift
 stands out by 0.02 count): the chord changes time it, which works for a band recording too; ``onset_lag``, the
 same from the onset envelopes in 6 s windows (correlation 0.3 or more), reliable for piano and orchestra.
+
+**vocals.**  Retimed vocals against the score's vocal line (:func:`cmd_vocals`): melody agreement (pYIN pitch against
+the vocal note, by pitch class) at the plan's timing and the shift that agrees best, overall and per 10 s window;
+the vocal notes' starts against the stem's onsets; the stem's level where the vocal line rests (bleed).
 """
 
 import argparse
@@ -768,6 +773,159 @@ def cmd_verify(args):
 
 
 # ------------------------------------------------------------------------------
+# vocals: the singing against the score's vocal line
+# ------------------------------------------------------------------------------
+
+def vocal_notes(ref, part="v"):
+    return sorted(n for n in ref["notes"] if n[4] == part)
+
+
+def sounding_mask(notes, n_frames, frame_s, pad=0.0):
+    m = np.zeros(n_frames, bool)
+    for st, du, *_ in notes:
+        a, b = int((st - pad) / frame_s), int(np.ceil((st + max(du, 0.05) + pad) / frame_s))
+        m[max(a, 0):min(b, n_frames)] = True
+    return m
+
+
+def _r(v, nd=3):
+    return None if v is None else round(float(v), nd)
+
+
+def pitch_track(y, n):
+    """MIDI pitch per chroma frame (pYIN; NaN where unvoiced)."""
+    import librosa
+    f0, voiced, _p = librosa.pyin(y, fmin=70.0, fmax=1100.0, sr=SR, hop_length=HOP, frame_length=1024)
+    f0 = np.asarray(f0)[:n]
+    voiced = np.asarray(voiced)[:n] & np.isfinite(f0)
+    midi = np.full(n, np.nan)
+    midi[:len(f0)][voiced] = librosa.hz_to_midi(f0[voiced])
+    return midi
+
+
+def melody_curve(midi, want, active, lo, hi, M, min_frames=20):
+    """Share of frames lo..hi where the score's vocal note sounds, the track is voiced at frame + shift, and the pitch
+    classes agree (within half a semitone, octaves alike), for shifts -M..M frames; and the best shift: the middle of
+    the shifts within 0.01 of the best share (a plateau's centre, not its first edge)."""
+    n = len(midi)
+    curve = {}
+    for k in range(-M, M + 1):
+        idx = np.arange(lo, hi)
+        j = idx + k
+        ok = (j >= 0) & (j < n)
+        idx, j = idx[ok], j[ok]
+        sel = np.isfinite(want[idx]) & np.isfinite(midi[j]) & active[idx]
+        if sel.sum() < min_frames:
+            curve[k] = None
+            continue
+        d = np.abs(((midi[j][sel] - want[idx][sel]) + 6.0) % 12.0 - 6.0)
+        curve[k] = float(np.mean(d <= 0.5))
+    vals = {k: v for k, v in curve.items() if v is not None}
+    if not vals:
+        return curve, None
+    top = max(vals.values())
+    near = [k for k, v in vals.items() if v >= top - 0.01]
+    return curve, int(round(float(np.median(near))))
+
+
+def cmd_vocals(args):
+    """The retimed vocals against the score's vocal line (``part`` "v" of ref.json):
+
+    * **melody**: the stem's pitch (pYIN, 23 ms frames, voiced frames only) against the vocal note sounding at that
+      moment, pitch class within half a semitone (an octave off counts as agreeing); the share of agreeing frames at
+      the plan's timing and with the stem shifted by -300..+300 ms, the shift that agrees best (+ = the singing is
+      later than the score), and the same per 10 s window (median, p10, p90 of the windows' best shifts).  The
+      shifts are corrected by the measurement's own bias: the same measure on the vocal line synthesised in time;
+    * **onsets**: each vocal note's start against the nearest onset detected in the stem within 200 ms;
+    * **bleed**: the stem's level where the score's vocal line is silent (0.5 s margin) against where it sings,
+      inside ``--active`` song spans (the parts of the song the recording plays)."""
+    import librosa
+    ref = read_ref(args.ref)
+    notes = vocal_notes(ref)
+    y = load(args.audio)
+    fs = HOP / SR
+    n = len(y) // HOP + 1
+    out = {"format": 1, "version": VERSION, "audio": os.path.abspath(args.audio), "vocal_notes": len(notes)}
+    if not notes:
+        out["error"] = "the score has no vocal line"
+        write_json(args.out, out)
+        return
+    active = np.ones(n, bool)
+    if args.active:
+        with open(args.active, encoding="utf-8") as f:
+            spans = json.load(f)
+        active[:] = False
+        for a, b in spans:
+            active[int(a / fs):int(np.ceil(b / fs))] = True
+    # melody: the stem, and the score's vocal line synthesised (the measurement's own bias: pYIN's window makes a
+    # pitch appear late and linger)
+    want = np.full(n, np.nan)
+    for st, du, pitch, *_ in notes:
+        a, b = int(st / fs), int(np.ceil((st + max(du, 0.05)) / fs))
+        want[max(a, 0):min(b, n)] = pitch
+    M = int(round(0.3 / fs))
+    syn = synthesize({"song_end": len(y) / SR, "notes": [[nn[0], nn[1], nn[2], nn[3], "o"] for nn in notes]})[:len(y)]
+    m_stem, m_syn = pitch_track(y, n), pitch_track(syn, n)
+    curve, best = melody_curve(m_stem, want, active, 0, n, M)
+    curve_s, best_s = melody_curve(m_syn, want, active, 0, n, M)
+    bias = best_s if best_s is not None else 0
+    windows = []
+    W = int(10.0 / fs)
+    for lo in range(0, n - W, W // 2):
+        c, kb = melody_curve(m_stem, want, active, lo, lo + W, M, min_frames=60)
+        if kb is None or c[kb] - np.median([v for v in c.values() if v is not None]) < 0.05:
+            continue                                        # too little sung, or no clear best shift
+        windows.append((lo * fs, (kb - bias) * fs * 1000.0, c[kb]))
+    wl = np.array([w[1] for w in windows]) if windows else np.zeros(0)
+    sungm = np.isfinite(want) & active
+    out["melody"] = {"agree_at_plan": _r(curve.get(0)),
+                     "best_shift_ms": None if best is None else round((best - bias) * fs * 1000.0, 1),
+                     "agree_at_best": _r(curve.get(best)) if best is not None else None,
+                     "measurement_bias_ms": round(bias * fs * 1000.0, 1),
+                     "voiced_where_the_score_sings": round(float(np.mean(np.isfinite(m_stem[sungm]))), 3)
+                     if sungm.any() else None,
+                     "windows": len(windows),
+                     "window_shift_ms": {"median": round(float(np.median(wl)), 1) if len(wl) else None,
+                                         "p10": round(float(np.percentile(wl, 10)), 1) if len(wl) else None,
+                                         "p90": round(float(np.percentile(wl, 90)), 1) if len(wl) else None,
+                                         "within_50ms": round(float(np.mean(np.abs(wl) <= 50)), 3) if len(wl)
+                                         else None}}
+    # onsets
+    env = librosa.onset.onset_strength(y=y, sr=SR, hop_length=OHOP)
+    on = librosa.onset.onset_detect(onset_envelope=env, sr=SR, hop_length=OHOP, units="time", backtrack=True)
+    starts = sorted({round(nn[0], 3) for nn in notes})
+    afs = np.ones(len(starts), bool)
+    if args.active:
+        afs = np.array([active[min(int(t / fs), n - 1)] for t in starts])
+    d = []
+    for t, a in zip(starts, afs):
+        if not a or not len(on):
+            continue
+        j = int(np.argmin(np.abs(on - t)))
+        if abs(on[j] - t) <= 0.2:
+            d.append(on[j] - t)
+    d = np.array(d) * 1000.0
+    considered = int(afs.sum())
+    out["onsets"] = {"notes": considered, "matched": int(len(d)),
+                     "median_ms": round(float(np.median(d)), 1) if len(d) else None,
+                     "within_50ms": round(float(np.mean(np.abs(d) <= 50)), 3) if len(d) else None,
+                     "within_100ms": round(float(np.mean(np.abs(d) <= 100)), 3) if len(d) else None}
+    # bleed: the stem's level where the vocal line rests
+    rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=HOP)[0][:n]
+    sung = sounding_mask(notes, n, fs) & active
+    rest = ~sounding_mask(notes, n, fs, pad=0.5) & active
+    def level(m):
+        return round(float(10 * np.log10(np.mean(rms[m] ** 2) + 1e-12)), 1) if m.any() else None
+    ls, lr = level(sung), level(rest)
+    loud = rms > 10 ** (-40 / 20)
+    out["bleed"] = {"sung_db": ls, "rest_db": lr, "rest_minus_sung_db": None if ls is None or lr is None else
+                    round(lr - ls, 1), "rest_seconds": round(float(rest.sum() * fs), 1),
+                    "rest_active_share": round(float(np.mean(loud[rest])), 3) if rest.any() else None,
+                    "sung_active_share": round(float(np.mean(loud[sung])), 3) if sung.any() else None}
+    write_json(args.out, out)
+
+
+# ------------------------------------------------------------------------------
 
 def write_json(path, d):
     if not path:
@@ -810,6 +968,12 @@ def main(argv=None):
     p.add_argument("--key", type=int, default=0)
     p.add_argument("--out")
     p.set_defaults(fn=cmd_verify)
+    p = sub.add_parser("vocals")
+    p.add_argument("--ref", required=True)
+    p.add_argument("--audio", required=True, help="the vocals on the song's timeline (the delivered mp3)")
+    p.add_argument("--active", help="JSON [[from, to], ...]: the song spans the recording plays")
+    p.add_argument("--out")
+    p.set_defaults(fn=cmd_vocals)
     p = sub.add_parser("latency")
     p.add_argument("--out")
     p.set_defaults(fn=lambda a: write_json(a.out, measure_latency()))

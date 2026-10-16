@@ -103,7 +103,9 @@ class Settings:
     separator_model: str = "htdemucs_ft"
     separator_script: str = "tools/separate_vocals.py"
     min_vocal_activity: float = 0.1     # a vocals stem with singing in less of the matched recording: not used
-    min_coverage: float = 0.85          # enabled only when this share of the song is matched
+    min_coverage: float = 0.85          # enabled only when this share of the song (of a vocals stem: of the score's
+                                        # vocal line) is matched
+    min_melody_agreement: float = 0.3   # ... a vocals stem's pitch agrees with the vocal line in this share of frames
     max_lag_ms: float = 30.0            # ... the median onset lag after the retime is within this
     min_within_50ms: float = 0.7        # ... and this share of the lag windows is within 50 ms
     timeout: int = 7200
@@ -1342,7 +1344,15 @@ def process(lib, s: Settings, job: Job, recs: Dict[str, Recording], state: dict,
         _run_tool(s, ["verify", "--ref", ref_path, "--audio", mp3, "--key", key, "--out", ver], log)
         # a stem lacks the piano the notes have: the full mix retimed the same way is what is checked
         full_ver = verify_full("full") if os.path.abspath(deliver) != os.path.abspath(src) else ver
-        res.update(retime_key=rkey, mp3=mp3, mp3_sha256=_sha_file(mp3), verify_path=ver, verify_full_path=full_ver)
+        vs = None
+        if variant == "vocals":
+            # the singing against the score's vocal line, inside the song spans the recording plays
+            spans = os.path.join(work, "active.json")
+            _write_json(spans, [[p.song0, p.song1] for p in tm.pieces])
+            vs = os.path.join(work, "vocals.json")
+            _run_tool(s, ["vocals", "--ref", ref_path, "--audio", mp3, "--active", spans, "--out", vs], log)
+        res.update(retime_key=rkey, mp3=mp3, mp3_sha256=_sha_file(mp3), verify_path=ver, verify_full_path=full_ver,
+                   vocal_sync_path=vs)
         cache.update({k: res.get(k) for k in CACHED})
         _write_json(cache_path, cache)
     else:
@@ -1360,6 +1370,9 @@ def _finish_deliver(s: Settings, res: dict, al: dict, ref: dict, song: Song) -> 
         vf = json.load(f)
     res["verify"] = verify_summary(v)
     res["verify_full"] = verify_summary(vf) if res["verify_full_path"] != res["verify_path"] else None
+    if res.get("vocal_sync_path") and os.path.isfile(res["vocal_sync_path"]):
+        with open(res["vocal_sync_path"], encoding="utf-8") as f:
+            res["vocal_sync"] = json.load(f)
     res["accuracy"] = accuracy_summary(al, vf, ref, res)
     res["checks"] = checks(s, res)
     _write_accuracy(s, song, res["accuracy"])
@@ -1369,7 +1382,8 @@ def _write_accuracy(s: Settings, song: Song, acc: dict) -> None:
     _write_json(os.path.join(s.path("out_dir"), "accuracy", song.stem + ".json"), acc)
 
 
-CACHED = ("retime_seconds", "retime", "retime_key", "mp3", "mp3_sha256", "verify_path", "verify_full_path")
+CACHED = ("retime_seconds", "retime", "retime_key", "mp3", "mp3_sha256", "verify_path", "verify_full_path",
+          "vocal_sync_path")
 
 
 def encode(s: Settings, wav: str, mp3: str, song: Song, job: Job) -> None:
@@ -1457,12 +1471,25 @@ def accuracy_summary(al: dict, vf: dict, ref: dict, res: dict) -> dict:
 
 
 def checks(s: Settings, res: dict) -> dict:
-    """Whether the retimed audio can be enabled: coverage, timing (the chroma lag of the full mix retimed, which has
-    the piano the song's notes have), the stretch's fidelity to the plan, and the key."""
+    """Whether the retimed audio can be enabled: coverage (for vocals: of the score's vocal line), timing (the chroma
+    lag of the full mix retimed, which has the piano the song's notes have; for vocals also the vocal onsets against
+    the vocal notes, and the stem's melody against the vocal line), the stretch's fidelity to the plan, the key."""
     a = res["alignment"]
     lag = (res.get("verify_full") or res["verify"])["lag"]
     problems = []
-    if a["coverage_with_weak"] < s.min_coverage:
+    vs = res.get("vocal_sync")
+    if vs and vs.get("vocal_notes"):
+        # vocals: what counts is the vocal line; the song's instrumental passages may differ from the recording's
+        cov = vs["onsets"]["notes"] / vs["vocal_notes"]
+        if cov < s.min_coverage:
+            problems.append(f"only {cov:.0%} of the score's vocal line is in the matched recording")
+        mel = vs["melody"].get("agree_at_best")
+        if mel is None or mel < s.min_melody_agreement:
+            problems.append(f"the stem's pitch agrees with the score's vocal line in {mel} of the sung frames")
+        on = vs["onsets"]
+        if on.get("median_ms") is None or abs(on["median_ms"]) > s.max_lag_ms:
+            problems.append(f"the vocal onsets lie {on.get('median_ms')} ms from the score's vocal notes (median)")
+    elif a["coverage_with_weak"] < s.min_coverage:
         problems.append(f"only {a['coverage_with_weak']:.0%} of the song is matched (structure differs)")
     fid = (res.get("retime") or {}).get("fidelity_p95_ms")
     if fid is None or fid > 15:
@@ -1519,9 +1546,16 @@ def proposal(s: Settings, state: dict) -> dict:
         lag = (r.get("verify_full") or r["verify"])["lag"]
         what = {"vocals": "the vocals isolated from", "no_piano": "the piano-removed stem of",
                 "full": "the full mix of"}.get(r["variant"], r["variant"])
+        vs = r.get("vocal_sync") or {}
+        if vs.get("vocal_notes"):
+            on = vs["onsets"]
+            matched = (f"{on['notes'] / vs['vocal_notes']:.0%} of the score's vocal line matched, vocal onsets median "
+                       f"{on['median_ms']} ms from the vocal notes")
+        else:
+            matched = f"{a['coverage_with_weak']:.0%} of the song matched"
         note = (f"{what} {r['recording']}, retimed onto the song's timeline by pianovision recordings: tempo ratio "
-                f"{a['tempo']['ratio']:.3f}, {a['coverage_with_weak']:.0%} of the song matched, lag against the score "
-                f"median {lag.get('median_ms')} ms ({lag.get('within_50ms')} of the windows within 50 ms)")
+                f"{a['tempo']['ratio']:.3f}, {matched}, lag against the score (full mix, chords) median "
+                f"{lag.get('median_ms')} ms ({lag.get('within_50ms')} of the windows within 50 ms)")
         if not ok:
             note += "; NOT ENABLED: " + "; ".join(r["checks"]["problems"])
         e = {"audio": _tilde(r["mp3"]), "offset": 0.0, "enabled": ok, "note": note}
@@ -1551,7 +1585,9 @@ def route_summary(links: dict, s: Settings) -> Dict[str, List[dict]]:
                 "orchestra_notes": (r.get("facts") or {}).get("orchestra_notes", 0),
                 "companion_now": (have.get(r.get("song")) or {}).get("audio"),
                 "recording": eff[0] if eff else None, "variant": eff[1] if eff else None,
-                "link_status": le.get("status"), "suggestion": le.get("recording") if not eff else None}
+                "link_status": le.get("status"),
+                "suggestion": le.get("recording") if not eff and le.get("decision") is None else None,
+                "rejected": le.get("decision") is not None and not eff}
         if route == ROUTE_GENERATED:
             out["generated"].append(item)
         elif route == ROUTE_VOCALS:
@@ -1599,7 +1635,8 @@ def report_markdown(s: Settings, state: dict, links: dict, skipped: Sequence[str
     lines += [f"* {x['song']}: {x['recording']} [{x['variant']}] ({x['why']})" for x in rs["vocals"]] or ["* none"]
     lines += ["", "### Sung, without a recording (add one to the music folder, or confirm the suggestion)", ""]
     lines += [f"* {x['title']} | {x['artist']} | {x['score']}"
-              + (f" | suggestion to check: {x['suggestion']}" if x["suggestion"] else "") + f" ({x['why']})"
+              + (f" | suggestion to check: {x['suggestion']}" if x["suggestion"] else "")
+              + (" | the suggested recording was rejected" if x["rejected"] else "") + f" ({x['why']})"
               for x in rs["vocals_missing"]] or ["* none"]
     lines += ["", "### Generated from the score (no recording is used)", ""]
     lines += [f"* {x['song']}: " + ("the score has an orchestra to render" if x["orchestra_notes"] else
@@ -1663,6 +1700,16 @@ def report_markdown(s: Settings, state: dict, links: dict, skipped: Sequence[str
                              f"{lg.get('windows_total')} windows, {lg.get('within_50ms')} within 50 ms); onsets "
                              f"median {ol.get('median_ms')} ms ({ol.get('windows')} windows); chroma agreement "
                              f"{vv.get('chroma_mean')}")
+            if r.get("vocal_sync") and r["vocal_sync"].get("melody"):
+                vs = r["vocal_sync"]
+                m, on, bl = vs["melody"], vs["onsets"], vs["bleed"]
+                lines.append(f"* vocals against the score's vocal line ({vs['vocal_notes']} notes, {on['notes']} in "
+                             f"the matched recording): onsets median {on['median_ms']} ms ({on['matched']} matched "
+                             f"within 200 ms; {on['within_50ms']} within 50 ms, {on['within_100ms']} within 100 ms); "
+                             f"pitch agrees in {m['agree_at_plan']} of the sung frames, {m['agree_at_best']} shifted "
+                             f"{m['best_shift_ms']} ms (per 10 s window median {m['window_shift_ms']['median']} ms); "
+                             f"stem level where the vocal line rests {bl['rest_minus_sung_db']} dB under where it "
+                             f"sings")
             low = (r.get("verify_full") or r["verify"])
             lines.append(f"* measures with low agreement: {low['low_count']} of {low['measures_scored']}"
                          + (f": {', '.join(low['low'][:30])}" + (" ..." if len(low['low']) > 30 else "")
@@ -1742,7 +1789,8 @@ def status(lib, s: Settings, log: Log = print) -> int:
         log(f"  vocals    {x['song']}: {x['recording']} [{x['variant']}] ({x['why']})")
     for x in rs["vocals_missing"]:
         log(f"  no rec.   {x['song']}: {x['title']} | {x['artist']}"
-            + (f" | suggestion to check: {x['suggestion']}" if x["suggestion"] else "") + f" ({x['why']})")
+            + (f" | suggestion to check: {x['suggestion']}" if x["suggestion"] else "")
+            + (" | suggestion rejected" if x["rejected"] else "") + f" ({x['why']})")
     for x in rs["review"]:
         log(f"  undecided {x['song']}: {x['why']}  -> recordings route {x['score']!r} vocals|generated")
     for x in rs["generated"]:

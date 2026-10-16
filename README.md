@@ -486,13 +486,23 @@ singer?" (about the piece, not the score, which may be a piano arrangement) and 
 4. otherwise **review**: nothing is made until you decide (`recordings route SONG vocals|generated`).
 
 After the separation, a vocals stem that sings in less than `min_vocal_activity` (10 %) of the matched recording
-(0.5 s blocks louder than -45 dBFS and within 25 dB of the mix) is not used.
+(0.5 s blocks louder than -45 dBFS and within 25 dB of the mix) is not used. The retimed vocals are checked against
+the score's vocal line (`recording_align.py vocals`): the vocal notes' starts against the stem's onsets, the stem's
+pitch (pYIN) against the sounding vocal note by pitch class, at the plan's timing and at the shift that agrees best
+(corrected by the measurement's own bias, found on the vocal line synthesised in time), overall and per 10 s window,
+and the stem's level where the vocal line rests (bleed). For a vocals stem the checks count the vocal line: at least
+`min_coverage` of its notes in the matched recording, the pitch agreeing in `min_melody_agreement` (30 %) of the sung
+frames, the vocal onsets' median within `max_lag_ms`.
 
 **Vocal separation** (`pianovision/separation.py`, `tools/separate_vocals.py`): Demucs `htdemucs_ft`
 (`separator_model`) in another Python (`separator_python`, else the first conda environment with `demucs`), two
 stems, the vocals kept at the input's length and timing, cached by the input's content in
 `stems_dir/<sha256>/<model>/vocals.wav`. Nothing is installed by this tool: `status` says whether a separator is
-found and what is missing. A LALAL.AI vocals stem next to the full mix is used as it is.
+found and what is missing; the model runs with the Hugging Face hub offline (its weights must be in the cache). On
+the GPU a run out of memory is tried again with 5 s and 3 s segments, then on the CPU (`meta.json` records what
+worked, how long it took and the GPU's peak memory). A LALAL.AI vocals stem next to the full mix is used as it is.
+Here: `~/.cache/nw-stems/venv` (demucs 4.1.0 over beat_this' torch 2.3.1, CUDA): Fountain of Sorrow's 6:52 in 99 s
+on a GTX 1060 (6 GB), the model's own 7.8 s segments, 555 MB peak.
 
 1. **Inventory** (`work_dir/inventory.json`, cached by size and mtime): every audio file with its duration and its
    title, artist, album and composer tags (ffprobe is asked for those tags only: lyrics are never read). Files are

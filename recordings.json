@@ -6064,6 +6064,9 @@
             0.04
           ]
         }
+      },
+      "decision": {
+        "recording": null
       }
     },
     "70s/fountain-of-sorrow.mscz": {
@@ -6155,6 +6158,9 @@
             0.03
           ]
         }
+      },
+      "decision": {
+        "recording": null
       }
     },
     "Chopin/Waltz_Grande_valse_brillante_Op.18.mscz": {
@@ -7384,6 +7390,9 @@
             0.51
           ]
         }
+      },
+      "decision": {
+        "recording": null
       }
     },
     "Liszt/Two_Legends_No._2__St._Francis_of_Paola_walking_on_the_waves.mscz": {

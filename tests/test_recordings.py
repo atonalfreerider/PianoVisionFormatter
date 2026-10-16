@@ -498,6 +498,17 @@ class OutputsTest(unittest.TestCase):
                                                       "windows_total": 40}}))
         self.assertFalse(few["ok"])
 
+    def test_checks_of_a_vocals_stem_use_the_vocal_line(self):
+        s = R.Settings()
+        vs = {"vocal_notes": 177, "onsets": {"notes": 168, "median_ms": -6.5},
+              "melody": {"agree_at_best": 0.51}}
+        r = self.result(alignment={"coverage_with_weak": 0.8, "key_offset": 0, "tempo": {"ratio": 0.93}},
+                        vocal_sync=vs)
+        self.assertTrue(R.checks(s, r)["ok"])                  # 80 % of the song, but 95 % of its vocal line
+        bad = dict(vs, onsets={"notes": 100, "median_ms": 90.0}, melody={"agree_at_best": 0.1})
+        problems = R.checks(s, self.result(vocal_sync=bad))["problems"]
+        self.assertEqual(len(problems), 3)
+
     def test_proposal(self):
         tmp = tempfile.mkdtemp()
         try:
