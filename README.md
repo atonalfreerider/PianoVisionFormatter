@@ -40,6 +40,7 @@ orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits); op
 | `gui [--read-only] [--no-device]` | the Piano Library window (see below) |
 | `accompaniment [--only GLOB…] [--out DIR] [--force] [--dry-run] [--list] [--no-timing]` | Note Waterfall's companion audio: each score's orchestra (everything but the piano part) rendered by MuseScore with Muse Sounds, one mp3 per song (see below) |
 | `arrangement [SCORE…] [--write]` | the measure alignment of a song made with a partner score (`scores.json` `simplified_from`, `orchestra_from`), as a report; `build` writes it to `.arrangements/` (see below) |
+| `recordings match\|align\|retime\|status\|route\|confirm\|reject [--only GLOB…]` | what each song's companion audio is (generated from the score, or for sung songs the vocals of a recording you own: TypeSafe judgments), and those vocals separated, aligned and retimed onto the song's timeline (see below) |
 
 ## Piano Library (the window)
 
@@ -527,6 +528,134 @@ The accompaniment classifies the staves with the score's build options (`scores.
 channel 10 have program 0, which the formatter's rule takes for a piano (Shape of You, Evanescence,
 Rach 3/II and III have them in `accompaniment.json`).
 
+## Companion audio from your recordings (recordings)
+
+`python3 -m pianovision recordings` decides, for every song of the library, what Note Waterfall's companion audio is,
+and for sung songs makes it from a recording in the music folder (`~/Music`, only read): the **singing**, isolated
+and put on the song's timeline (tempo map, fermatas, repeats as played) so it plays in sync with the falling notes.
+You play the piano, so a recording's piano is never wanted:
+
+* **generated** (classical and instrumental music: concertos, Rhapsody in Blue, the Rite of Spring, film score cues
+  without singing): the companion is the score's orchestra rendered with Muse Sounds, piano muted
+  (`pianovision accompaniment`, above), never a recording, not even a piano-removed stem. A linked recording is still
+  aligned, for the accuracy summary only; nothing of it goes to Note Waterfall.
+* **vocals** (sung pop and film songs): the singing of your recording, separated by Demucs and retimed.
+
+Settings are `[recordings]` in `pianovision.toml`; the routes, the links and your decisions are in `recordings.json`
+(checked in, keyed by the score's path like `scores.json`).
+
+```bash
+python3 -m pianovision recordings match                        # routes + recording candidates, TypeSafe judgments
+python3 -m pianovision recordings status                       # routes, what needs your decision, results
+python3 -m pianovision recordings retime                       # sung songs: vocals -> <song>.mp3; others: diagnostics
+python3 -m pianovision recordings route SONG vocals            # your route for a song (vocals | generated | auto)
+python3 -m pianovision recordings confirm SONG                 # use the pick of a song in review
+python3 -m pianovision recordings confirm SONG "Folder/Other recording.mp3"   # use another file
+python3 -m pianovision recordings confirm SONG --variant full  # the full mix (or no_piano) instead of the vocals
+python3 -m pianovision recordings reject SONG                  # no recording for this song
+```
+
+**The route** (`decide_route`). Code facts first: the formatter's staff classification (`pvjson.staff_roles`: vocal
+staves) and lyrics, as the manifest's parts statistics record them. Then one TypeSafe request per song (state: its
+title, composer or artist and score path): a **Noul** "is it sung: does its original or best-known recording have a
+singer?" (about the piece, not the score, which may be a piano arrangement) and a **Choice** of the kind of music
+(classical, film score, popular song, other; asked twice with the options reversed and averaged). The rule, in order:
+
+1. P(classical) at least `classical_min` (0.5): **generated**, sung or not (an aria's companion is its orchestra too);
+2. a vocal staff or lyrics in the score (`min_score_vocal`, 16 notes or syllables; a few stray syllables are not a
+   vocal line): **vocals**;
+3. Noul at least `sung_min` (0.8): **vocals**; at most `unsung_max` (0.3): **generated**;
+4. otherwise **review**: nothing is made until you decide (`recordings route SONG vocals|generated`).
+
+After the separation, a vocals stem that sings in less than `min_vocal_activity` (10 %) of the matched recording
+(0.5 s blocks louder than -45 dBFS and within 25 dB of the mix) is not used. The retimed vocals are checked against
+the score's vocal line (`recording_align.py vocals`): the vocal notes' starts against the stem's onsets, the stem's
+pitch (pYIN) against the sounding vocal note by pitch class, at the plan's timing and at the shift that agrees best
+(corrected by the measurement's own bias, found on the vocal line synthesised in time), overall and per 10 s window,
+and the stem's level where the vocal line rests (bleed). For a vocals stem the checks count the vocal line: at least
+`min_coverage` of its notes in the matched recording, the pitch agreeing in `min_melody_agreement` (30 %) of the sung
+frames, the vocal onsets' median within `max_lag_ms`.
+
+**Vocal separation** (`pianovision/separation.py`, `tools/separate_vocals.py`): Demucs `htdemucs_ft`
+(`separator_model`) in another Python (`separator_python`, else the first conda environment with `demucs`), two
+stems, the vocals kept at the input's length and timing, cached by the input's content in
+`stems_dir/<sha256>/<model>/vocals.wav`. Nothing is installed by this tool: `status` says whether a separator is
+found and what is missing; the model runs with the Hugging Face hub offline (its weights must be in the cache). On
+the GPU a run out of memory is tried again with 5 s and 3 s segments, then on the CPU (`meta.json` records what
+worked, how long it took and the GPU's peak memory). A LALAL.AI vocals stem next to the full mix is used as it is.
+Here: `~/.cache/nw-stems/venv` (demucs 4.1.0 over beat_this' torch 2.3.1, CUDA): Fountain of Sorrow's 6:52 in 99 s
+on a GTX 1060 (6 GB), the model's own 7.8 s segments, 555 MB peak.
+
+1. **Inventory** (`work_dir/inventory.json`, cached by size and mtime): every audio file with its duration and its
+   title, artist, album and composer tags (ffprobe is asked for those tags only: lyrics are never read). Files are
+   grouped into recordings: a full mix with the LALAL.AI stems split from it (`…_no_piano_split_by_lalalai` in the same
+   folder, by name or by the stem's title tag, same duration), what was derived from it (`_retimed`, `-retime`,
+   `…_mixdown`; by folder or name) and copies (same name and size). Video files are listed, not offered.
+2. **Match.** Code proposes up to 12 candidates per song: IDF-weighted word overlap between the song (title, artist,
+   score path) and the recording (file and folder names, tags); a word that begins another counts (rach /
+   rachmaninoff). A candidate must share a word that names something: numbers and generic words (major, concerto,
+   piano, soundtrack, film, …) alone propose nothing. Songs without candidates are not asked about. Then **one
+   TypeSafe request per song** (`model`, pinned to `jev-1.13.0`; the HTTP API, `TYPESAFE_API_KEY`), "select instead
+   of generate": state = the song and the candidates' names and tags;
+   * a **Choice** "which audio file is a recording of the composition described in `song`" over the candidates and
+     `none`, asked twice in the same request with the candidates in reverse order (Jev 1.13 leans to the first
+     option) and averaged;
+   * a **Noul** per candidate: "is `recordings[i]` a recording of the same composition" (an arrangement, a cover, a
+     remaster or a stem counts; another movement, a title that only shares words, or a file whose name does not say
+     which piece it is does not).
+
+   `decide` (code, thresholds in `[recordings]`): **linked** when the pick's Noul is at least `same_min` (0.8) and
+   either both orders picked it with Choice confidence at least `link_confidence` (0.6), or the probability is spread
+   over candidates that are all the same composition (two recordings of one concerto movement) with `p_none` at most
+   0.1. **none** when `none` is picked, no candidate passes its Noul, and `p_none` is at least `none_min` or every
+   candidate's Noul is under 0.5. **review** otherwise: not used until you decide.
+   A question is asked again only when it changed (new candidates, another model) or with `--refresh`; the others are
+   decided again from the raw answers stored in the links file, so a change of thresholds needs no request.
+3. **Align** (`tools/recording_align.py`, run with `[recordings] python`: numpy, scipy, soundfile, librosa). The
+   recording's full mix (it has the piano the song's notes have) against a synthesis of the song's notes (the parts
+   file's original piano part and orchestra, vocal lines included): CQT chroma, the recording's tuning estimated; the
+   transposition from all 12 rotations (a quick DTW each, the two best again at full resolution); subsequence DTW with
+   a penalty on non-diagonal steps (free start and end in the recording); the matched **pieces** where the path's
+   similarity holds up and no side stands still; anchors at the song's beats (the path smoothed over ±0.5 s, moved by
+   onset cross-correlation where that is clear: piano and orchestra recordings); stretches where the recording would
+   race through the score or crawl are taken out. Between and around the pieces are the **gaps**: `recording_extra`
+   (cut), `song_missing` (silence), `weak` (both sides have material that matches poorly but fits the tempo: stretched
+   through) and `different` (cut and silence). An abridged score, a repeat taken in one and not the other, an intro or
+   outro show up here rather than being forced.
+4. **Retime** (sung songs). The variant to deliver (`variant`: `vocals` by default; `full` and `no_piano` only when
+   you choose them; a LALAL.AI stem's offset against the full mix is measured, a Demucs stem has its timing) is cut
+   and padded per the plan and time-stretched in one
+   pass by ffmpeg's `rubberband` filter (librubberband; the tempo switched per anchor). The filter misplaces content by
+   tens of ms after large tempo changes, so the output is compared with the recording resampled through the plan and
+   stretched again with corrected targets (up to 3 passes, until 95 % of 3 s windows are within 8 ms:
+   `fidelity_p95_ms`). A recording off A440 by `retune_cents` (15) or more is retuned. Encoded like the accompaniment
+   (-16 LUFS, -1 dBTP, LAME 256 kbit/s, codec delay cut, no Xing header: lands at sample 0 in every decoder).
+5. **Verify** the result against the song's notes on the song's clock: per measure the chroma agreement (0 = chance,
+   1 = identical) and the onset lag; over the song, the lag of the chord changes (8 s windows) and of the onsets. For
+   a stem, the full mix is retimed the same way (in the work folder, not kept) and verified too: the vocals lack what
+   the notes have. Songs routed **generated** get only this check of their full mix, for the accuracy summary.
+
+Outputs in `out_dir` (staged under `~/.cache/nw-recordings/out`; move the mp3s somewhere durable before deploying):
+`<song>.mp3` (sung songs), `audio_map.proposed.json` (sung songs only: entries in the format of Note Waterfall's
+`Tools/audio_map.json`, offset 0;
+`enabled` only when at least `min_coverage` (85 %) of the song is matched, the median lag is within `max_lag_ms`
+(30 ms) with `min_within_50ms` (70 %) of the windows within 50 ms, the stretch met its plan, and the key is the same;
+`replaces` names what Note Waterfall has now), `recordings-report.md` / `.json` and `accuracy/<song>.json`, what the
+recording says about the score, for correcting it later (nothing is changed here): the key offset (+n = the recording
+is n semitones higher) and tuning, the tempo ratio (recording seconds per score second; per measure p10 / median /
+p90, trend, drift from a constant tempo, measures the recording plays with other lengths), the structural
+differences with their measures, and the measures with low agreement after the retime.
+
+`recordings.json` (format 2): `routes`, every song: `route`, `why`, `facts` (vocal-staff notes, lyric syllables,
+orchestra notes), `p_sung`, `kind`, `p_kind`, `judged` (model, time, the question's hash, the raw answers) and yours,
+`decision` (`vocals` or `generated`); `links`, per song with candidates: `status`, `recording` (the pick; for review
+the suggestion), `variants` (`vocals`: a stem in the folder or "separated from the full mix"; `full`; `no_piano`) and
+`variant` (`vocals` for a sung song, none for a generated one), `confidence` (Choice confidence of the averaged
+orders), `p_same` (the pick's Noul), `p_none`, `consistent`, `why`, `alternatives`, `judged` (with the candidates and
+raw answers) and yours, `decision`: `{}` confirms the pick, `{"recording": "<path>"}` links another file,
+`{"recording": null}` rejects, `"variant": "vocals"|"full"|"no_piano"` chooses the file. `match` never changes a
+decision, and decides again from the stored answers when a question has not changed.
+
 ## Fidelity
 
 Checked against the 140 existing outputs, which the old scripts made from
@@ -612,14 +741,21 @@ pianovision/        the package (stdlib only)
   calibrate.py        compatibility-knob search used by verify --calibrate
   handedits.py        hand edits from Note Waterfall -> the scores (hands pull/review/apply)
   accompaniment.py    Note Waterfall's companion audio: render copies, MuseScore + Muse Sounds, probe, mp3
+  recordings.py       companion audio from recordings you own: inventory, routes and candidates (TypeSafe judgments),
+                      links file, references, align/retime/verify runs, accuracy summaries, audio_map proposal, report
+  separation.py       vocals stems (Demucs in another Python), cached by content; finding a separator
+  recmap.py           time maps between a recording and a song: DTW path -> pieces and gaps, the edit plan
   cli.py              python -m pianovision
   gui.py              the Piano Library window (GTK 4 / libadwaita)
   guimodel.py         what the window shows and does, without GTK (statuses, push plans, device status)
 desktop/            piano-library.sh (launcher), install-launcher.sh, the icon
 tools/              accompaniment_timing.py (the accompaniment's timing check; numpy, soundfile, librosa)
+                    recording_align.py (recordings: align, retime, verify; numpy, scipy, soundfile, librosa, ffmpeg)
+                    separate_vocals.py (recordings: Demucs vocals; run with [recordings] separator_python)
 pianovision.toml    settings
 scores.json         per-score options of `build` (titles, piano staves, partner scores)
 accompaniment.json  per-score options of `accompaniment` (relabelled instruments, techniques, ...)
+recordings.json     every song's companion route, recordings linked to the songs (`recordings match`), your decisions
 PianoVision/        generated library (git-ignored): *.json, .manifest.json, .attic/, NoteWaterfall/*.parts.json,
                     .arrangements/ (alignment reports of the partner songs)
 ```
