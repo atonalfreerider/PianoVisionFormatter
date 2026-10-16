@@ -58,12 +58,17 @@ class InventoryTest(unittest.TestCase):
                                         "O/Stem only_no_piano_split_by_lalalai.wav", "X/mosz-retime.wav", "Z/Song.mp3"])
         r = recs["B/Rach2/I/Concerto 2： I. Moderato.mp3"]
         self.assertEqual(sorted(r.files), ["full", "no_piano", "piano"])
-        self.assertEqual(r.default_variant(), "no_piano")
+        stem = "B/Rach2/I/Concerto 2： I. Moderato_no_piano_split_by_lalalai.mp3"
+        self.assertEqual(r.variants(), {"vocals": R.SEPARATED, "full": "B/Rach2/I/Concerto 2： I. Moderato.mp3",
+                                        "no_piano": stem})
+        self.assertEqual(r.default_variant(R.ROUTE_VOCALS), "vocals")
+        self.assertIsNone(r.default_variant(R.ROUTE_GENERATED))
         self.assertEqual(r.source(), "B/Rach2/I/Concerto 2： I. Moderato.mp3")
         whats = sorted(w for _rel, w in r.others)
         self.assertEqual(whats, ["another no_piano stem", "mixdown", "retimed no_piano stem"])
         stem = recs["O/Stem only_no_piano_split_by_lalalai.wav"]
         self.assertEqual(sorted(stem.files), ["no_piano", "piano"])
+        self.assertIsNone(stem.default_variant(R.ROUTE_VOCALS))         # no full mix to separate, no vocals stem
         self.assertEqual(stem.source(), "O/Stem only_no_piano_split_by_lalalai.wav")
         self.assertEqual(recs["Z/Song.mp3"].others, [("Z/full/Song.mp3", "copy of Z/Song.mp3")])
         self.assertEqual(recs["X/mosz-retime.wav"].derived, "retimed")
@@ -140,15 +145,14 @@ class JudgmentTest(unittest.TestCase):
         self.assertGreater(v["confidence"], 0.9)
         self.assertEqual(v["alternatives"], [])
 
-    def test_probability_spread_over_valid_recordings_links_the_one_with_a_stem(self):
+    def test_probability_spread_over_valid_recordings_is_linked(self):
         # two recordings of the same movement: the orders disagree, both are the same composition
-        v = R.decide(answers({"A.mp3": 0.6, "B/b.wav": 0.4, "C.mp3": 0.0, "none": 0.0},
-                             {"A.mp3": 0.4, "B/b.wav": 0.6, "C.mp3": 0.0, "none": 0.0}, [0.97, 0.98, 0.1]),
+        v = R.decide(answers({"A.mp3": 0.55, "B/b.wav": 0.45, "C.mp3": 0.0, "none": 0.0},
+                             {"A.mp3": 0.45, "B/b.wav": 0.55, "C.mp3": 0.0, "none": 0.0}, [0.97, 0.98, 0.1]),
                      [self.a, self.b, self.c], self.s)
-        self.assertEqual((v["status"], v["recording"]), (R.STATUS_LINKED, "B/b.wav"))
+        self.assertEqual((v["status"], v["recording"]), (R.STATUS_LINKED, "A.mp3"))
         self.assertFalse(v["consistent"])
-        self.assertIn("piano-removed stem", v["why"])
-        self.assertEqual([x["recording"] for x in v["alternatives"]], ["A.mp3"])
+        self.assertEqual([x["recording"] for x in v["alternatives"]], ["B/b.wav"])
 
     def test_pick_that_fails_its_same_composition_check_needs_review(self):
         v = R.decide(answers({"A.mp3": 0.8, "B/b.wav": 0.0, "C.mp3": 0.0, "none": 0.2},
@@ -183,6 +187,15 @@ class FakeLib:
         self.cfg = mock.Mock(output=out, scores=out)
 
 
+def route_answers(p_sung, kinds):
+    return {"sung": {"type": "noul", "noul": p_sung}, "kind": {"type": "choice", "probabilities": kinds},
+            "kind_reversed": {"type": "choice", "probabilities": kinds}}
+
+
+CLASSICAL = {"classical": 0.9, "film_score": 0.05, "popular_song": 0.03, "other": 0.02}
+POP = {"classical": 0.02, "film_score": 0.03, "popular_song": 0.93, "other": 0.02}
+
+
 class MatchTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="nw-rec-test-")
@@ -190,13 +203,18 @@ class MatchTest(unittest.TestCase):
         os.makedirs(os.path.join(self.music, "Rhapsody"))
         open(os.path.join(self.music, "Rhapsody", "Rhapsody In Blue_ Gershwin.mp3"), "wb").close()
         self.s = R.Settings(music_dir=self.music, links=os.path.join(self.tmp, "recordings.json"),
-                            work_dir=os.path.join(self.tmp, "work"), out_dir=os.path.join(self.tmp, "out"))
-        self.lib = FakeLib({"Gershwin/Rhapsody_in_Blue_Piano_solo.mscz": {"output": "gers_Rhapsody_in_Blue.json",
-                                                                          "title": "Rhapsody in Blue",
-                                                                          "artist": "Gershwin George"},
-                            "Chopin/Ballade.mscz": {"output": "chop_Ballade.json", "title": "Ballade No 1",
-                                                    "artist": "Chopin"}}, self.tmp)
-        self.files = [af("Rhapsody/Rhapsody In Blue_ Gershwin.mp3", 986.5)]
+                            work_dir=os.path.join(self.tmp, "work"), out_dir=os.path.join(self.tmp, "out"),
+                            audio_map=os.path.join(self.tmp, "none.json"))
+        self.lib = FakeLib({
+            "Gershwin/Rhapsody_in_Blue_Piano_solo.mscz": {"output": "gers_Rhapsody_in_Blue.json",
+                                                          "title": "Rhapsody in Blue", "artist": "Gershwin George"},
+            "Chopin/Ballade.mscz": {"output": "chop_Ballade.json", "title": "Ballade No 1", "artist": "Chopin"},
+            "70s/fountain-of-sorrow.mscz": {"output": "brow_Fountain_of_Sorrow.json", "title": "Fountain of Sorrow",
+                                            "artist": "Browne Jackson",
+                                            "parts": {"vocal": 177, "notes": {"orchestra": 177, "original": 900}}},
+            "Pop/Boston.mscz": {"output": "augu_Boston.json", "title": "Boston", "artist": "Augustana"}}, self.tmp)
+        self.files = [af("Rhapsody/Rhapsody In Blue_ Gershwin.mp3", 986.5),
+                      af("Fountain of Sorrow (Remastered).mp3", 412.0)]
         self.calls = []
 
     def tearDown(self):
@@ -204,62 +222,217 @@ class MatchTest(unittest.TestCase):
 
     def judge(self, state, questions, model):
         self.calls.append((state, questions, model))
+        if "sung" in questions:                      # the route
+            title = state["song"]["title"]
+            if title == "Rhapsody in Blue" or title.startswith("Ballade"):
+                return {"model": "jev-test", "answers": route_answers(0.03, CLASSICAL)}
+            return {"model": "jev-test", "answers": route_answers(0.97, POP)}
         keys = list(questions["pick"]["criteria"])
-        p = {k: (0.98 if k.startswith("Rhapsody/") else 0.02 / (len(keys) - 1)) for k in keys}
+        want = "Rhapsody/" if "Rhapsody" in state["song"]["title"] else "Fountain"
+        p = {k: (0.98 if k.startswith(want) else 0.02 / (len(keys) - 1)) for k in keys}
         return {"model": "jev-test", "answers": answers(p, p, [0.95] * (len(keys) - 1))}
 
     def run_match(self, **kw):
         with mock.patch.object(R, "scan_music", return_value=(self.files, [])):
             return R.match(self.lib, self.s, judge=self.judge, log=lambda m: None, **kw)
 
-    def test_links_file_and_its_decisions(self):
+    def link(self, rel):
+        return R.load_links(self.s.links)["links"][rel]
+
+    def test_routes_and_links(self):
         stats = self.run_match()
-        self.assertEqual((stats["asked"], stats["no_candidates"]), (1, 1))
-        state, qs, model = self.calls[0]
-        self.assertEqual(model, self.s.model)
-        self.assertEqual(state["song"]["title"], "Rhapsody in Blue")
-        with open(self.s.links, encoding="utf-8") as f:
-            d = json.load(f)
-        e = d["links"]["Gershwin/Rhapsody_in_Blue_Piano_solo.mscz"]
-        self.assertEqual((e["status"], e["recording"], e["variant"]),
-                         ("linked", "Rhapsody/Rhapsody In Blue_ Gershwin.mp3", "full"))
-        self.assertEqual(e["judged"]["model"], "jev-test")
-        self.assertEqual(R.effective_link(e), ("Rhapsody/Rhapsody In Blue_ Gershwin.mp3", "full", "auto"))
-        # unchanged question: not asked again
+        self.assertEqual((stats["routes_asked"], stats["asked"], stats["no_candidates"]), (4, 2, 2))
+        d = R.load_links(self.s.links)
+        self.assertEqual(d["format"], 2)
+        rt = d["routes"]
+        self.assertEqual(rt["Gershwin/Rhapsody_in_Blue_Piano_solo.mscz"]["route"], R.ROUTE_GENERATED)
+        self.assertEqual(rt["70s/fountain-of-sorrow.mscz"]["route"], R.ROUTE_VOCALS)
+        self.assertIn("177 vocal-staff notes", rt["70s/fountain-of-sorrow.mscz"]["why"])
+        self.assertEqual(rt["Pop/Boston.mscz"]["route"], R.ROUTE_VOCALS)            # the judgment: sung
+        self.assertEqual(rt["Pop/Boston.mscz"]["judged"]["answers"]["sung"], 0.97)
+        # an orchestral piece's recording is linked for the accuracy summary only: nothing to deliver
+        e = self.link("Gershwin/Rhapsody_in_Blue_Piano_solo.mscz")
+        self.assertEqual((e["status"], e["variant"]), ("linked", None))
+        self.assertEqual(e["variants"], {"vocals": R.SEPARATED, "full": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3"})
+        # a sung song's recording delivers its vocals
+        e = self.link("70s/fountain-of-sorrow.mscz")
+        self.assertEqual((e["recording"], e["variant"]), ("Fountain of Sorrow (Remastered).mp3", "vocals"))
+        jobs, skipped = R.jobs_for(self.lib, self.s, R.load_links(self.s.links))
+        kinds = {j.song.output: (j.kind, j.variant) for j in jobs}
+        self.assertEqual(kinds, {"gers_Rhapsody_in_Blue.json": ("diagnostic", ""),
+                                 "brow_Fountain_of_Sorrow.json": ("deliver", "vocals")})
+        summary = R.route_summary(R.load_links(self.s.links), self.s)
+        self.assertEqual([x["song"] for x in summary["vocals"]], ["brow_Fountain_of_Sorrow.json"])
+        self.assertEqual([(x["title"], x["artist"]) for x in summary["vocals_missing"]], [("Boston", "Augustana")])
+        self.assertEqual(sorted(x["song"] for x in summary["generated"]),
+                         ["chop_Ballade.json", "gers_Rhapsody_in_Blue.json"])
+
+    def test_unchanged_questions_are_not_asked_again_and_decisions_survive(self):
         self.run_match()
-        self.assertEqual(len(self.calls), 1)
-        # your decision survives a refresh
+        n = len(self.calls)
+        self.run_match()
+        self.assertEqual(len(self.calls), n)
+        # a stricter policy: no new request, a new verdict
+        self.s.same_min = 0.99
+        self.run_match()
+        self.assertEqual(len(self.calls), n)
+        self.assertEqual(self.link("70s/fountain-of-sorrow.mscz")["status"], R.STATUS_REVIEW)
+        self.s.same_min = 0.8
+        # your decisions survive a refresh
         self.assertEqual(R.decide_link(self.lib, self.s, "gers_Rhapsody_in_Blue.json", reject=True,
                                        log=lambda m: None), 0)
+        self.assertEqual(R.decide_route_for(self.lib, self.s, "augu_Boston.json", "generated", log=lambda m: None), 0)
         self.run_match(refresh=True)
-        self.assertEqual(len(self.calls), 2)
-        e = R.load_links(self.s.links)["links"]["Gershwin/Rhapsody_in_Blue_Piano_solo.mscz"]
-        self.assertEqual(e["decision"], {"recording": None})
-        self.assertIsNone(R.effective_link(e))
+        self.assertEqual(len(self.calls), 2 * n)
+        d = R.load_links(self.s.links)
+        self.assertEqual(d["links"]["Gershwin/Rhapsody_in_Blue_Piano_solo.mscz"]["decision"], {"recording": None})
+        self.assertEqual(R.effective_route(d["routes"]["Pop/Boston.mscz"]), R.ROUTE_GENERATED)
+        self.assertEqual(R.decide_route_for(self.lib, self.s, "augu_Boston.json", "auto", log=lambda m: None), 0)
+        self.assertEqual(R.effective_route(R.load_links(self.s.links)["routes"]["Pop/Boston.mscz"]), R.ROUTE_VOCALS)
 
-    def test_unchanged_questions_are_decided_again_from_their_stored_answers(self):
+    def test_confirm_another_variant_or_recording(self):
         self.run_match()
-        self.s.same_min = 0.99                   # a stricter policy: no new request, a new verdict
-        self.run_match()
-        self.assertEqual(len(self.calls), 1)
-        e = R.load_links(self.s.links)["links"]["Gershwin/Rhapsody_in_Blue_Piano_solo.mscz"]
-        self.assertEqual(e["status"], R.STATUS_REVIEW)
-        self.assertEqual(e["judged"]["answers"]["same"], [0.95])
-
-    def test_confirm_another_recording(self):
-        self.run_match()
-        self.assertEqual(R.decide_link(self.lib, self.s, "gers_Rhapsody_in_Blue.json", "nope.mp3",
+        self.assertEqual(R.decide_link(self.lib, self.s, "brow_Fountain_of_Sorrow.json", "nope.mp3",
                                        log=lambda m: None), 2)
-        self.assertEqual(R.decide_link(self.lib, self.s, "gers_Rhapsody_in_Blue.json",
-                                       "Rhapsody/Rhapsody In Blue_ Gershwin.mp3", variant="full",
+        self.assertEqual(R.decide_link(self.lib, self.s, "brow_Fountain_of_Sorrow.json", variant="full",
                                        log=lambda m: None), 0)
-        e = R.load_links(self.s.links)["links"]["Gershwin/Rhapsody_in_Blue_Piano_solo.mscz"]
-        self.assertEqual(R.effective_link(e), ("Rhapsody/Rhapsody In Blue_ Gershwin.mp3", "full", "confirmed"))
+        e = self.link("70s/fountain-of-sorrow.mscz")
+        self.assertEqual(R.effective_link(e), ("Fountain of Sorrow (Remastered).mp3", "full", "confirmed"))
 
     def test_dry_run_asks_nothing_and_writes_nothing(self):
         self.run_match(dry_run=True)
         self.assertEqual(self.calls, [])
         self.assertFalse(os.path.exists(self.s.links))
+
+
+class RouteTest(unittest.TestCase):
+    def setUp(self):
+        self.s = R.Settings()
+
+    def facts(self, vocal=0, lyrics=0, orchestra=0):
+        return {"vocal_notes": vocal, "lyric_syllables": lyrics, "orchestra_notes": orchestra}
+
+    def test_score_facts_from_the_manifest(self):
+        e = {"parts": {"vocal": 140, "lyrics": {"sources": ["piano", "vocal"], "syllables": 263},
+                       "notes": {"orchestra": 140, "original": 877}}}
+        self.assertEqual(R.score_facts(e), {"vocal_notes": 140, "lyric_syllables": 263, "orchestra_notes": 0})
+        self.assertEqual(R.score_facts({}), {"vocal_notes": 0, "lyric_syllables": 0, "orchestra_notes": 0})
+
+    def test_the_rule(self):
+        d = lambda facts, p, kinds: R.decide_route(facts, route_answers(p, kinds), self.s)
+        # classical comes first: an aria with words is still generated
+        self.assertEqual(d(self.facts(lyrics=300), 0.95, CLASSICAL)["route"], R.ROUTE_GENERATED)
+        self.assertEqual(d(self.facts(lyrics=300), 0.95, CLASSICAL)["why"], "classical (p 0.90), sung")
+        # the score's vocal line decides before the judgment
+        self.assertEqual(d(self.facts(vocal=177), 0.1, POP)["route"], R.ROUTE_VOCALS)
+        self.assertEqual(d(self.facts(), 0.9, POP)["route"], R.ROUTE_VOCALS)
+        self.assertEqual(d(self.facts(), 0.1, POP)["route"], R.ROUTE_GENERATED)
+        film = {"classical": 0.1, "film_score": 0.85, "popular_song": 0.03, "other": 0.02}
+        self.assertEqual(d(self.facts(orchestra=400), 0.05, film)["route"], R.ROUTE_GENERATED)
+        self.assertEqual(d(self.facts(), 0.5, POP)["route"], R.ROUTE_REVIEW)
+        # a few stray syllables are not a vocal line
+        self.assertEqual(d(self.facts(lyrics=7), 0.5, POP)["route"], R.ROUTE_REVIEW)
+        # not judged yet
+        self.assertEqual(R.decide_route(self.facts(vocal=40), None, self.s)["route"], R.ROUTE_VOCALS)
+        self.assertEqual(R.decide_route(self.facts(), None, self.s)["route"], R.ROUTE_REVIEW)
+
+    def test_both_option_orders_are_averaged(self):
+        a = route_answers(0.9, POP)
+        a["kind_reversed"]["probabilities"] = {"classical": 0.9, "film_score": 0.0, "popular_song": 0.1, "other": 0.0}
+        v = R.decide_route(self.facts(), a, self.s)
+        self.assertAlmostEqual(v["p_kind"]["classical"], 0.46)
+        self.assertEqual(v["route"], R.ROUTE_VOCALS)
+
+    def test_questions(self):
+        q = R.route_questions(R.Song("x.mscz", "x.json", "X", "Y"))
+        self.assertEqual(q["sung"]["type"], "noul")
+        self.assertEqual(list(q["kind"]["criteria"]), list(R.KINDS))
+        self.assertEqual(list(q["kind_reversed"]["criteria"]), list(reversed(list(R.KINDS))))
+
+    def test_your_decision_wins(self):
+        self.assertEqual(R.effective_route({"route": R.ROUTE_GENERATED, "decision": "vocals"}), R.ROUTE_VOCALS)
+        self.assertEqual(R.effective_route({"route": R.ROUTE_VOCALS}), R.ROUTE_VOCALS)
+        self.assertEqual(R.effective_route(None), R.ROUTE_REVIEW)
+
+
+class ProcessRoutingTest(unittest.TestCase):
+    """process() with the analysis tool and the separation mocked: what each route makes."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="nw-rec-proc-")
+        self.music = os.path.join(self.tmp, "music")
+        os.makedirs(self.music)
+        self.full = os.path.join(self.music, "Song.mp3")
+        with open(self.full, "wb") as f:
+            f.write(b"x" * 100)
+        self.s = R.Settings(music_dir=self.music, work_dir=os.path.join(self.tmp, "work"),
+                            out_dir=os.path.join(self.tmp, "out"), stems_dir=os.path.join(self.tmp, "stems"),
+                            links=os.path.join(self.tmp, "recordings.json"))
+        self.recs = {"Song.mp3": R.Recording("Song.mp3", {"full": "Song.mp3"})}
+        self.song = R.Song("Pop/song.mscz", "song.json", "Song", "Artist")
+        self.tools = []
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def fake_tool(self, s, args, log):
+        self.tools.append(args[0])
+        out = args[args.index("--out") + 1]
+        if args[0] == "align":
+            al = {"map": {"pieces": [{"quality": 0.6, "anchors": [[0.0, 5.0], [100.0, 105.0]]}]}, "gaps": [],
+                  "song_end": 100.0, "duration": 120.0, "key": {"offset": 0, "margin": 0.3}, "tuning_cents": 2.0,
+                  "tempo": {"ratio": 1.0}, "path_similarity": 0.5, "refine": {}}
+            with open(out, "w") as f:
+                json.dump(al, f)
+
+    def run_job(self, route, variant, retime=True):
+        job = R.Job(self.song, {}, "Song.mp3", variant, "auto", route)
+        ref = {"sig": "s1", "measures": [], "song_end": 100.0}
+        with mock.patch.object(R, "write_reference", return_value=(os.path.join(self.tmp, "ref.json"), ref)), \
+                mock.patch.object(R, "_run_tool", side_effect=self.fake_tool):
+            return R.process(None, self.s, job, self.recs, {}, False, retime, lambda m: None)
+
+    def test_generated_route_is_a_diagnostic_without_delivery(self):
+        with mock.patch("pianovision.separation.vocals_stem") as sep:
+            r = self.run_job(R.ROUTE_GENERATED, "", retime=False)
+        sep.assert_not_called()
+        self.assertEqual((r["kind"], r.get("mp3")), ("diagnostic", None))
+        self.assertFalse(r["checks"]["ok"])
+        self.assertIn("accuracy summary only", r["checks"]["problems"][0])
+        self.assertEqual(self.tools, ["align"])
+
+    def test_vocals_wait_for_the_separation(self):
+        from pianovision import separation as SEP
+        with mock.patch.object(SEP, "vocals_stem", side_effect=SEP.SeparationUnavailable("no demucs")):
+            r = self.run_job(R.ROUTE_VOCALS, "vocals")
+        self.assertEqual(r["pending"], "separation")
+        self.assertIn("no demucs", r["checks"]["problems"][0])
+        self.assertEqual(self.tools, ["align"])
+
+    def test_a_stem_without_singing_is_not_used(self):
+        from pianovision import separation as SEP
+        stem = os.path.join(self.tmp, "vocals.wav")
+        open(stem, "wb").close()
+        with mock.patch.object(SEP, "vocals_stem", return_value=stem), \
+                mock.patch.object(SEP, "vocal_activity", return_value={"activity": 0.02, "vocals_to_mix_db": -38.0,
+                                                                         "blocks": 200}) as act:
+            r = self.run_job(R.ROUTE_VOCALS, "vocals")
+        self.assertEqual(act.call_args.kwargs["start"], 5.0)            # the matched part of the recording
+        self.assertEqual(act.call_args.kwargs["end"], 105.0)
+        self.assertIn("almost no singing", r["checks"]["problems"][0])
+        self.assertNotIn("retime", self.tools)
+
+    def test_recording_files(self):
+        r = R.Recording("A/x.mp3", {"full": "A/x.mp3", "vocals": "A/x_vocals_split_by_lalalai.mp3"})
+        recs = {"A/x.mp3": r}
+        job = R.Job(self.song, {}, "A/x.mp3", "vocals", "auto", R.ROUTE_VOCALS)
+        src, deliver, variant = R.recording_files(self.s, job, recs)
+        self.assertTrue(deliver.endswith("A/x_vocals_split_by_lalalai.mp3"))      # a stem in the folder
+        job = R.Job(self.song, {}, "Song.mp3", "vocals", "auto", R.ROUTE_VOCALS)
+        self.assertEqual(R.recording_files(self.s, job, self.recs)[1:], (None, "vocals"))   # to be separated
+        job = R.Job(self.song, {}, "Song.mp3", "no_piano", "auto", R.ROUTE_VOCALS)
+        with self.assertRaises(R.RecordingsError):
+            R.recording_files(self.s, job, self.recs)
 
 
 class EffectiveLinkTest(unittest.TestCase):
@@ -306,7 +479,8 @@ class OutputsTest(unittest.TestCase):
         self.assertEqual(R.song_notes(song, None), [[0.0, 1.0, 60, 0.5, "p"]])
 
     def result(self, **kw):
-        r = {"song": "x.json", "recording": "x.mp3", "variant": "full", "mp3": os.path.expanduser("~/o/x.mp3"),
+        r = {"song": "x.json", "recording": "x.mp3", "variant": "vocals", "kind": "deliver",
+             "mp3": os.path.expanduser("~/o/x.mp3"),
              "alignment": {"coverage_with_weak": 0.97, "key_offset": 0, "tempo": {"ratio": 1.1}},
              "retime": {"fidelity_p95_ms": 5.0},
              "verify": {"lag": {"median_ms": 4.0, "within_50ms": 0.9, "windows": 30, "windows_total": 40}},
@@ -336,7 +510,10 @@ class OutputsTest(unittest.TestCase):
             no = self.result(song="y.json", alignment={"coverage_with_weak": 0.5, "key_offset": 0,
                                                        "tempo": {"ratio": 1.0}})
             no["checks"] = R.checks(s, no)
-            p = R.proposal(s, {"songs": {"x.json": ok, "y.json": no}})["songs"]
+            diag = self.result(song="z.json", kind="diagnostic")
+            diag["checks"] = {"ok": False, "problems": ["generated"]}
+            p = R.proposal(s, {"songs": {"x.json": ok, "y.json": no, "z.json": diag}})["songs"]
+            self.assertNotIn("z.json", p)
             self.assertEqual(p["x.json"]["audio"], "~/o/x.mp3")
             self.assertEqual((p["x.json"]["enabled"], p["x.json"]["replaces"]), (True, "~/render.mp3"))
             self.assertFalse(p["y.json"]["enabled"])

@@ -1,21 +1,5875 @@
 {
   "_comment": [
-    "Recordings you own linked to the library's songs, for Note Waterfall's companion audio",
-    "(`python3 -m pianovision recordings`, pianovision/recordings.py). Keys of 'links' are score paths relative to",
-    "the scores folder; recording paths are relative to [recordings] music_dir. Written by `recordings match`:",
+    "Note Waterfall's companion audio from recordings you own (`python3 -m pianovision recordings`,",
+    "pianovision/recordings.py). Keys are score paths relative to the scores folder; recording paths are relative",
+    "to [recordings] music_dir. Written by `recordings match`; yours is every 'decision', which is never overwritten.",
+    "",
+    "routes: every song of the library, what its companion is:",
+    "  route         'generated' (the score's orchestra rendered by `pianovision accompaniment`, piano muted:",
+    "                classical and instrumental music; never a recording), 'vocals' (the singing of a recording",
+    "                you own, isolated and retimed: sung pop and film songs), 'review' (undecided: nothing is made)",
+    "  why, facts    the rule that decided and the score's facts (vocal-staff notes, lyric syllables, orchestra notes)",
+    "  p_sung, kind  the TypeSafe Noul 'is it sung' and the Choice of the kind of music (p_kind: both orders averaged)",
+    "  judged        model, time, the question's hash and the raw answers (thresholds can change without a request)",
+    "  decision      yours: 'vocals' or 'generated' (`recordings route SONG vocals|generated|auto`)",
+    "",
+    "links: songs with candidate recordings, the TypeSafe pick among them:",
     "  status        'linked' (used), 'review' (needs your decision; not used until you confirm), 'none'",
-    "  recording     the pick (or the suggestion, for review); variants: the full mix and the piano-removed stem",
-    "  variant       the file that is retimed and delivered: 'no_piano' when the recording has one, else 'full'",
+    "  recording     the pick (or the suggestion, for review); variants: 'vocals' (a vocals stem in the folder, or",
+    "                separated from the full mix), 'full', 'no_piano'",
+    "  variant       the file that is retimed and delivered: 'vocals' for a sung song; none for a generated one (its",
+    "                recording is aligned for the accuracy summary only)",
     "  confidence    the TypeSafe Choice confidence (both candidate orders averaged); p_none; p_same: the Noul",
     "                'same composition' of the recording; consistent: both orders picked the same",
     "  alternatives  other candidates that look like the same composition, or carried probability",
-    "  judged        model, time, the hash of the question (match asks again only when it changes, or --refresh),",
-    "                the candidates and the raw answers (match decides again from them: thresholds may change)",
-    "Yours (never overwritten; `recordings confirm|reject` writes it):",
-    "  decision      {} confirms the pick; {\"recording\": \"<path>\"} links another recording; {\"recording\": null}",
-    "                rejects; \"variant\": \"full\" | \"no_piano\" chooses the file"
+    "  judged        model, time, the question's hash, the candidates and the raw answers",
+    "  decision      yours (`recordings confirm|reject`): {} confirms the pick; {\"recording\": \"<path>\"} links",
+    "                another recording; {\"recording\": null} rejects; \"variant\": \"vocals\", \"full\" or",
+    "                \"no_piano\""
   ],
-  "format": 1,
+  "format": 2,
+  "routes": {
+    "70s/A_Natural_Woman_You_make_me_feel.mscz": {
+      "song": "wexl_You_Make_Me_Feel_Like.json",
+      "title": "(You Make Me Feel Like)",
+      "artist": "Wexler Words And Music By Gerry Goffin Carole King And Jerry",
+      "route": "vocals",
+      "why": "sung: the score has 255 lyric syllables",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 255,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.98,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:15",
+        "key": "335fd440ea417a0f",
+        "answers": {
+          "sung": 0.98,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "70s/Doctor_My_Eyes.mscz": {
+      "song": "bark_Doctor_My_Eyes_Jackson_Harrower_20_Senior_Solo.json",
+      "title": "Doctor My Eyes Jackson Harrower '20 Senior Solo",
+      "artist": "Barksdale Opb Jackson Browne Arr A",
+      "route": "vocals",
+      "why": "sung: the score has 140 vocal-staff notes and 263 lyric syllables",
+      "facts": {
+        "vocal_notes": 140,
+        "lyric_syllables": 263,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.97,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:15",
+        "key": "2715e472e481452f",
+        "answers": {
+          "sung": 0.97,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "70s/Love_Has_No_Pride.mscz": {
+      "song": "titu_Love_Has_No_Pride.json",
+      "title": "Love Has No Pride",
+      "artist": "Titus Words Music By Eric Kaz Libby",
+      "route": "vocals",
+      "why": "sung: the score has 294 vocal-staff notes and 239 lyric syllables",
+      "facts": {
+        "vocal_notes": 294,
+        "lyric_syllables": 239,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.91,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.005,
+        "film_score": 0.02,
+        "popular_song": 0.975,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:15",
+        "key": "03f45a5ff6bd4aa8",
+        "answers": {
+          "sung": 0.91,
+          "kind": {
+            "classical": 0.01,
+            "film_score": 0.03,
+            "popular_song": 0.96,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.99,
+            "film_score": 0.01,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "70s/Moonraker_-_Richard_Wilkinson.mscz": {
+      "song": "wilk_moonraker.json",
+      "title": "moonraker",
+      "artist": "Wilkinson Richard",
+      "route": "review",
+      "why": "unclear whether it is sung (p 0.71)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.71,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.005,
+        "film_score": 0.45,
+        "popular_song": 0.535,
+        "other": 0.01
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:15",
+        "key": "3a9747658dcb88cb",
+        "answers": {
+          "sung": 0.71,
+          "kind": {
+            "classical": 0.01,
+            "film_score": 0.58,
+            "popular_song": 0.4,
+            "other": 0.01
+          },
+          "kind_reversed": {
+            "other": 0.01,
+            "popular_song": 0.67,
+            "film_score": 0.32,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "70s/Pink_Floyd_-_The_Great_Gig_in_the_Sky.mscz": {
+      "song": "floy_The_Great_Gig_in_the_Sky__The_Dark_Side_of_the_Moon.json",
+      "title": "The Great Gig in the Sky - The Dark Side of the Moon",
+      "artist": "Floyd Pink",
+      "route": "vocals",
+      "why": "sung (p_sung 0.97; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.97,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:15",
+        "key": "68fd834db8ae9cb9",
+        "answers": {
+          "sung": 0.97,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "70s/The_Pink_Panther___Jacob_Koller.mscz": {
+      "song": "s_The_Pink_Panther___Jacob_Koller.json",
+      "title": "The Pink Panther   Jacob Koller",
+      "artist": "S",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.09)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.09,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.005,
+        "film_score": 0.635,
+        "popular_song": 0.355,
+        "other": 0.005
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:15",
+        "key": "88bfe9637df347ef",
+        "answers": {
+          "sung": 0.09,
+          "kind": {
+            "classical": 0.01,
+            "film_score": 0.7,
+            "popular_song": 0.29,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.01,
+            "popular_song": 0.42,
+            "film_score": 0.57,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "70s/fountain-of-sorrow.mscz": {
+      "song": "brow_Fountain_of_Sorrow.json",
+      "title": "Fountain of Sorrow",
+      "artist": "Browne Jackson",
+      "route": "vocals",
+      "why": "sung: the score has 177 vocal-staff notes",
+      "facts": {
+        "vocal_notes": 177,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.61,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.165,
+        "film_score": 0.045,
+        "popular_song": 0.71,
+        "other": 0.08
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:15",
+        "key": "bd079572a47a7cff",
+        "answers": {
+          "sung": 0.61,
+          "kind": {
+            "classical": 0.16,
+            "film_score": 0.05,
+            "popular_song": 0.71,
+            "other": 0.08
+          },
+          "kind_reversed": {
+            "other": 0.08,
+            "popular_song": 0.71,
+            "film_score": 0.04,
+            "classical": 0.17
+          }
+        }
+      }
+    },
+    "70s/sky-blue-and-black-jackson-browne-implode-fix.mscz": {
+      "song": "arra_Untitled_score__Subtitle.json",
+      "title": "Untitled score - Subtitle",
+      "artist": "Arranger Composer",
+      "route": "vocals",
+      "why": "sung (p_sung 0.87; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.87,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.09,
+        "popular_song": 0.905,
+        "other": 0.005
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "b4f21c16f890a822",
+        "answers": {
+          "sung": 0.87,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.06,
+            "popular_song": 0.94,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.01,
+            "popular_song": 0.87,
+            "film_score": 0.12,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Chopin/Ballade_No._1_G-Minor.mscz": {
+      "song": "chop_Ballade_No_1_in_G_Minor__Op_23.json",
+      "title": "Ballade No. 1 in G Minor - Op. 23",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:15",
+        "key": "76957a65600e04b1",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Ballade_No._2_F-Major.mscz": {
+      "song": "chop_Ballade_No_2__F_Major.json",
+      "title": "Ballade No 2 - F Major",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:15",
+        "key": "3da12c3cad69290c",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Ballade_No._4_F-Minor.mscz": {
+      "song": "chop_Ballade_No_4_in_F_Minor__Op_52.json",
+      "title": "Ballade No. 4 in F Minor - Op. 52",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:15",
+        "key": "7aea9186a42c88ff",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Etude_in_E_Major_Opus_10_No._3.mscz": {
+      "song": "chop_tude_in_E_Major__Op_10_No_3.json",
+      "title": "Étude in E Major - Op. 10 No. 3",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 0.99)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 0.995,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.005
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:15",
+        "key": "f776eb7233100fa3",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 0.99,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.01
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Fantasie-Impromptu.mscz": {
+      "song": "chop_FantastieImpromptu.json",
+      "title": "Fantastie-Impromptu",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "e3ef0e5fa41dbc9c",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Mazurka_Op._68_No._3.mscz": {
+      "song": "chop_Mazurka__Op_68_No3.json",
+      "title": "Mazurka - Op. 68 No.3",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 0.99)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 0.995,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.005
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "4f1bbc5d465d2a7a",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 0.99,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.01
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Nocturne_in_B_Minor_Opus_9_No._1.mscz": {
+      "song": "chop_Nocturne_in_B_Minor__Op_9_No_1.json",
+      "title": "Nocturne in B♭ Minor - Op. 9 No. 1",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "543cb345e0ca8dbf",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Nocturne_in_C_Minor_piano_solo.mscz": {
+      "song": "chop_Nocturne_in_C_Minor__Op_48___No_1.json",
+      "title": "Nocturne in C Minor - Op. 48 - , No. 1",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "c558ef4452ac300a",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Nocturne_in_C_sharp_Minor.mscz": {
+      "song": "chop_Nocturne_in_C_sharp_Minor.json",
+      "title": "Nocturne in C sharp Minor",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "0be00979d8d9b539",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Nocturne_in_D-Flat_Major_Op._27_No._2.mscz": {
+      "song": "chop_Nocturne_in_DFlat_Major__Op_27___No_2.json",
+      "title": "Nocturne in D-Flat Major - Op. 27 - , No. 2",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "49b42715f0b168d4",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Nocturne_in_E_Flat_Major_Op_9_No_2.mscz": {
+      "song": "chop_Nocturne__Op_9_No2.json",
+      "title": "Nocturne - Op. 9 No.2",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "ceccbd314a73547b",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Nocturne_in_E_Minor_Op._72_No._1.mscz": {
+      "song": "chop_Nocturne_in_E_Minor__Op_72___No_1.json",
+      "title": "Nocturne in E Minor - Op. 72 - , No. 1",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "434baff5aaae183a",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Polonaise_in_A_Major_Heroic_Polonaise.mscz": {
+      "song": "chop_Polonaise__Op_53.json",
+      "title": "Polonaise - Op. 53",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "a484e07ea4cbdd82",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Prelude_in_A_Major_Opus_28_No._7.mscz": {
+      "song": "chop_Prlude_in_A_Major__Op_28_No_7.json",
+      "title": "Prélude in A Major - Op. 28 No. 7",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "66332964d04f3ceb",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Prelude_in_E_Minor_No._4_Op._28.mscz": {
+      "song": "chop_Prlude_in_E_Minor__Op_28_No_4.json",
+      "title": "Prélude in E Minor - Op. 28 No. 4",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "19420503c3b0b44d",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Waltz-opus-69-no-2-in-b-minor.mscz": {
+      "song": "chop_Waltz_in_B_Minor__Op_69_No_2.json",
+      "title": "Waltz in B Minor - Op. 69 No. 2",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "2e0b5334c292bd36",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Waltz_Grande_valse_brillante_Op.18.mscz": {
+      "song": "chop_Grande_Valse_Brillante__Op_18_No1.json",
+      "title": "Grande Valse Brillante - Op. 18 No.1",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "1e279a48181bf4f4",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Waltz_Op.64_No.1_Valse_Du_Petit_Chien_Minute_Waltz.mscz": {
+      "song": "chop_Valse_Du_Petit_Chien__Op_64_No_1.json",
+      "title": "Valse Du Petit Chien - Op. 64 No. 1",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "f6604b45313843f4",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Waltz_Opus_64_No._2.mscz": {
+      "song": "chop_Drei_Walzer__Op_64_No_2__fr_das_Pianoforte__Frau_Nathaniel_von_Rothschild_gewidmet.json",
+      "title": "Drei Walzer - Op. 64 No. 2 - für das Pianoforte . Frau Nathaniel von Rothschild gewidmet.",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "b56b63f2b57d9065",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/Waltz_in_A_Minor.mscz": {
+      "song": "chop_Waltz_in_A_minor.json",
+      "title": "Waltz in A minor",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "3c62a6c5e0f6368e",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/grande-polonaise-brillante-op-22.mscz": {
+      "song": "chop_Grande_Polonaise_Brillante.json",
+      "title": "Grande Polonaise Brillante",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "b65bcc157b3da430",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Chopin/polonaise-in-a-major-op-40-no-1-frederic-chopin.mscz": {
+      "song": "chop_Polonaise_in_A_Major_Military_Polonaise__Op_40_No_1.json",
+      "title": "Polonaise in A Major, “Military Polonaise” - Op. 40 No. 1",
+      "artist": "Chopin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.01,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "924e73d606973094",
+        "answers": {
+          "sung": 0.01,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Dvorak/serenade-for-strings-in-e-major-op-22-tempo-di-valse-antonin-dvorak-piano-ver.mscz": {
+      "song": "dvor_Serenade_for_Strings_in_E_Major__Op_22__II_Tempo_di_Valse__Piano_ver.json",
+      "title": "Serenade for Strings in E Major - Op. 22 - II: Tempo di Valse - Piano ver.",
+      "artist": "Dvorak Antonin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "188558de7415f19a",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Dvorak/slavonic-dance-op-72-no-2-for-solo-piano.mscz": {
+      "song": "limb_Slavonic_Dance__No_2_for_Solo_Piano__Op_72.json",
+      "title": "Slavonic Dance, , No. 2 for Solo Piano - Op. 72",
+      "artist": "Limbo A Dvorak Arr By A",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "006ac92bdb97f2f4",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Dvorak/symphony-no-9-mvt-4-allegro-con-fuoco-antonin-dvorak.mscz": {
+      "song": "dvor_symphonyno9mvt4allegroconfuocoantonindvorak.json",
+      "title": "symphony-no-9-mvt-4-allegro-con-fuoco-antonin-dvorak",
+      "artist": "Dvorak",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "0e72290676e28619",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Film/(I am a Poor) Wayfaring Stranger.mscz": {
+      "song": "film_I_am_a_Poor_Wayfaring_Stranger__Arrangement_based_on_1917.json",
+      "title": "(I am a Poor) Wayfaring Stranger - Arrangement based on \"1917\"",
+      "artist": "Film",
+      "route": "vocals",
+      "why": "sung: the score has 68 lyric syllables",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 68,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.8,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.655,
+        "popular_song": 0.34,
+        "other": 0.005
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "7c2863338664b5bd",
+        "answers": {
+          "sung": 0.8,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.79,
+            "popular_song": 0.21,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.01,
+            "popular_song": 0.47,
+            "film_score": 0.52,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Adventures-Robin-Hood/The_Adventures_of_Robin_Hood__Erich_Wolfgang_Korngold_Banquet_at_Nottingham.mscz": {
+      "song": "korn_Banquet_at_Nottingham__The_Adventures_of_Robin_Hood__1938.json",
+      "title": "Banquet at Nottingham - The Adventures of Robin Hood - 1938",
+      "artist": "Korngold Erich Wolfgang",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.09)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.09,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "c11b333ffeaa33d5",
+        "answers": {
+          "sung": 0.09,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Bond/From_Russia_with_Love__Lionel_Bart__From_the_film_007_James_Bond_series.mscz": {
+      "song": "saka_From_Russia_with_Love__From_007_James_Bond_series.json",
+      "title": "From Russia with Love - (From 007 James Bond series)",
+      "artist": "Sakamoto Music By Lionel Bart Arranged By Shuko",
+      "route": "vocals",
+      "why": "sung (p_sung 0.93; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.93,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.04,
+        "popular_song": 0.96,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "452b770b1adf3e32",
+        "answers": {
+          "sung": 0.93,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.06,
+            "popular_song": 0.94,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.98,
+            "film_score": 0.02,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Bond/James_Bond_-_Nobody_does_it_better.mscz": {
+      "song": "simo_Nobody_Does_it_Better__James_Bond_The_Spy_Who_Loved_Me.json",
+      "title": "Nobody Does it Better - James Bond The Spy Who Loved Me",
+      "artist": "Simon Carly",
+      "route": "vocals",
+      "why": "sung (p_sung 0.97; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.97,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.025,
+        "popular_song": 0.975,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "9d2a74f587cb1969",
+        "answers": {
+          "sung": 0.97,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.04,
+            "popular_song": 0.96,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.99,
+            "film_score": 0.01,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Bond/No_Time_To_Die_Piano_Arrangement.mscz": {
+      "song": "eili_No_Time_To_Die__Xenobii_Piano_Arrangement.json",
+      "title": "No Time To Die - Xenobii Piano Arrangement",
+      "artist": "Eilish Billie",
+      "route": "vocals",
+      "why": "sung (p_sung 0.97; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.97,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.02,
+        "popular_song": 0.98,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "7ac490189f996825",
+        "answers": {
+          "sung": 0.97,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.04,
+            "popular_song": 0.96,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Bond/Nobody_Does_It_Better_Live__Marvin_Hamlisch.mscz": {
+      "song": "haml_Nobody_Does_It_Better__Marvin_Hamlisch_The_Spy_Who_Loved_Me_Soundtrack.json",
+      "title": "Nobody Does It Better - Marvin Hamlisch The Spy Who Loved Me Soundtrack",
+      "artist": "Hamlisch Music By Marvin",
+      "route": "vocals",
+      "why": "sung (p_sung 0.96; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.96,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.075,
+        "popular_song": 0.925,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "33513305b83254cf",
+        "answers": {
+          "sung": 0.96,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.12,
+            "popular_song": 0.88,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.97,
+            "film_score": 0.03,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Bond/Vesper.mscz": {
+      "song": "arno_Vesper_Theme__Casino_Royale.json",
+      "title": "Vesper Theme - Casino Royale",
+      "artist": "Arnold David",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.20)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.2,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.995,
+        "popular_song": 0.005,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "2f1c7066faa28dac",
+        "answers": {
+          "sung": 0.2,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.01,
+            "film_score": 0.99,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Bond/YOU_ONLY_LIVE_TWICE.mscz": {
+      "song": "barr_YOU_ONLY_LIVE_TWICE__from_James_Bond_007.json",
+      "title": "YOU ONLY LIVE TWICE - from James Bond 007",
+      "artist": "Barry Words By Leslie Bricusse And Music By John",
+      "route": "vocals",
+      "why": "sung (p_sung 0.98; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.98,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.01,
+        "popular_song": 0.99,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "aabc33199721be22",
+        "answers": {
+          "sung": 0.98,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.01,
+            "popular_song": 0.99,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.99,
+            "film_score": 0.01,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Bond/adele-skyfall.mscz": {
+      "song": "bond_Skyfall__Adele.json",
+      "title": "Skyfall - Adele",
+      "artist": "Bond James",
+      "route": "vocals",
+      "why": "sung (p_sung 0.98; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.98,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.005,
+        "popular_song": 0.995,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "a3ee651121888946",
+        "answers": {
+          "sung": 0.98,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.01,
+            "popular_song": 0.99,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Bond/all-in-a-days-work-tomorrow-never-dies.mscz": {
+      "song": "arno_All_in_a_Days_Work__Tomorrow_Never_Dies.json",
+      "title": "All in a Day's Work - Tomorrow Never Dies",
+      "artist": "Arnold David",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.24)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.24,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.925,
+        "popular_song": 0.075,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "b512740723dc5d90",
+        "answers": {
+          "sung": 0.24,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.95,
+            "popular_song": 0.05,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.1,
+            "film_score": 0.9,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Cha-Cha-West-Side-Story-Bernstein.mscz": {
+      "song": "bern_ChaCha__West_Side_Story.json",
+      "title": "Cha-Cha - West Side Story",
+      "artist": "Bernstein Leonard",
+      "route": "review",
+      "why": "unclear whether it is sung (p 0.60)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.6,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.005,
+        "film_score": 0.3,
+        "popular_song": 0.695,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "5ee887ce6fa5f33d",
+        "answers": {
+          "sung": 0.6,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.37,
+            "popular_song": 0.63,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.76,
+            "film_score": 0.23,
+            "classical": 0.01
+          }
+        }
+      }
+    },
+    "Film/Chevaliers_de_Sangreal_-_from_The_DaVinci_Code_by_Hans_Zimmer.mscz": {
+      "song": "zimm_Chevaliers_de_Sangreal__from_The_DaVinci_Code.json",
+      "title": "Chevaliers de Sangreal - from \"The DaVinci Code\"",
+      "artist": "Zimmer Hans",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.11)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.11,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "ce1d0e4f4972dfcb",
+        "answers": {
+          "sung": 0.11,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Didn't-I-Do-Well-James-Newton-Howard-piano-solo.mscz": {
+      "song": "howa_Didnt_I_Do_Well__Red_Sparrow_piano_solo.json",
+      "title": "Didn't I Do Well? - Red Sparrow",
+      "artist": "Howard James Newton",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.05)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.05,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "3a2e1dc3cca32161",
+        "answers": {
+          "sung": 0.05,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Didn't-I-Do-Well-James-Newton-Howard.mscz": {
+      "song": "howa_Didnt_I_Do_Well__Red_Sparrow.json",
+      "title": "Didn't I Do Well? - Red Sparrow",
+      "artist": "Howard James Newton",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.07)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 485
+      },
+      "p_sung": 0.07,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:16",
+        "key": "81ea6bb6601a878a",
+        "answers": {
+          "sung": 0.07,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Disney/A_Dream_Is_A_Wish_Your_Heart_Makes.mscz": {
+      "song": "disn_A_Dream_Is_a_Wish_Your_Heart_Makes__from_2015_Disneys_Cinderella.json",
+      "title": "A Dream Is a Wish Your Heart Makes - from 2015 Disney's \"Cinderella\"",
+      "artist": "Disney",
+      "route": "vocals",
+      "why": "sung (p_sung 0.98; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.98,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.01,
+        "popular_song": 0.99,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "12c864885ab75215",
+        "answers": {
+          "sung": 0.98,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.02,
+            "popular_song": 0.98,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Disney/Colours_of_the_wind_-_Pocahontas.mscz": {
+      "song": "kart_colours_of_the_wind.json",
+      "title": "colours of the wind",
+      "artist": "Kartoffelme",
+      "route": "vocals",
+      "why": "sung (p_sung 0.97; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.97,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.025,
+        "popular_song": 0.975,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "e295d87b8130e7f6",
+        "answers": {
+          "sung": 0.97,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.04,
+            "popular_song": 0.96,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.99,
+            "film_score": 0.01,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Disney/Cruella_De_Vil.mscz": {
+      "song": "leve_Cruella_De_Vil.json",
+      "title": "Cruella De Vil",
+      "artist": "Leven Composed By Mel",
+      "route": "vocals",
+      "why": "sung (p_sung 0.90; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.9,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.49,
+        "popular_song": 0.51,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "71ba051469e81b13",
+        "answers": {
+          "sung": 0.9,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.62,
+            "popular_song": 0.38,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.64,
+            "film_score": 0.36,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Disney/Hellfire_Hunchback_of_Notre_Dame.mscz": {
+      "song": "menk_Hellfire__Hunchback_of_Notre_Dame.json",
+      "title": "Hellfire - Hunchback of Notre Dame",
+      "artist": "Menken Allen",
+      "route": "vocals",
+      "why": "sung (p_sung 0.98; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.98,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.06,
+        "popular_song": 0.94,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "588094c4daed8b14",
+        "answers": {
+          "sung": 0.98,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.1,
+            "popular_song": 0.9,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.98,
+            "film_score": 0.02,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Disney/HundredAcreWood.mscz": {
+      "song": "b_Hundred_Acre_Wood__Winnie_the_Pooh.json",
+      "title": "Hundred Acre Wood - \"Winnie the Pooh\"",
+      "artist": "B Hazim Azlan Op",
+      "route": "vocals",
+      "why": "sung (p_sung 0.80; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.8,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.675,
+        "popular_song": 0.32,
+        "other": 0.005
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "b2ddf353b62a3a5a",
+        "answers": {
+          "sung": 0.8,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.76,
+            "popular_song": 0.24,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.01,
+            "popular_song": 0.4,
+            "film_score": 0.59,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Disney/Linus_and_Lucy_Peanuts_-_Vince_Guaraldi.mscz": {
+      "song": "guar_Linus_and_Lucy.json",
+      "title": "Linus and Lucy",
+      "artist": "Guaraldi By Vince",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.03)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.81,
+        "popular_song": 0.19,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "b47cf626fc40ebaf",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.81,
+            "popular_song": 0.19,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.19,
+            "film_score": 0.81,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Disney/Part_of_Your_World.mscz": {
+      "song": "menk_Part_of_Your_World__The_Little_Mermaid.json",
+      "title": "Part of Your World - The Little Mermaid",
+      "artist": "Menken Alan",
+      "route": "vocals",
+      "why": "sung (p_sung 0.99; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.99,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.01,
+        "popular_song": 0.99,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "209dfab6afb73c07",
+        "answers": {
+          "sung": 0.99,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.02,
+            "popular_song": 0.98,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Disney/You'll_Be_In_My_Heart_Broadway.mscz": {
+      "song": "coll_Youll_Be_In_My_Heart__Tarzan__The_Broadway_Musical.json",
+      "title": "You'll Be In My Heart - Tarzan - The Broadway Musical",
+      "artist": "Collins Phil",
+      "route": "vocals",
+      "why": "sung (p_sung 0.98; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.98,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "6bd941041c8ae126",
+        "answers": {
+          "sung": 0.98,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Disney/love-led-us-here.mscz": {
+      "song": "weil_Love_Led_Us_Here__Muppet_Treasure_Island.json",
+      "title": "Love Led Us Here - Muppet Treasure Island",
+      "artist": "Weil Barry Mann Cynthia",
+      "route": "vocals",
+      "why": "sung (p_sung 0.97; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.97,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.01,
+        "popular_song": 0.99,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "9e4a6f38f551489b",
+        "answers": {
+          "sung": 0.97,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.01,
+            "popular_song": 0.99,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.99,
+            "film_score": 0.01,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/ForLoveOfAPrincess.mscz": {
+      "song": "horn_FOR_THE_LOVE_OF_A_PRINCESS__From_The_Movie_BRAVEHEART.json",
+      "title": "FOR THE LOVE OF A PRINCESS - From The Movie \"BRAVEHEART\"",
+      "artist": "Horner James",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.12)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.12,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.97,
+        "popular_song": 0.03,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "dc3ef0e214226296",
+        "answers": {
+          "sung": 0.12,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.98,
+            "popular_song": 0.02,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.04,
+            "film_score": 0.96,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/HallelujaShrek.mscz": {
+      "song": "mrk_Hallelujah.json",
+      "title": "Hallelujah",
+      "artist": "Márk Horváth",
+      "route": "vocals",
+      "why": "sung (p_sung 0.93; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.93,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.415,
+        "popular_song": 0.585,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "7dc9a2f9aa302823",
+        "answers": {
+          "sung": 0.93,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.56,
+            "popular_song": 0.44,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.73,
+            "film_score": 0.27,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Honor_Him_Now_We_Are_Free.mscz": {
+      "song": "zimm_Honor_Him__Now_We_Are_Free__Gladiator.json",
+      "title": "Honor Him / Now We Are Free - Gladiator",
+      "artist": "Zimmer Hans",
+      "route": "review",
+      "why": "unclear whether it is sung (p 0.43)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.43,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "005fac06345521bd",
+        "answers": {
+          "sung": 0.43,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Horseman_on_the_Roof_Interlude-rewrite.mscz": {
+      "song": "peti_LE_HUSSARD_SUR_LE_TOIT__INTERLUDE.json",
+      "title": "LE HUSSARD SUR LE TOIT - INTERLUDE",
+      "artist": "Petit Jeanclaude",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.14)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.14,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.985,
+        "popular_song": 0.015,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "7229ce230ec4e972",
+        "answers": {
+          "sung": 0.14,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.99,
+            "popular_song": 0.01,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.02,
+            "film_score": 0.98,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/John_William_-_Jurassic_Park_Theme.mscz": {
+      "song": "will_Theme_from_Jurrassic_Park.json",
+      "title": "Theme from Jurrassic Park",
+      "artist": "Williams John",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.04)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.04,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "04fe05cabb560293",
+        "answers": {
+          "sung": 0.04,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Lida_Rose__Will_I_Ever_Tell_You__The_Music_Man-combine.mscz": {
+      "song": "film_Lida_Rose__Will_I_Ever_Tell_You__From_The_Music_Man_by_Meridith_Wilson.json",
+      "title": "Lida Rose / Will I Ever Tell You - From The Music Man by Meridith Wilson",
+      "artist": "Film",
+      "route": "vocals",
+      "why": "sung: the score has 443 lyric syllables",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 443,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.96,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.06,
+        "popular_song": 0.94,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "fa77933ac3013470",
+        "answers": {
+          "sung": 0.96,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.09,
+            "popular_song": 0.91,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.97,
+            "film_score": 0.03,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Marions_Theme__John_Williams.mscz": {
+      "song": "will_Marions_Theme__Raiders_of_the_Lost_Ark.json",
+      "title": "Marion's Theme - Raiders of the Lost Ark",
+      "artist": "Williams John",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.05)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.05,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "a6a407ead1105b0a",
+        "answers": {
+          "sung": 0.05,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/O_Mio_Babbino_Caro_for_solo_piano.mscz.mscz": {
+      "song": "paga_O_Mio_Bambino_Carro.json",
+      "title": "O Mio Bambino Carro",
+      "artist": "Pagannini",
+      "route": "generated",
+      "why": "classical (p 0.89), sung",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.93,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 0.89,
+        "film_score": 0.055,
+        "popular_song": 0.055,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "a7de0a31029f806a",
+        "answers": {
+          "sung": 0.93,
+          "kind": {
+            "classical": 0.89,
+            "film_score": 0.06,
+            "popular_song": 0.05,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.06,
+            "film_score": 0.05,
+            "classical": 0.89
+          }
+        }
+      }
+    },
+    "Film/Once_upon_a_december__Stephen_Flaherty.mscz": {
+      "song": "flah_Once_Upon_a_December__Anastasia.json",
+      "title": "Once Upon a December - Anastasia",
+      "artist": "Flaherty Stephen",
+      "route": "vocals",
+      "why": "sung (p_sung 0.97; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.97,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.27,
+        "popular_song": 0.73,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "ca836a33aee05432",
+        "answers": {
+          "sung": 0.97,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.37,
+            "popular_song": 0.63,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.83,
+            "film_score": 0.17,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Out_Of_Africa_I_Had_A_Farm_In_Africa_Main_Title__by_John_Barry.mscz": {
+      "song": "barr_OUT_OF_AFRICA_Main_Title.json",
+      "title": "OUT OF AFRICA Main Title",
+      "artist": "Barry John",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.08)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.08,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "1cdc3aa73f8e6dcd",
+        "answers": {
+          "sung": 0.08,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Pride_and_Prejudice_Dawn_-_Dario_Marionelli.mscz": {
+      "song": "marn_Dawn_2__Pride_and_Prejudice.json",
+      "title": "Dawn 2 - Pride and Prejudice",
+      "artist": "Marnionelli Dario",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.06)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.06,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "f731837c41e78804",
+        "answers": {
+          "sung": 0.06,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Spanish_Tango.mscz": {
+      "song": "horn_Spanish_Tango__The_Mask_of_Zorro.json",
+      "title": "Spanish Tango - The Mask of Zorro",
+      "artist": "Horner James",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.14)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.14,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.97,
+        "popular_song": 0.03,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "cc5e1df9d50ebf09",
+        "answers": {
+          "sung": 0.14,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.97,
+            "popular_song": 0.03,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.03,
+            "film_score": 0.97,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/StarTrek-FirstContact.mscz": {
+      "song": "camp_Theme_from_Star_Trek_First_Contact__for_Piano.json",
+      "title": "Theme from \"Star Trek: First Contact\" - for Piano",
+      "artist": "Campbell Jerry Goldsmith Arranged By Ian",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.04)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.04,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "d4b4de9c9927e35d",
+        "answers": {
+          "sung": 0.04,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Star_Trek_-_The_Motion_Picture_-_Jerry_Goldsmith_Full_Arr._Piano.mscz": {
+      "song": "schu_Star_Trek__The_Motion_Picture.json",
+      "title": "Star Trek - The Motion Picture",
+      "artist": "Schuirmann Jerry Goldsmith Arr Lasse",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.07)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.07,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "44f80adfc8f0b9e6",
+        "answers": {
+          "sung": 0.07,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Tango_-_Por_una_cabeza__Carlos_Gardel.mscz": {
+      "song": "gard_Pour_Una_Cabeza.json",
+      "title": "Pour Una Cabeza",
+      "artist": "Gardel Carlos",
+      "route": "vocals",
+      "why": "sung (p_sung 0.91; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.91,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.19,
+        "popular_song": 0.79,
+        "other": 0.02
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "8d5d85ca4ae83a4e",
+        "answers": {
+          "sung": 0.91,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.26,
+            "popular_song": 0.71,
+            "other": 0.03
+          },
+          "kind_reversed": {
+            "other": 0.01,
+            "popular_song": 0.87,
+            "film_score": 0.12,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/Tennessee_-_Pearl_Harbor.mscz": {
+      "song": "zimm_Tennessee__Pearl_Harbor.json",
+      "title": "Tennessee - Pearl Harbor",
+      "artist": "Zimmer Hans",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.08)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.08,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "c819f26348cf0560",
+        "answers": {
+          "sung": 0.08,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/The-Dance.mscz": {
+      "song": "horn_The_Dance__From_The_Four_Feathers.json",
+      "title": "The Dance - From The Four Feathers",
+      "artist": "Horner James",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.07)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.07,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "c25ad0dd7e54244c",
+        "answers": {
+          "sung": 0.07,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/The_Hunt_for_Red_October.mscz": {
+      "song": "pole_The_Hunt_for_Red_October__Hymn_to_Red_October.json",
+      "title": "The Hunt for Red October - Hymn to Red October",
+      "artist": "Poledouris Basil",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.15)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.15,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "455d77c54d68fecc",
+        "answers": {
+          "sung": 0.15,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/The_Last_Samurai_Main_Theme__Hans_Zimmer.mscz": {
+      "song": "zimm_The_Last_Samurai.json",
+      "title": "The Last Samurai",
+      "artist": "Zimmer Hans",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.11)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.11,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 1.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "54c51b3b0d7b174a",
+        "answers": {
+          "sung": 0.11,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 1.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 1.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/shrek-medley.mscz": {
+      "song": "shre_Shrek_3_Bad.json",
+      "title": "Shrek 3 Bad",
+      "artist": "Shrek",
+      "route": "review",
+      "why": "unclear whether it is sung (p 0.59)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 7,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.59,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.87,
+        "popular_song": 0.125,
+        "other": 0.005
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "978101e3c90fc9d8",
+        "answers": {
+          "sung": 0.59,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.94,
+            "popular_song": 0.06,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.01,
+            "popular_song": 0.19,
+            "film_score": 0.8,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/somewhere-west-side.mscz": {
+      "song": "film_somewherewestside.json",
+      "title": "somewhere-west-side",
+      "artist": "Film",
+      "route": "review",
+      "why": "unclear whether it is sung (p 0.58)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.58,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.865,
+        "popular_song": 0.135,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "b098bb5e0c0bd8fd",
+        "answers": {
+          "sung": 0.58,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.95,
+            "popular_song": 0.05,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.22,
+            "film_score": 0.78,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Film/stella-by-starlight.mscz": {
+      "song": "youn_Stella_By_Starlight__From_The_Uninvited.json",
+      "title": "Stella By Starlight - From The Uninvited",
+      "artist": "Young Victor",
+      "route": "review",
+      "why": "unclear whether it is sung (p 0.35)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.35,
+      "kind": "film_score",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.76,
+        "popular_song": 0.24,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "4ba685d7ee700d2f",
+        "answers": {
+          "sung": 0.35,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.85,
+            "popular_song": 0.15,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.33,
+            "film_score": 0.67,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Flight_of_the_Bumblebee.mscz": {
+      "song": "scor_Flight_of_the_Bumblebee.json",
+      "title": "Flight of the Bumblebee",
+      "artist": "Scores",
+      "route": "generated",
+      "why": "classical (p 0.96)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 0.96,
+        "film_score": 0.04,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "64354e42af91d98c",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 0.96,
+            "film_score": 0.04,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.04,
+            "classical": 0.96
+          }
+        }
+      }
+    },
+    "Gershwin/Concerto_in_F_Easy__George_Gershwin.mscz": {
+      "song": "gers_Gershwin_Concerto_in_F__Arr_IRM.json",
+      "title": "Gershwin Concerto in F - Arr IRM",
+      "artist": "Gershwin George",
+      "route": "generated",
+      "why": "classical (p 0.99)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.04,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 0.99,
+        "film_score": 0.0,
+        "popular_song": 0.01,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "f896a4ef67cdcc25",
+        "answers": {
+          "sung": 0.04,
+          "kind": {
+            "classical": 0.99,
+            "film_score": 0.0,
+            "popular_song": 0.01,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.01,
+            "film_score": 0.0,
+            "classical": 0.99
+          }
+        }
+      }
+    },
+    "Gershwin/Rhapsody_in_Blue_Piano_solo.mscz": {
+      "song": "gers_Rhapsody_in_Blue.json",
+      "title": "Rhapsody in Blue",
+      "artist": "Gershwin George",
+      "route": "generated",
+      "why": "classical (p 0.92)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 0.915,
+        "film_score": 0.0,
+        "popular_song": 0.08,
+        "other": 0.005
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "db763694e21bf3a4",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 0.9,
+            "film_score": 0.0,
+            "popular_song": 0.09,
+            "other": 0.01
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.07,
+            "film_score": 0.0,
+            "classical": 0.93
+          }
+        }
+      }
+    },
+    "Gershwin/Rhapsody_in_blue__George_Gershwin.mscz": {
+      "song": "gers_Rhapsody_in_Blue_Piano_and_Orchestra.json",
+      "title": "Rhapsody in Blue (Piano and Orchestra)",
+      "artist": "Gershwin",
+      "route": "generated",
+      "why": "classical (p 0.98)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 11023
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 0.985,
+        "film_score": 0.0,
+        "popular_song": 0.015,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "d1f5ab5a926ff32e",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 0.98,
+            "film_score": 0.0,
+            "popular_song": 0.02,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.01,
+            "film_score": 0.0,
+            "classical": 0.99
+          }
+        }
+      }
+    },
+    "Gershwin/The_Man_I_Love_-_Piano_Solo_-_arr._George_Gershwin.mscz": {
+      "song": "gers_THE_MAN_I_LOVE.json",
+      "title": "THE MAN I LOVE",
+      "artist": "Gershwin George",
+      "route": "vocals",
+      "why": "sung (p_sung 0.92; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.92,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:17",
+        "key": "d18145947a1c4e55",
+        "answers": {
+          "sung": 0.92,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Liszt/Consolation_No._3_in_D_Flat_Major_S_172.mscz": {
+      "song": "lisz_Consolation_No_3__D_Flat_Major_S_172.json",
+      "title": "Consolation No. 3 - D Flat Major S 172",
+      "artist": "Liszt",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "87893425abd40f3e",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Liszt/Hungarian_Rhapsody_No._2-modified.mscz": {
+      "song": "lisz_Hungarian_Rhapsody_No_2_in_C_Minor__Friska.json",
+      "title": "Hungarian Rhapsody No. 2 in C# Minor - Friska",
+      "artist": "Liszt",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "d774265ed042113f",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Liszt/Mozart_Lacrimosa.mscz": {
+      "song": "lisz_Lacrimosa__From_Mozarts_Requiem_in_D_minor.json",
+      "title": "Lacrimosa - From Mozart's Requiem in D minor",
+      "artist": "Liszt",
+      "route": "generated",
+      "why": "classical (p 1.00), sung",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.93,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "c517ff24309c194a",
+        "answers": {
+          "sung": 0.93,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Liszt/Schubert_Serenade_-_Standchen.mscz": {
+      "song": "lisz_Serenade_Standchen__Schubert.json",
+      "title": "Serenade Standchen - Schubert",
+      "artist": "Liszt",
+      "route": "generated",
+      "why": "classical (p 1.00), sung",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.87,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "fb79586dc7421e13",
+        "answers": {
+          "sung": 0.87,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Liszt/Sonetto_104_del_Petrarca_Annes_de_plerinage_II_S.161.mscz": {
+      "song": "lisz_Sonetto_104_del_Petrarca_Annes_de_plerinage_II_S161.json",
+      "title": "Sonetto 104 del Petrarca Années de pèlerinage II, S.161",
+      "artist": "Liszt",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.26,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "d36ae896ceb508b4",
+        "answers": {
+          "sung": 0.26,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Liszt/Two_Legends_No._2__St._Francis_of_Paola_walking_on_the_waves.mscz": {
+      "song": "lisz_II_St_Franois_de_Paule_marchant_sur_les_flots__Der_h_Franziskus_auf_den_Wogen_schreitend.json",
+      "title": "II. St. François de Paule marchant sur les flots - (Der h. Franziskus auf den Wogen schreitend)",
+      "artist": "Liszt",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.06,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "cf9f1a38df65a061",
+        "answers": {
+          "sung": 0.06,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Moszkowski/Piano_Concerto_No._2_Op._59-ABRIDGED.mscz": {
+      "song": "mosz_Piano_Concerto_No_2__Abridged.json",
+      "title": "Piano Concerto No 2 - Abridged",
+      "artist": "Moszkowski Moritz",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 4449
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "93d5a23e91952bc5",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Original/Winter-Citadel.mscz": {
+      "song": "orig_Winter_Citadel.json",
+      "title": "Winter Citadel",
+      "artist": "Original",
+      "route": "review",
+      "why": "unclear whether it is sung (p 0.32)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 277
+      },
+      "p_sung": 0.32,
+      "kind": "other",
+      "p_kind": {
+        "classical": 0.205,
+        "film_score": 0.145,
+        "popular_song": 0.06,
+        "other": 0.585
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "de5b7fd6554548cd",
+        "answers": {
+          "sung": 0.32,
+          "kind": {
+            "classical": 0.17,
+            "film_score": 0.2,
+            "popular_song": 0.08,
+            "other": 0.54
+          },
+          "kind_reversed": {
+            "other": 0.63,
+            "popular_song": 0.04,
+            "film_score": 0.09,
+            "classical": 0.24
+          }
+        }
+      }
+    },
+    "Pop/All_I_Want_For_Christmas_Is_You.mscz": {
+      "song": "sowa_All_I_Want_For_Christmas_Is_You.json",
+      "title": "All I Want For Christmas Is You",
+      "artist": "Sowa Mariah Carey Arr Zach",
+      "route": "vocals",
+      "why": "sung (p_sung 0.99; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.99,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "f2188c31144369fe",
+        "answers": {
+          "sung": 0.99,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Pop/Billie Eilish - Ocean Eyes.mid.mscz": {
+      "song": "eili_Ocean_Eyes.json",
+      "title": "Ocean Eyes",
+      "artist": "Eilish Billie",
+      "route": "vocals",
+      "why": "sung (p_sung 0.98; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.98,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "4f69d443de095a64",
+        "answers": {
+          "sung": 0.98,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Pop/Boston-Augustana.mscz": {
+      "song": "augu_Boston.json",
+      "title": "Boston",
+      "artist": "Augustana",
+      "route": "vocals",
+      "why": "sung: the score has 289 lyric syllables",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 289,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.97,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "bf044fac0bd669c2",
+        "answers": {
+          "sung": 0.97,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Pop/Evanescence — Imaginary [MIDIfind.com].mscz": {
+      "song": "pop_Evanescence__Imaginary_MIDIfindcom.json",
+      "title": "Evanescence — Imaginary [MIDIfind.com]",
+      "artist": "Pop",
+      "route": "vocals",
+      "why": "sung: the score has 42 vocal-staff notes",
+      "facts": {
+        "vocal_notes": 42,
+        "lyric_syllables": 0,
+        "orchestra_notes": 391
+      },
+      "p_sung": 0.9,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "5ff7235cb1a5c850",
+        "answers": {
+          "sung": 0.9,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Pop/Fireflies_-_Owl_City.mscz": {
+      "song": "city_Fireflies.json",
+      "title": "Fireflies",
+      "artist": "City Owl",
+      "route": "vocals",
+      "why": "sung (p_sung 0.97; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.97,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "48c627fa4558659c",
+        "answers": {
+          "sung": 0.97,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Pop/LetItBe-JBV.mscz": {
+      "song": "mcca_Let_It_Be.json",
+      "title": "Let It Be",
+      "artist": "Mccartney Paul",
+      "route": "vocals",
+      "why": "sung (p_sung 0.98; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.98,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "35c0dcebfe7b7b47",
+        "answers": {
+          "sung": 0.98,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Pop/MARRIAGE_D_AMOUR_PdS.mscz": {
+      "song": "senn_MARRIAGE_DAMOUR.json",
+      "title": "MARRIAGE D'AMOUR",
+      "artist": "Senneville Paul De",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.26)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.26,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.005,
+        "film_score": 0.0,
+        "popular_song": 0.995,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "16d6e282b219c26b",
+        "answers": {
+          "sung": 0.26,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.99,
+            "film_score": 0.0,
+            "classical": 0.01
+          }
+        }
+      }
+    },
+    "Pop/Shape of You - piano-solo.mscz": {
+      "song": "shee_Shape_of_You__PianoSolo.json",
+      "title": "Shape of You - Piano-Solo",
+      "artist": "Sheerhan Ed",
+      "route": "vocals",
+      "why": "sung: the score has 632 lyric syllables",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 632,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.96,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "945ff54f0df25047",
+        "answers": {
+          "sung": 0.96,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Pop/Shape of You.mscz": {
+      "song": "shee_Shape_of_You__RiMix.json",
+      "title": "Shape of You - Ri-Mix",
+      "artist": "Sheerhan Ed",
+      "route": "vocals",
+      "why": "sung: the score has 632 lyric syllables",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 632,
+        "orchestra_notes": 394
+      },
+      "p_sung": 0.96,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "48c3314f83060007",
+        "answers": {
+          "sung": 0.96,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Pop/Thats_Life_-_Frank_Sinatra.mscz": {
+      "song": "gord_Thats_Life__Frank_Sinatra.json",
+      "title": "That's Life - Frank Sinatra",
+      "artist": "Gordon Dean Kay Kelly",
+      "route": "vocals",
+      "why": "sung (p_sung 0.98; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.98,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "1748cd8a7084c946",
+        "answers": {
+          "sung": 0.98,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Pop/careless-whisper.mscz": {
+      "song": "mich_Careless_Whisper.json",
+      "title": "Careless Whisper",
+      "artist": "Michael George",
+      "route": "vocals",
+      "why": "sung (p_sung 0.95; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.95,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "700169d0dce938e6",
+        "answers": {
+          "sung": 0.95,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Pop/empire-state-of-mind-part-ii-broken-down-alicia-keys-from-the-element-of-freedom-2010.mscz": {
+      "song": "keys_Empire_State_of_Mind_Part_II_Broken_Down__from_The_Element_of_Freedom_2010.json",
+      "title": "Empire State of Mind (Part II) Broken Down - from The Element of Freedom (2010)",
+      "artist": "Keys Alicia",
+      "route": "vocals",
+      "why": "sung: the score has 353 lyric syllables",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 353,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.95,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "8a0dee5a451d1e1b",
+        "answers": {
+          "sung": 0.95,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Pop/love-needs-a-heart-jackson-browne.mscz": {
+      "song": "brow_Love_Needs_A_Heart.json",
+      "title": "Love Needs A Heart",
+      "artist": "Browne Jackson",
+      "route": "vocals",
+      "why": "sung (p_sung 0.85; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.85,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "9ebeba2d447e496d",
+        "answers": {
+          "sung": 0.85,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Pop/young-and-beautiful.mscz": {
+      "song": "rey_Young_and_Beautiful__The_Great_Gatsby.json",
+      "title": "Young and Beautiful - The Great Gatsby",
+      "artist": "Rey Lana Del",
+      "route": "vocals",
+      "why": "sung (p_sung 0.98; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.98,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "33ace4a4ae2564c6",
+        "answers": {
+          "sung": 0.98,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/How_Fair_this_Spot_Op_21_No_7__Zdes_khorosho.mscz": {
+      "song": "rach_Op_21__Zdes_khorosho__How_Fair_this_Spot__7.json",
+      "title": "Здесь хорошо - Op. 21 - Zdes′ khorosho / How Fair this Spot - -7",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00), sung",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.93,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "fd8a86e50de553f9",
+        "answers": {
+          "sung": 0.93,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/Prelude_in_C-sharp_Minor.mscz": {
+      "song": "rach_Prelude_in_Csharp_Minor__Op_3___No_2.json",
+      "title": "Prelude in C-sharp Minor - Op. 3 - , No. 2",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "7fc4990b57324d6a",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/Prelude_in_G_Minor_Op._23_No._5.mscz": {
+      "song": "rach_Prlude_in_G_Minor__Op_23___No_5.json",
+      "title": "Prélude in G Minor - Op. 23 - , No. 5",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "d991e20c9397135c",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/Prelude_in_G_sharp_minor_Op._32_No._12.mscz": {
+      "song": "rach_Prelude_G_Minor__Op_32.json",
+      "title": "Prelude G# Minor - Op. 32",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "f76bdc7d0cf488ea",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/Rach-2/I/Piano_Concerto_2_First-master.mscz": {
+      "song": "rach_Piano_Concerto_No_2__First_Movement.json",
+      "title": "Piano Concerto No. 2 - First Movement",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 1229
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "b8eca91ad44b80a5",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/Rach-2/II/Piano_Concerto_2_Second.mscz": {
+      "song": "rach_Piano_Concerto_No_2__Second_Movement.json",
+      "title": "Piano Concerto No. 2 - Second Movement",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 1474
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "19b4f0a9ee88bd92",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/Rach-2/III/Piano_Concerto_2_Third-master.mscz": {
+      "song": "rach_Piano_Concerto_No_2__Third_Movement.json",
+      "title": "Piano Concerto No. 2 - Third Movement",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 1533
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "8423ddb471865fda",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/Rach-3/I/Piano_Concerto_3_First-master.mscz": {
+      "song": "rach_Piano_Concerto_No_3__First_Movement.json",
+      "title": "Piano Concerto No 3 - First Movement",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 3828
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "d707843e2623c0ae",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/Rach-3/II/Piano_Concerto_3_Second-master.mscz": {
+      "song": "rach_Piano_Concerto_No_3__Second_Movement.json",
+      "title": "Piano Concerto No 3 - Second Movement",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 1957
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "fcb43fc508152666",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/Rach-3/III/Piano_Concerto_3_Third-master.mscz": {
+      "song": "rach_Piano_Concerto_No_3__Third_Movement.json",
+      "title": "Piano Concerto No. 3 - Third Movement",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 6332
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "c23f0fbfff3a6eb0",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/Rhapsody_on_a_theme_of_Paganini_Variation_18_Piano_Solo.mscz": {
+      "song": "rach_Rhapsody_on_a_Theme_of_Paganini__Var_XVIII.json",
+      "title": "Rhapsody on a Theme of Paganini - Var. XVIII",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "89c4d3d044aaab2d",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/Vocalise-Rach-Piano-Cello.mscz": {
+      "song": "rach_VocaliseRachPianoCello.json",
+      "title": "Vocalise-Rach-Piano-Cello",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00), sung",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.82,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "f7b4177f806c14f3",
+        "answers": {
+          "sung": 0.82,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/Vocalise_No.14_from_Fourteen_Songs_Op.34_Piano_Solo.mscz": {
+      "song": "rach_Vocalise.json",
+      "title": "Vocalise",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00), sung",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.92,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "02e6ba714280846f",
+        "answers": {
+          "sung": 0.92,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/pagvar18.mscz": {
+      "song": "rach_Rhapsody_on_a_Theme_of_Paganini__Var_XVIII_Piano_and_Orchestra.json",
+      "title": "Rhapsody on a Theme of Paganini - Var. XVIII (Piano and Orchestra)",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 408
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "e39c92e86ddcb7aa",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/rachmaninoff-10-preludes-op-23-no-6.mscz": {
+      "song": "rach_10_Preludes_No_6__Op_23.json",
+      "title": "10 Preludes, No. 6 - Op. 23",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:18",
+        "key": "0682fda3e5776a24",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Rachmaninoff/rachmaninoff-prelude-op-23-no-4-in-d-major-with-fingering-pedals-and-tips.mscz": {
+      "song": "rach_Prelude__Op_23_No_4.json",
+      "title": "Prelude - Op. 23 No. 4",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "8f75291ca3a1189d",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Radiohead/You-piano-solo.mscz": {
+      "song": "radi_You.json",
+      "title": "You",
+      "artist": "Radiohead",
+      "route": "vocals",
+      "why": "sung (p_sung 0.88; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.88,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "5ca7363eb5d38fd5",
+        "answers": {
+          "sung": 0.88,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Radiohead/creep-radiohead-dramatic-piano-solo.mscz": {
+      "song": "ho_Creep__Radiohead.json",
+      "title": "Creep - Radiohead",
+      "artist": "Ho Arranged By Beckham",
+      "route": "vocals",
+      "why": "sung (p_sung 0.98; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.98,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "9ec7254254d1529d",
+        "answers": {
+          "sung": 0.98,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Radiohead/karma-police-radiohead.mscz": {
+      "song": "radi_Karma_Police_Radiohead_Transciption_by_Anthenius_Music__Lyics_by_Radiohead.json",
+      "title": "Karma Police Radiohead Transciption by Anthenius Music & Lyics by Radiohead",
+      "artist": "Radiohead",
+      "route": "vocals",
+      "why": "sung (p_sung 0.98; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.98,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "ad668e680843d08d",
+        "answers": {
+          "sung": 0.98,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Radiohead/paranoid-android.mscz": {
+      "song": "radi_paranoidandroid.json",
+      "title": "paranoid-android",
+      "artist": "Radiohead",
+      "route": "vocals",
+      "why": "sung (p_sung 0.98; no vocal line in the score)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.98,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "7ae038750d09053c",
+        "answers": {
+          "sung": 0.98,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "Radiohead/pyramid-song-radiohead.mscz": {
+      "song": "selw_Pyramid_Song__arrangement_by_melody_morgan.json",
+      "title": "Pyramid Song - arrangement by melody morgan",
+      "artist": "Selway Words And Music By Thomas Yorke Jonathan Greenwood Colin Greenwood Edward Obrien And Philip",
+      "route": "vocals",
+      "why": "sung: the score has 157 lyric syllables",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 157,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.97,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 1.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "75fa9d42da466699",
+        "answers": {
+          "sung": 0.97,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 1.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 1.0,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "River_Flows_In_You.mscz": {
+      "song": "laur_River_Flows_In_You.json",
+      "title": "River Flows In You",
+      "artist": "Laure",
+      "route": "generated",
+      "why": "instrumental (p_sung 0.05)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.05,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.39,
+        "film_score": 0.02,
+        "popular_song": 0.55,
+        "other": 0.04
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "9406d9f71e1a4f7f",
+        "answers": {
+          "sung": 0.05,
+          "kind": {
+            "classical": 0.4,
+            "film_score": 0.03,
+            "popular_song": 0.54,
+            "other": 0.03
+          },
+          "kind_reversed": {
+            "other": 0.05,
+            "popular_song": 0.56,
+            "film_score": 0.01,
+            "classical": 0.38
+          }
+        }
+      }
+    },
+    "Stravinsky/stravinsky_rite_of_spring.mscz": {
+      "song": "stra_The_Rite_of_Spring.json",
+      "title": "The Rite of Spring",
+      "artist": "Stravinsky Igor",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.06,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "8892c4d3030a1ead",
+        "answers": {
+          "sung": 0.06,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Tchaikovsky/Swan_Lake_2._Waltz_Solo.mscz": {
+      "song": "tcha_Waltz_No_2__Swan_Lake.json",
+      "title": "Waltz No. 2 - Swan Lake",
+      "artist": "Tchaikovsky",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "368b6ae7e7783a7f",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Tchaikovsky/The_Sleeping_Beauty_ballet_Op.66__Pyotr_Ilyich_Tchaikovsky_MALEFICENT_THEME.mscz": {
+      "song": "tcha_No_24__Pas_de_caractre__The_Sleeping_Beauty.json",
+      "title": "No. 24 - Pas de caractère - The Sleeping Beauty",
+      "artist": "Tchaikovsky",
+      "route": "generated",
+      "why": "classical (p 0.99)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 1663
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 0.995,
+        "film_score": 0.005,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "59f07efbb8907784",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 0.99,
+            "film_score": 0.01,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Tchaikovsky/Waltz_from_The_Sleeping_Beauty_Full_Piano_Solo_Advanced.mscz": {
+      "song": "tcha_Waltz__from_The_Sleeping_Beauty__advanced_version.json",
+      "title": "Waltz - from The Sleeping Beauty - advanced version",
+      "artist": "Tchaikovsky",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "dc94c0688599d82a",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Tchaikovsky/Waltz_of_the_Flowers_-_piano_arrangement.mscz": {
+      "song": "tcha_Waltz_of_the_Flowers__From_The_Nutcracker.json",
+      "title": "Waltz of the Flowers - From The Nutcracker",
+      "artist": "Tchaikovsky",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "b815f39dc1df8d36",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Tchaikovsky/nutcracker-14a-pas-de-deux-intrada.mscz": {
+      "song": "tcha_nutcracker14apasdedeuxintrada.json",
+      "title": "nutcracker-14a-pas-de-deux-intrada",
+      "artist": "Tchaikovsky",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "56834bb76bf50f0d",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Tchaikovsky/piano-concerto-in-b-flat-minor-tchaikovsky-transcribed-for-piano-solo.mscz": {
+      "song": "tcha_pianoconcertoinbflatminortchaikovskytranscribedforpianosolo.json",
+      "title": "piano-concerto-in-b-flat-minor-tchaikovsky-transcribed-for-piano-solo",
+      "artist": "Tchaikovsky",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.02,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "43f10d779fded9d8",
+        "answers": {
+          "sung": 0.02,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Tchaikovsky/romeo-and-juliet-overture-tchaikovsky-piano-solo-arrangement.mscz": {
+      "song": "tcha_romeoandjulietoverturetchaikovskypianosoloarrangement__Arranged_for_Solo_Piano.json",
+      "title": "romeo-and-juliet-overture-tchaikovsky-piano-solo-arrangement - Arranged for Solo Piano",
+      "artist": "Tchaikovsky",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "84ad49a1046c08d3",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Tchaikovsky/tchaikovsky-nutcracker-op71-1-decoration-and-illumination-of-the-christmas-tree-solo.mscz": {
+      "song": "tcha_NUTCRACKER_CASSENOISETTE__1_Scene.json",
+      "title": "NUTCRACKER CASSE-NOISETTE - 1. Scene",
+      "artist": "Tchaikovsky",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "1e49a43c7621eeb8",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Tchaikovsky/tchaikovsky-nutcracker-op71-4-dancing-scene-solo.mscz": {
+      "song": "tcha_tchaikovskynutcracker4dancingscenesolo__Op_71.json",
+      "title": "tchaikovsky-nutcracker--4-dancing-scene-solo - Op. 71",
+      "artist": "Tchaikovsky",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "d20f38e42c52379d",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Tchaikovsky/tchaikovsky-nutcracker-op71-5-scene-and-grandfather-dance-solo.mscz": {
+      "song": "tcha_tchaikovskynutcracker5sceneandgrandfatherdancesolo__Op_71.json",
+      "title": "tchaikovsky-nutcracker--5-scene-and-grandfather-dance-solo - Op. 71",
+      "artist": "Tchaikovsky",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "083bc613653ac713",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "Tchaikovsky/tchaikovsky-swan-lake-1-introduction-and-scene-solo.mscz": {
+      "song": "tcha_1_Introduction_and_Scene__I_SCENE.json",
+      "title": "1. Introduction and Scene - I. SCENE",
+      "artist": "Tchaikovsky",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.04,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "bb197520dbf1f191",
+        "answers": {
+          "sung": 0.04,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "charleston-piano-roll-transcription.mscz": {
+      "song": "cook_Charleston.json",
+      "title": "Charleston",
+      "artist": "Cook Words By Cecil Mack Music By James P Johnson Arranged By J Lawrence",
+      "route": "review",
+      "why": "unclear whether it is sung (p 0.56)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.56,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.0,
+        "film_score": 0.0,
+        "popular_song": 0.985,
+        "other": 0.015
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "845ce90e01e2bac4",
+        "answers": {
+          "sung": 0.56,
+          "kind": {
+            "classical": 0.0,
+            "film_score": 0.0,
+            "popular_song": 0.98,
+            "other": 0.02
+          },
+          "kind_reversed": {
+            "other": 0.01,
+            "popular_song": 0.99,
+            "film_score": 0.0,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "duetinheaven.mscz": {
+      "song": "rach_Duet_in_Heaven.json",
+      "title": "Duet in Heaven",
+      "artist": "Rachmaninoff",
+      "route": "generated",
+      "why": "classical (p 0.98)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.2,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 0.98,
+        "film_score": 0.0,
+        "popular_song": 0.01,
+        "other": 0.01
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "2f5ce4757b24431f",
+        "answers": {
+          "sung": 0.2,
+          "kind": {
+            "classical": 0.98,
+            "film_score": 0.0,
+            "popular_song": 0.01,
+            "other": 0.01
+          },
+          "kind_reversed": {
+            "other": 0.01,
+            "popular_song": 0.01,
+            "film_score": 0.0,
+            "classical": 0.98
+          }
+        }
+      }
+    },
+    "foollikeme.mscz": {
+      "song": "arra_FoolLikeMe__Subtitle.json",
+      "title": "FoolLikeMe - Subtitle",
+      "artist": "Arranger Composer",
+      "route": "review",
+      "why": "unclear whether it is sung (p 0.74)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.74,
+      "kind": "popular_song",
+      "p_kind": {
+        "classical": 0.005,
+        "film_score": 0.045,
+        "popular_song": 0.86,
+        "other": 0.09
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "a5260ed6c22131ac",
+        "answers": {
+          "sung": 0.74,
+          "kind": {
+            "classical": 0.01,
+            "film_score": 0.06,
+            "popular_song": 0.84,
+            "other": 0.09
+          },
+          "kind_reversed": {
+            "other": 0.09,
+            "popular_song": 0.88,
+            "film_score": 0.03,
+            "classical": 0.0
+          }
+        }
+      }
+    },
+    "night-on-bald-mountain-noc-na-lysoj-gore.mscz": {
+      "song": "muss_Une_nuit_sur_le_Mont_Chauve__Bruits_sousterrains_de_voix_surnaturellesApparation_des_esprits_des.json",
+      "title": "Une nuit sur le Mont Chauve - Bruits sousterrains de voix surnaturelles.—Apparation des esprits des ténèbres, puis du Satan.—Glorification du Satan et la messe Noire.—Au plus fort du Sabbat sonnne au loin la cloche d'une église de village, qui disprese les esprites des ténèbges.— lever du jour.",
+      "artist": "Mussorkskij Modest",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.07,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "8a4aaee8c993db1b",
+        "answers": {
+          "sung": 0.07,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "scriabin-waltz-op1-first-edition.mscz": {
+      "song": "scri_Valse_F_Minor__Op_1.json",
+      "title": "Valse F Minor - Op. 1",
+      "artist": "Scriabin",
+      "route": "generated",
+      "why": "classical (p 1.00)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.03,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 1.0,
+        "film_score": 0.0,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "0c318be1c9a5697f",
+        "answers": {
+          "sung": 0.03,
+          "kind": {
+            "classical": 1.0,
+            "film_score": 0.0,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.0,
+            "classical": 1.0
+          }
+        }
+      }
+    },
+    "the-mikado-arthur-sullivan.mscz": {
+      "song": "scor_themikadoarthursullivan.json",
+      "title": "the-mikado-arthur-sullivan",
+      "artist": "Scores",
+      "route": "generated",
+      "why": "classical (p 0.74), sung",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.93,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 0.74,
+        "film_score": 0.055,
+        "popular_song": 0.2,
+        "other": 0.005
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "8f314bca0877ef93",
+        "answers": {
+          "sung": 0.93,
+          "kind": {
+            "classical": 0.73,
+            "film_score": 0.08,
+            "popular_song": 0.19,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.01,
+            "popular_song": 0.21,
+            "film_score": 0.03,
+            "classical": 0.75
+          }
+        }
+      }
+    },
+    "thesorcerersapprentice.mscz": {
+      "song": "duka_The_Sorcerers_Apprentice.json",
+      "title": "The Sorcerer's Apprentice",
+      "artist": "Dukas Paul",
+      "route": "generated",
+      "why": "classical (p 0.98)",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "p_sung": 0.07,
+      "kind": "classical",
+      "p_kind": {
+        "classical": 0.98,
+        "film_score": 0.02,
+        "popular_song": 0.0,
+        "other": 0.0
+      },
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-16T10:23:19",
+        "key": "df5783e4d9284322",
+        "answers": {
+          "sung": 0.07,
+          "kind": {
+            "classical": 0.97,
+            "film_score": 0.03,
+            "popular_song": 0.0,
+            "other": 0.0
+          },
+          "kind_reversed": {
+            "other": 0.0,
+            "popular_song": 0.0,
+            "film_score": 0.01,
+            "classical": 0.99
+          }
+        }
+      }
+    }
+  },
   "links": {
     "70s/A_Natural_Woman_You_make_me_feel.mscz": {
       "song": "wexl_You_Make_Me_Feel_Like.json",
@@ -161,9 +6015,10 @@
       "status": "review",
       "recording": "Late for the Sky (Remastered).mp3",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "Late for the Sky (Remastered).mp3"
       },
-      "variant": "full",
+      "variant": "vocals",
       "confidence": 0.367,
       "p_same": 0.58,
       "p_none": 0.465,
@@ -216,9 +6071,10 @@
       "status": "linked",
       "recording": "Fountain of Sorrow (Remastered).mp3",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "Fountain of Sorrow (Remastered).mp3"
       },
-      "variant": "full",
+      "variant": "vocals",
       "confidence": 1.0,
       "p_same": 0.97,
       "p_none": 0.0,
@@ -257,9 +6113,10 @@
       "status": "review",
       "recording": "Late for the Sky (Remastered).mp3",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "Late for the Sky (Remastered).mp3"
       },
-      "variant": "full",
+      "variant": "vocals",
       "confidence": 0.64,
       "p_same": 0.51,
       "p_none": 0.225,
@@ -604,9 +6461,10 @@
       "status": "linked",
       "recording": "soundtrack/22 - All In A Day's Work.mp3",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "soundtrack/22 - All In A Day's Work.mp3"
       },
-      "variant": "full",
+      "variant": null,
       "confidence": 1.0,
       "p_same": 0.95,
       "p_none": 0.0,
@@ -645,9 +6503,10 @@
       "status": "linked",
       "recording": "soundtrack/Didn't-I-Do-Well.mp3",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "soundtrack/Didn't-I-Do-Well.mp3"
       },
-      "variant": "full",
+      "variant": null,
       "confidence": 1.0,
       "p_same": 0.94,
       "p_none": 0.0,
@@ -686,9 +6545,10 @@
       "status": "linked",
       "recording": "soundtrack/Didn't-I-Do-Well.mp3",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "soundtrack/Didn't-I-Do-Well.mp3"
       },
-      "variant": "full",
+      "variant": null,
       "confidence": 1.0,
       "p_same": 0.95,
       "p_none": 0.0,
@@ -1217,9 +7077,10 @@
       "status": "linked",
       "recording": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3"
       },
-      "variant": "full",
+      "variant": null,
       "confidence": 1.0,
       "p_same": 0.95,
       "p_none": 0.0,
@@ -1258,9 +7119,10 @@
       "status": "linked",
       "recording": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3"
       },
-      "variant": "full",
+      "variant": null,
       "confidence": 1.0,
       "p_same": 0.96,
       "p_none": 0.0,
@@ -1487,9 +7349,10 @@
       "status": "review",
       "recording": "Moszkowski/mosz-II/mosz-II-retime.wav",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "Moszkowski/mosz-II/mosz-II-retime.wav"
       },
-      "variant": "full",
+      "variant": null,
       "confidence": 0.29,
       "p_same": 0.51,
       "p_none": 0.355,
@@ -1565,10 +7428,11 @@
       "status": "linked",
       "recording": "Moszkowski/Moszkowski/Moritz Moszkowski Piano Concerto in E major, Op 59.mp3",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "Moszkowski/Moszkowski/Moritz Moszkowski Piano Concerto in E major, Op 59.mp3",
         "no_piano": "Moszkowski/Moszkowski/Moritz Moszkowski Piano Concerto in E major, Op 59_no_piano_split_by_lalalai.mp3"
       },
-      "variant": "no_piano",
+      "variant": null,
       "confidence": 0.899,
       "p_same": 0.9,
       "p_none": 0.025,
@@ -2390,10 +8254,11 @@
       "status": "linked",
       "recording": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato.mp3",
         "no_piano": "Bronfman/Rach2/I/Piano Concerto No. 2 in C Minor, Op. 18： I. Moderato_no_piano_split_by_lalalai.mp3"
       },
-      "variant": "no_piano",
+      "variant": null,
       "confidence": 1.0,
       "p_same": 0.98,
       "p_none": 0.0,
@@ -2509,10 +8374,11 @@
       "status": "linked",
       "recording": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio sostenuto.mp3",
         "no_piano": "Bronfman/Rach2/II/Piano Concerto No. 2 in C Minor, Op. 18： II. Adagio _no_piano_split_by_lalalai.mp3"
       },
-      "variant": "no_piano",
+      "variant": null,
       "confidence": 1.0,
       "p_same": 0.97,
       "p_none": 0.0,
@@ -2628,10 +8494,11 @@
       "status": "linked",
       "recording": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegro scherzando.mp3",
         "no_piano": "Bronfman/Rach2/III/Piano Concerto No. 2 in C Minor, Op. 18： III. Allegr_no_piano_split_by_lalalai.mp3"
       },
-      "variant": "no_piano",
+      "variant": null,
       "confidence": 1.0,
       "p_same": 0.98,
       "p_none": 0.0,
@@ -2747,10 +8614,11 @@
       "status": "linked",
       "recording": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - I. Allegro ma non tanto.wav",
         "no_piano": "Ohlsson/Rach3-1/01 - Sergey Vassilievich Rachmaninoff Piano Concerto_no_piano_split_by_lalalai.wav"
       },
-      "variant": "no_piano",
+      "variant": null,
       "confidence": 0.572,
       "p_same": 0.97,
       "p_none": 0.0,
@@ -2870,22 +8738,22 @@
     "Rachmaninoff/Rach-3/II/Piano_Concerto_3_Second-master.mscz": {
       "song": "rach_Piano_Concerto_No_3__Second_Movement.json",
       "status": "linked",
-      "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+      "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
       "variants": {
-        "full": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
-        "no_piano": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto_no_piano_split_by_lalalai.wav"
+        "vocals": "(separated from the full mix)",
+        "full": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3"
       },
-      "variant": "no_piano",
+      "variant": null,
       "confidence": 0.485,
-      "p_same": 0.97,
+      "p_same": 0.98,
       "p_none": 0.0,
       "consistent": false,
-      "why": "the probability is spread over 2 recordings of this composition; Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav preferred: a valid recording with a piano-removed stem",
+      "why": "the probability is spread over 2 recordings of this composition",
       "alternatives": [
         {
-          "recording": "Bronfman/Rach3/Piano Concerto No. 3 in D Minor, Op. 30： II. Intermezzo. Adagio.mp3",
-          "p": 0.525,
-          "p_same": 0.98
+          "recording": "Ohlsson/Rach3-2/02 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - II. Intermezzo. Adagio.wav",
+          "p": 0.475,
+          "p_same": 0.97
         }
       ],
       "judged": {
@@ -2997,10 +8865,11 @@
       "status": "linked",
       "recording": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto No. 3 in D minor, Op. 30 - III. Finale. Alla breve.wav",
         "no_piano": "Ohlsson/Rach3-3/03 - Sergey Vassilievich Rachmaninoff Piano Concerto_no_piano_split_by_lalalai.wav"
       },
-      "variant": "no_piano",
+      "variant": null,
       "confidence": 0.496,
       "p_same": 0.98,
       "p_none": 0.0,
@@ -3575,9 +9444,10 @@
       "status": "linked",
       "recording": "Stravinsky_ Le sacre du printemps The Rite of Spring - Jaap van Zweden - Full concert in HD(1).mp3",
       "variants": {
+        "vocals": "(separated from the full mix)",
         "full": "Stravinsky_ Le sacre du printemps The Rite of Spring - Jaap van Zweden - Full concert in HD(1).mp3"
       },
-      "variant": "full",
+      "variant": null,
       "confidence": 1.0,
       "p_same": 0.98,
       "p_none": 0.0,

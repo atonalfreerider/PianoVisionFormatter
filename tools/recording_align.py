@@ -37,7 +37,8 @@ chroma (librosa's CQT chroma; the recording's tuning estimated) at 23 ms frames,
 5. The edit plan (:func:`pianovision.recmap.edit_plan`) and the tempo summary.
 
 **retime.**  The recording (``--audio``: the variant to deliver, e.g. the piano-removed stem; ``--source``: the
-file the alignment was made from, when different: the stem's offset against it is measured and applied) is cut and
+file the alignment was made from, when different: the stem's offset against it is measured and applied, unless
+``--assume-aligned``: a stem separated from it has its timing) is cut and
 padded per the plan into one continuous stream with 8 ms fades at the cuts, then stretched in a single pass by
 ffmpeg's rubberband filter whose tempo is switched per operation (``asendcmd``; the commands are sent the filter's
 measured latency later, ``latency``).  The filter does not land the content exactly where it is asked to after
@@ -597,9 +598,9 @@ def cmd_retime(args):
     y = load(args.audio, sr, channels=2)
     y22 = load(args.audio)
     shift, shift_corr = 0.0, None
-    if args.source and os.path.abspath(args.source) != os.path.abspath(args.audio):
+    if args.source and not args.assume_aligned and os.path.abspath(args.source) != os.path.abspath(args.audio):
         shift, shift_corr = offset_between(load(args.source), y22)
-        if abs(shift) < 0.003:
+        if abs(shift) < 0.003 or shift_corr < 0.4:            # no offset, or none that can be trusted
             shift = 0.0
     edited, starts, lens, n_joins = edit_stream(y, ops, shift, sr)
     lat = cached_latency(args.latency_cache)
@@ -796,6 +797,8 @@ def main(argv=None):
     p.add_argument("--align", required=True)
     p.add_argument("--audio", required=True, help="the file to retime (the variant to deliver)")
     p.add_argument("--source", help="the file the alignment was made from, when --audio is another variant of it")
+    p.add_argument("--assume-aligned", action="store_true",
+                   help="--audio has --source's timing (a stem separated from it): no offset is measured")
     p.add_argument("--out", required=True)
     p.add_argument("--retune-cents", type=float, default=0.0)
     p.add_argument("--latency-cache")

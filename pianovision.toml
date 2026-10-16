@@ -48,4 +48,13 @@ model = "jev-1.13.0"                                # pinned: the thresholds wer
 link_confidence = 0.6                               # Choice confidence to link without your confirmation
 same_min = 0.8                                      # Noul "same composition" for a candidate to count
 retune_cents = 15.0                                 # retune a recording to A440 when it is off by this much (0: never)
+# routes: 'generated' (classical / instrumental: the score's orchestra, `accompaniment`) or 'vocals' (sung songs)
+sung_min = 0.8                                      # TypeSafe "sung" from this up: sung (scores without a vocal line)
+unsung_max = 0.3                                    # ... up to this: instrumental; in between: your decision
+classical_min = 0.5                                 # P(classical) from this up: generated, sung or not
+# the vocals of a sung song's recording: Demucs in another Python (not installed by this tool)
+stems_dir = "~/.cache/nw-recordings/stems"          # vocals stems, cached by the input's content
+separator_python = ""                               # a Python with demucs; "" = the first conda env that has it
+separator_model = "htdemucs_ft"
+min_vocal_activity = 0.1                            # a vocals stem singing in less of the matched recording is not used
 audio_map = "~/Desktop/Note-Waterfall/Tools/audio_map.json"   # read only: what Note Waterfall has now
