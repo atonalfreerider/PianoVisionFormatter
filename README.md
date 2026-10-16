@@ -635,7 +635,8 @@ on a GTX 1060 (6 GB), the model's own 7.8 s segments, 555 MB peak.
    a stem, the full mix is retimed the same way (in the work folder, not kept) and verified too: the vocals lack what
    the notes have. Songs routed **generated** get only this check of their full mix, for the accuracy summary.
 
-Outputs in `out_dir` (staged under `~/.cache/nw-recordings/out`; move the mp3s somewhere durable before deploying):
+Outputs in `out_dir` (staged under `~/.cache/nw-recordings/out`; a vocals mp3 you keep goes to `~/Music/Note Waterfall
+Vocals/` (excluded from the scan, like the accompaniments) before its entry goes into Note Waterfall's audio map):
 `<song>.mp3` (sung songs), `audio_map.proposed.json` (sung songs only: entries in the format of Note Waterfall's
 `Tools/audio_map.json`, offset 0;
 `enabled` only when at least `min_coverage` (85 %) of the song is matched, the median lag is within `max_lag_ms`
