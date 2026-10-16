@@ -36,7 +36,8 @@ Streams are in time order, as tracksV2 is.  Extra fields:
 
 * simplified part: ``"simplified": 1`` on the notes written on the simplified staves (the others are the
   original part's notes of measures the simplified staves leave empty);
-* orchestra: ``"staff"``: the score's staff (0-based) the note is written on; ``"program"``: the General MIDI
+* orchestra: ``"staff"``: the score's staff (0-based) the note is written on (an orchestra from a partner score,
+  ``orchestra_from``: that score's staves count on after the song's own); ``"program"``: the General MIDI
   program of an orchestra instrument or vocal staff (absent for the 'piano-orchestral' staves); ``"vocal": 1`` on
   the notes of a vocal staff; ``"merged": 1`` on the notes PianoVision's JSON merges into the hands ('merge'
   markers, measures where the piano rests);

@@ -32,6 +32,13 @@ so run ``build`` first).  For each one:
    peak stays at or below ``true_peak``; no compression.  LAME mp3, constant bit rate, with the codec delay cut
    from the start and no Xing/LAME header: decoded without gapless handling, it lines up at sample 0.
 
+A song with a partner score (``scores.json`` ``simplified_from``, ``orchestra_from``: :mod:`pianovision.timeline`)
+plays on the piano solo's clock, and so does its audio: the score rendered is the orchestral score edited the way the
+formatter renders the song (its own tempo marks, fermatas and pauses off, the solo's tempo written in), and with
+``orchestra_from`` (the song is the solo, the orchestral partner is rendered, with its options in this file) the
+render is cut into the runs of measures both scores share, each placed at the solo's time (:func:`place_wav`).  The
+report checks the song's orchestra (its parts file) against the rendered score's notes on that clock.
+
 The output is ``<out>/<song>.mp3`` (``<song>`` = the PianoVision JSON's name) and the report
 ``accompaniment-report.md`` / ``.json``.  The JSON is also the cache: a score is rendered again only when its
 file, its options in ``accompaniment.json``, the muted instruments, MuseScore, the Muse Sounds engine or the
@@ -42,6 +49,7 @@ the basic sounds.
 
 from __future__ import annotations
 
+import bisect
 import copy
 import dataclasses
 import datetime as _dt
@@ -227,6 +235,7 @@ class StaffInfo:
     pitches: List[int] = field(default_factory=list)
     percussion: bool = False
     spans: List[Tuple[float, float]] = field(default_factory=list)     # sounding notes (on, off), seconds
+    attacks: List[Tuple[float, int]] = field(default_factory=list)     # (note-on time, pitch)
 
 
 @dataclass
@@ -292,6 +301,7 @@ def analyse(path: str, compat: Optional[dict] = None, options: Optional[dict] = 
             if msg.type == "note_on" and msg.velocity > 0:
                 info.notes += 1
                 info.pitches.append(msg.note)
+                info.attacks.append((t, msg.note))
                 active.setdefault((msg.channel, msg.note), []).append(t)
             elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
                 ons = active.get((msg.channel, msg.note))
@@ -848,9 +858,12 @@ def tools_signature(s: Settings) -> Dict[str, str]:
     return sig
 
 
-def cache_key(score_sha256: str, options: dict, plan: dict, tools: dict, encode: dict) -> str:
+def cache_key(score_sha256: str, options: dict, plan: dict, tools: dict, encode: dict,
+              timeline: Optional[dict] = None) -> str:
     doc = {"pipeline": PIPELINE_VERSION, "score": score_sha256, "options": options, "plan": plan, "tools": tools,
            "encode": encode}
+    if timeline is not None:                 # a song on a piano solo's clock (the other scores' keys stay)
+        doc["timeline"] = timeline
     return hashlib.sha256(json.dumps(doc, sort_keys=True, ensure_ascii=True).encode()).hexdigest()
 
 
@@ -1185,28 +1198,49 @@ class Candidate:
     song: str                 # PianoVision JSON name
     entry: dict
     options: Optional[dict] = None    # the score's build options (scores.json), as convert_mscz takes them
+    # the score MuseScore renders and its knobs and own build options: the song's score, or with orchestra_from the
+    # orchestral partner (its options in accompaniment.json apply)
+    source_rel: str = ""
+    source_path: str = ""
+    source_compat: Optional[dict] = None
+    source_options: Optional[dict] = None
+    parts_path: str = ""                # the song's Note Waterfall parts file
 
     @property
     def stem(self) -> str:
         return self.song[:-5] if self.song.lower().endswith(".json") else self.song
 
+    @property
+    def partner(self) -> Optional[dict]:
+        """The build options' partner score (:mod:`pianovision.timeline`): the song plays on the solo's clock."""
+        return (self.options or {}).get("partner")
+
 
 def candidates(manifest: dict, scores_dir: str, only: Sequence[str] = (), lib=None) -> List[Candidate]:
     """Scores whose parts file has orchestra notes besides vocal staves' (the manifest's parts statistics),
     optionally filtered by globs matched against the score's path (relative to the scores folder) or its song name;
-    ``lib``: the library, for the scores' build options."""
-    from .buildopts import without_arrangement
+    ``lib``: the library, for the scores' build options.  A song with ``orchestra_from`` renders its orchestral
+    partner (globs match that score's path too)."""
+    from .buildopts import without_partner
     out = []
     for rel, e in sorted(manifest.get("entries", {}).items()):
         p = e.get("parts") or {}
         notes = (p.get("notes") or {}).get("orchestra", 0) - p.get("vocal", 0)     # a vocal line alone is no accompaniment
         if not notes or not e.get("output"):
             continue
+        opts = lib.render_options(rel) if lib is not None else None
+        partner = (opts or {}).get("partner")
+        path = os.path.join(scores_dir, rel)
+        if partner and partner["kind"] == "orchestra":
+            src = (partner["rel"], partner["path"], partner.get("compat"), partner.get("options"))
+        else:
+            src = (rel, path, _verify_compat(e), without_partner(opts))
         if only and not any(fnmatch.fnmatch(rel, g) or fnmatch.fnmatch(e["output"], g)
-                            or fnmatch.fnmatch(e["output"][:-5], g) for g in only):
+                            or fnmatch.fnmatch(e["output"][:-5], g) or fnmatch.fnmatch(src[0], g) for g in only):
             continue
-        out.append(Candidate(rel=rel, path=os.path.join(scores_dir, rel), song=e["output"], entry=e,
-                             options=without_arrangement(lib.render_options(rel)) if lib is not None else None))
+        out.append(Candidate(rel=rel, path=path, song=e["output"], entry=e, options=opts, source_rel=src[0],
+                             source_path=src[1], source_compat=src[2], source_options=src[3],
+                             parts_path=lib.parts_path(e["output"]) if lib is not None else ""))
     return out
 
 
@@ -1242,14 +1276,15 @@ def process(c: Candidate, s: Settings, defaults: dict, per_score: Dict[str, dict
             dry_run: bool, log: Log) -> Tuple[str, dict]:
     """One score: ("skipped" | "rendered" | "would render", its report record)."""
     out_dir, work_root = s.path("out_dir"), s.path("work_dir")
-    o = score_options(defaults, per_score.get(c.rel))
-    score_sha = _sha256_file(c.path)
-    a = analyse(c.path, _verify_compat(c.entry), c.options)
+    src = c.source_path or c.path
+    o = score_options(defaults, per_score.get(c.source_rel or c.rel))
+    score_sha = _sha256_file(src)
+    a = analyse(src, c.source_compat, c.source_options)
     plan = plan_mutes(a, o)
     tools = tools_signature(s)
     encode = {"bitrate": s.bitrate, "lufs": s.lufs, "true_peak": s.true_peak, "sample_rate": MP3_SAMPLE_RATE,
               "codec_delay_cut": MP3_CODEC_DELAY, "xing_header": False}
-    key = cache_key(score_sha, o.to_dict(), plan.to_dict(), tools, encode)
+    key = cache_key(score_sha, o.to_dict(), plan.to_dict(), tools, encode, timeline_key(c))
     installed = muse_libraries(s.path("musesampler"))
     prev = state.get("scores", {}).get(c.rel) or {}
     mp3 = os.path.join(out_dir, c.stem + ".mp3")
@@ -1262,6 +1297,19 @@ def process(c: Candidate, s: Settings, defaults: dict, per_score: Dict[str, dict
         return "would render", prev
     work = os.path.join(work_root, c.stem)
     os.makedirs(work, exist_ok=True)
+    # a song on a piano solo's clock (pianovision.timeline): the score rendered is the edited copy, and with
+    # orchestra_from its render is cut into pieces placed on the solo's clock
+    pr = None
+    copy_src = src
+    a_copy = a
+    if c.partner:
+        log(f"  putting {os.path.basename(src)} on the solo's clock ...")
+        from . import timeline as TL
+        pr = song_pair(c)
+        copy_src = TL.write_edited(src, os.path.join(work, "timeline.mscz"), pr.plan)
+        a_copy = analyse(copy_src, c.source_compat, c.source_options)
+        a = a_copy
+        a.title, a.artist = _song_title(c, a)
     rec: Dict[str, Any] = {"score": c.rel, "song": c.song, "mp3": os.path.basename(mp3), "title": a.title,
                            "artist": a.artist, "rendered": _now(), "options": o.to_dict(), "plan": plan.to_dict(),
                            "parts": {pid: {"name": p.name, "instruments": [i for i, _ in p.instruments],
@@ -1271,10 +1319,12 @@ def process(c: Candidate, s: Settings, defaults: dict, per_score: Dict[str, dict
                            "score_seconds": round(a.end_time, 2), "warnings": []}
     if c.entry.get("content") and c.entry.get("content") != _content_hash(c.path):
         rec["warnings"].append("the score changed since the last `build`: the song JSON may not match it yet")
+    if c.source_rel and c.source_rel != c.rel:
+        rec["source"] = c.source_rel
 
     # 2. copy
     copy_path = os.path.join(work, "score.mscz")
-    write_copy(c.path, copy_path, a, plan, o)
+    write_copy(copy_src, copy_path, a, plan, o)
     rec["relabels"] = [r.to_dict() for r in o.relabel]
     for r in o.relabel:
         p = a.parts.get(r.part)
@@ -1293,6 +1343,17 @@ def process(c: Candidate, s: Settings, defaults: dict, per_score: Dict[str, dict
     rec["libraries"] = installed
     wav_seconds = duration(wav)
     rec["render_seconds"] = round(wav_seconds, 2)
+    if pr is not None:
+        from . import timeline as TL
+        if pr.plan.pieces:
+            TL.place_pieces(pr.plan, pr.orch.timeline, pr.orch.seconds, wav_seconds)
+            placed = os.path.join(work, "song.wav")
+            place_wav(wav, placed, pr.plan.pieces)
+            os.replace(placed, wav)
+            wav_seconds = duration(wav)
+            a = on_song_clock(a_copy, pr.plan.pieces)
+        rec["timeline"] = timeline_record(c, pr, a, s)
+        rec["score_seconds"] = round(a.end_time, 2)
     bursts = nan_bursts(nan_blocks(wav))
     if bursts:
         raise AccompanimentError(
@@ -1353,7 +1414,7 @@ def process(c: Candidate, s: Settings, defaults: dict, per_score: Dict[str, dict
         rec["timing"] = run_timing(s, wav, onsets_path, tmp_mp3, gain, work)
         if not s.keep_wav and os.path.exists(wav):
             os.unlink(wav)
-        rec["timing_reference"] = timing_reference(s, c, a, plan, o, work)
+        rec["timing_reference"] = timing_reference(s, c, a_copy, plan, o, work, copy_src)
 
     os.makedirs(out_dir, exist_ok=True)
     shutil.copyfile(tmp_mp3, mp3 + ".tmp")
@@ -1363,6 +1424,131 @@ def process(c: Candidate, s: Settings, defaults: dict, per_score: Dict[str, dict
     if not s.keep_wav:
         _cleanup(work)
     return "rendered", rec
+
+
+# ------------------------------------------------------------------------------
+# songs on a piano solo's clock (pianovision.timeline)
+# ------------------------------------------------------------------------------
+
+def timeline_key(c: Candidate) -> Optional[dict]:
+    """What the clock of a song with a partner score depends on (the cache key): both scores, the partner's knobs and
+    options, the measure map and the revisions of the alignment and the clock; None without a partner."""
+    p = c.partner
+    if not p:
+        return None
+    from .arrangement import ARRANGEMENT_REVISION
+    from .timeline import TIMELINE_REVISION
+    return {"kind": p["kind"], "song": _sha256_file(c.path), "partner": p.get("rel"),
+            "partner_sha": _sha256_file(p["path"]), "compat": p.get("compat"), "options": p.get("options"),
+            "song_compat": _verify_compat(c.entry), "measure_map": p.get("measure_map", "auto"),
+            "revision": [ARRANGEMENT_REVISION, TIMELINE_REVISION]}
+
+
+def song_pair(c: Candidate):
+    """The song's two scores aligned and the orchestral one rendered on the solo's clock
+    (:func:`pianovision.timeline.pair`)."""
+    from .buildopts import without_partner
+    from .timeline import SONG_ORCHESTRA, SONG_SOLO, pair
+    p = c.partner
+    own = without_partner(c.options)
+    if p["kind"] == "orchestra":
+        return pair(p["path"], p.get("compat"), p.get("options"), c.path, _verify_compat(c.entry), own, SONG_SOLO,
+                    p.get("measure_map", "auto"))
+    return pair(c.path, _verify_compat(c.entry), own, p["path"], p.get("compat"), p.get("options"), SONG_ORCHESTRA,
+                p.get("measure_map", "auto"))
+
+
+def _song_title(c: Candidate, a: Analysis) -> Tuple[str, str]:
+    e = c.entry
+    return e.get("title") or a.title, e.get("artist") or a.artist
+
+
+def place_wav(src: str, dst: str, pieces) -> None:
+    """The render ``src`` cut into ``pieces`` (:class:`pianovision.timeline.Piece`: render ``start``..``end`` at the
+    song's ``at``), each placed at its time, silence between (10 ms fades where the render is cut), as ``dst``
+    (32-bit float WAV)."""
+    sr = MP3_SAMPLE_RATE
+    chains = []
+    for i, pc in enumerate(pieces):
+        last = i == len(pieces) - 1
+        s0 = max(0, int(round(pc.start * sr)))
+        f = f"[0:a]atrim=start_sample={s0}" + ("" if last else f":end_sample={int(round(pc.end * sr))}")
+        f += ",asetpts=PTS-STARTPTS"
+        if s0 > 0:
+            f += ",afade=t=in:d=0.01"
+        if not last:
+            f += f",afade=t=out:st={max(pc.end - pc.start - 0.01, 0):.6f}:d=0.01"
+        f += f",adelay=delays={int(round(pc.at * sr))}S:all=1[p{i}]"
+        chains.append(f)
+    if len(pieces) > 1:
+        chains.append("".join(f"[p{i}]" for i in range(len(pieces)))
+                      + f"amix=inputs={len(pieces)}:normalize=0:duration=longest[out]")
+        out = "[out]"
+    else:
+        out = "[p0]"
+    _ffmpeg(["-y", "-i", src, "-filter_complex", ";".join(chains), "-map", out, "-c:a", "pcm_f32le", "-ar", str(sr),
+             dst])
+
+
+def on_song_clock(a: Analysis, pieces) -> Analysis:
+    """The analysis of the edited orchestral score's render with its times on the song's clock (notes in a cut
+    left out)."""
+    from .timeline import song_time
+    staves = []
+    for st in a.staves:
+        spans = []
+        for on, off in st.spans:
+            t = song_time(pieces, on)
+            if t is not None:
+                spans.append((t, t + (off - on)))
+        attacks = [(song_time(pieces, t), p) for t, p in st.attacks if song_time(pieces, t) is not None]
+        staves.append(dataclasses.replace(st, spans=spans, attacks=attacks))
+    end = song_time(pieces, a.end_time)
+    return dataclasses.replace(a, staves=staves, end_time=end if end is not None else a.end_time)
+
+
+def song_clock_check(a: Analysis, parts_doc: Optional[dict], tolerance: float = 0.05) -> Optional[dict]:
+    """The song's orchestra (its parts file: what Note Waterfall shows) against the notes of the score MuseScore
+    renders, on the song's clock: every orchestra note matched to the nearest attack of the same pitch (within
+    ``tolerance``); the differences in ms."""
+    if not parts_doc:
+        return None
+    by_pitch: Dict[int, List[float]] = {}
+    for st in a.staves:
+        for t, p in st.attacks:
+            by_pitch.setdefault(p, []).append(t)
+    for v in by_pitch.values():
+        v.sort()
+    diffs, unmatched = [], 0
+    for hand in (parts_doc.get("parts", {}).get("orchestra") or {}).values():
+        for n in hand:
+            ts = by_pitch.get(n["note"], [])
+            i = bisect.bisect_left(ts, n["start"])
+            c = [ts[k] for k in (i - 1, i) if 0 <= k < len(ts)]
+            if not c or min(abs(x - n["start"]) for x in c) > tolerance:
+                unmatched += 1
+                continue
+            diffs.append(min(c, key=lambda x: abs(x - n["start"])) - n["start"])
+    if not diffs:
+        return {"notes": unmatched, "matched": 0}
+    ab = sorted(abs(d) * 1000 for d in diffs)
+    return {"notes": len(diffs) + unmatched, "matched": len(diffs), "median_ms": round(statistics.median(ab), 2),
+            "p95_ms": round(ab[int(0.95 * (len(ab) - 1))], 2), "max_ms": round(ab[-1], 2),
+            "over_5ms": sum(1 for x in ab if x > 5.0)}
+
+
+def timeline_record(c: Candidate, pr, a: Analysis, s: Settings) -> dict:
+    """The report's record of the clock: the plan and the song-clock check against the song's parts file."""
+    from .timeline import plan_report
+    rec = {"kind": c.partner["kind"], "partner": c.partner.get("rel"), "plan": plan_report(pr.plan, pr)}
+    if pr.plan.pieces:
+        rec["pieces"] = [x.to_dict() for x in pr.plan.pieces]
+    doc = None
+    if c.parts_path and os.path.isfile(c.parts_path):
+        with open(c.parts_path, encoding="utf-8") as f:
+            doc = json.load(f)
+    rec["song_clock"] = song_clock_check(a, doc)
+    return rec
 
 
 def _cleanup(work: str) -> None:
@@ -1385,11 +1571,12 @@ def run_probe(s: Settings, c: Candidate, a: Analysis, plan: MutePlan, o: ScoreOp
     if not slots:
         return []
     tag = "probe" if relabelled else "probe0"
-    with zipfile.ZipFile(c.path) as z:
+    src = c.source_path or c.path
+    with zipfile.ZipFile(src) as z:
         mscx = relabel_mscx(z.read(_main_mscx(z)), relabels, part_staves(a))
     pm = probe_mscx(mscx, a, slots)
     path = os.path.join(work, tag + ".mscz")
-    write_copy(c.path, path, a, plan, o, drop_excerpts=True, mscx_override=pm, muted_override=set(),
+    write_copy(src, path, a, plan, o, drop_excerpts=True, mscx_override=pm, muted_override=set(),
                relabel=relabelled, dry=True)
     window = block_seconds(0.05)
     mw, bw = os.path.join(work, tag + "-muse.wav"), os.path.join(work, tag + "-basic.wav")
@@ -1423,11 +1610,12 @@ def attack_ms(levels: Sequence[float], start: float, window: float, drop_db: flo
     return None
 
 
-def timing_reference(s: Settings, c: Candidate, a: Analysis, plan: MutePlan, o: ScoreOptions, work: str
-                     ) -> Optional[dict]:
+def timing_reference(s: Settings, c: Candidate, a: Analysis, plan: MutePlan, o: ScoreOptions, work: str,
+                     src: Optional[str] = None) -> Optional[dict]:
     """MuseScore's own timeline, apart from how the accompaniment's samples begin: the score's piano (the
     formatter's 'piano' staves of a keyboard instrument; everything else muted) rendered with the basic sounds,
-    whose attacks are quick, against its notes.  None when the piano part is not a keyboard."""
+    whose attacks are quick, against its notes.  None when the piano part is not a keyboard.  ``src``: the score
+    file rendered (the copy on a solo's clock), ``a`` its analysis."""
     piano = {st.part for st in a.staves if st.kind == KIND_PIANO and st.notes
              and any(mx.startswith("keyboard.") for _i, mx in a.parts[st.part].instruments)}
     if not piano:
@@ -1435,7 +1623,7 @@ def timing_reference(s: Settings, c: Candidate, a: Analysis, plan: MutePlan, o: 
     ref_plan = dataclasses.replace(plan, muted={pid: ["timing reference"] for pid in a.parts if pid not in piano},
                                    audible_staves=[st.idx for st in a.staves if st.part in piano and st.notes])
     path, wav = os.path.join(work, "reference.mscz"), os.path.join(work, "reference.wav")
-    write_copy(c.path, path, a, ref_plan, o, relabel=False)
+    write_copy(src or c.source_path or c.path, path, a, ref_plan, o, relabel=False)
     render(s, path, wav, muse=False, log_copy=os.path.join(work, "reference.log"))
     onsets = os.path.join(work, "reference-onsets.json")
     with open(onsets, "w", encoding="utf-8") as f:
@@ -1502,6 +1690,11 @@ def report_markdown(state: dict, settings: Settings) -> str:
         L.append(f"| {r.get('mp3', rel)}{err} | {_mmss(r.get('mp3_seconds'))} ({_mmss(r.get('score_seconds'))}) | "
                  f"{muted or '-'} | {fb or '-'} | {tm} | {lo} |")
     L.append("")
+    retired = state.get("retired") or {}
+    if retired:
+        L.append("No longer songs of the library (their mp3 is left in the folder; nothing renders it again): "
+                 + ", ".join(f"{v.get('mp3')} ({k})" for k, v in sorted(retired.items())))
+        L.append("")
     for rel, r in scores:
         L.append(f"## {r.get('mp3', rel)}")
         L.append("")
@@ -1518,6 +1711,24 @@ def report_markdown(state: dict, settings: Settings) -> str:
                  f"{_mmss((r.get('checks') or {}).get('last_sound_s'))})"
                  + (f". MuseScore's render ran to {_mmss(tr)}; the digital silence after the music was cut" if tr
                     else ""))
+        tl = r.get("timeline")
+        if tl:
+            pl = tl.get("plan") or {}
+            how = ("the orchestra of " + r.get("source", "?") if tl.get("kind") == "orchestra"
+                   else "the orchestral score itself")
+            line = (f"- **Clock:** the piano solo's ({tl.get('partner') if tl.get('kind') == 'simplified' else rel}): "
+                    f"{how}, rendered with {pl.get('marks')} tempo marks written in (its own tempo marks, fermatas "
+                    f"and pauses off), {pl.get('seconds')} s (its own timing {pl.get('own_seconds')} s); positions "
+                    f"within {pl.get('max_inside_ms')} ms of the solo's clock")
+            if tl.get("pieces"):
+                line += "; cut and placed: " + ", ".join(
+                    f"render {x['render'][0]:.2f}-{x['render'][1]:.2f} s at {x['at']:.2f} s" for x in tl["pieces"])
+            sc = tl.get("song_clock")
+            if sc and sc.get("matched"):
+                line += (f". The song's orchestra (parts file) against the rendered score's notes: {sc['matched']} of "
+                         f"{sc['notes']} notes matched, median {sc['median_ms']} ms, p95 {sc['p95_ms']} ms, max "
+                         f"{sc['max_ms']} ms ({sc['over_5ms']} over 5 ms)")
+            L.append(line)
         rd = r.get("render") or {}
         if rd:
             L.append(f"- **MuseScore log:** Muse Sounds engine {rd.get('muse_engine') or 'NOT LOADED'}; "
@@ -1631,11 +1842,13 @@ def listing(lib, s: Settings, only: Sequence[str] = (), log: Log = print) -> int
         manifest = json.load(f)
     defaults, per_score = load_options(s.options)
     for c in candidates(manifest, lib.cfg.scores, only, lib):
-        o = score_options(defaults, per_score.get(c.rel))
-        a = analyse(c.path, _verify_compat(c.entry), c.options)
+        o = score_options(defaults, per_score.get(c.source_rel or c.rel))
+        a = analyse(c.source_path or c.path, c.source_compat, c.source_options)
         plan = plan_mutes(a, o)
         ren = renames_for(o.relabel)
-        log(f"{c.rel} -> {c.stem}.mp3  ({_mmss(a.end_time)})")
+        log(f"{c.rel} -> {c.stem}.mp3  ({_mmss(a.end_time)}"
+            + (f"; the orchestra of {c.source_rel}" if c.source_rel and c.source_rel != c.rel else "")
+            + ("; on the piano solo's clock" if c.partner else "") + ")")
         for pid, p in a.parts.items():
             kinds = sorted({a.staves[i].kind for i in p.staves if a.staves[i].notes} or {"empty"})
             ins = ", ".join(iid + (f" -> {ren[(pid, iid)]}" if (pid, iid) in ren else "") for iid, _mx in p.instruments)
@@ -1667,13 +1880,19 @@ def run(lib, s: Settings, only: Sequence[str] = (), force: bool = False, dry_run
     with open(os.path.join(lib.out, ".manifest.json"), encoding="utf-8") as f:
         manifest = json.load(f)
     defaults, per_score = load_options(s.options)
-    unknown = sorted(set(per_score) - {r for r in manifest.get("entries", {})})
+    cands = candidates(manifest, lib.cfg.scores, only, lib)
+    sources = {c.source_rel for c in candidates(manifest, lib.cfg.scores, (), lib)}
+    unknown = sorted(set(per_score) - {r for r in manifest.get("entries", {})} - sources)
     for u in unknown:
         log(f"warning: {OPTIONS_NAME} has options for {u!r}, which is not in the library")
-    cands = candidates(manifest, lib.cfg.scores, only, lib)
     log(f"{len(cands)} score(s) with an accompaniment" + (f" matching {', '.join(only)}" if only else ""))
     state = load_state(out_dir)
     state.setdefault("scores", {})
+    # songs that left the library (retired, or no longer songs of their own): their mp3 is left where it is
+    for r in sorted(r for r in state["scores"] if r not in manifest.get("entries", {})):
+        old = state["scores"].pop(r)
+        state.setdefault("retired", {})[r] = {"mp3": old.get("mp3"), "song": old.get("song"), "date": _now()}
+        log(f"{r}: no longer a song of the library; {old.get('mp3')} is left in {out_dir}")
     failures = 0
     for c in cands:
         log(f"{c.rel} -> {c.stem}.mp3")

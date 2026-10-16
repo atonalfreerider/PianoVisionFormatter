@@ -292,8 +292,8 @@ class ScoreFixtures(unittest.TestCase):
         return make_piano_score(os.path.join(self.scores, "Test", "solo.mscz"), rh, lh, title="Song")
 
     def options(self, **kw):
-        o = {"arrangement": {"path": self.arrangement(), "rel": "Test/solo.mscz", "compat": None,
-                             "measure_map": "auto"}}
+        o = {"partner": {"kind": "simplified", "path": self.arrangement(), "rel": "Test/solo.mscz", "compat": None,
+                         "measure_map": "auto", "options": None}}
         o.update(kw)
         return o
 
@@ -303,7 +303,7 @@ class ScoresTest(ScoreFixtures):
         orch = self.orchestral()
         plain = convert_mscz(orch, parts=True)
         c = convert_mscz(orch, parts=True, options=self.options())
-        self.assertEqual(c.data, plain.data)                     # PianoVision's JSON does not change
+        self.assertEqual(c.data, plain.data)                     # the same tempo: PianoVision's JSON is the same
         doc = c.parts
         self.assertTrue(doc["simplified"])
         self.assertEqual(list(doc["parts"]), ["original", "simplified", "orchestra"])
@@ -320,7 +320,7 @@ class ScoresTest(ScoreFixtures):
     def test_the_arrangement_rhythm_lands_in_the_mapped_measure(self):
         orch = self.orchestral()
         opts = self.options()
-        opts["arrangement"]["path"] = self.arrangement(rhythm={7})
+        opts["partner"]["path"] = self.arrangement(rhythm={7})
         c = convert_mscz(orch, parts=True, options=opts)
         right = [(n["ticksStart"], n["note"]) for n in c.parts["parts"]["simplified"]["right"]
                  if 7 * W <= n["ticksStart"] < 8 * W]
@@ -359,13 +359,15 @@ class LibraryOptionsTest(ScoreFixtures):
         self.assertTrue(os.path.exists(os.path.join(out, ".arrangements", "test_Song_Piano_and_Orchestra.md")))
         self.assertEqual([r for r, _md, _s in rep.arrangements], ["Test/orch.mscz"])
         self.assertEqual(self.lib(self.OPTS).build().written, [])           # nothing changed
-        # the arrangement is edited: the orchestral score's parts are written again, its JSON stays
+        # the arrangement is edited: the orchestral score is rendered again (it plays on the arrangement's clock); with
+        # the same tempo its JSON stays, its parts are written again
         with open(os.path.join(out, "test_Song_Piano_and_Orchestra.json"), "rb") as f:
             song = f.read()
         self.arrangement(rhythm={0})
         lib = self.lib(self.OPTS)
         acts = {a.rel: (a.kind, a.reason) for a in lib.plan(scan_library(self.scores))}
-        self.assertEqual(acts["Test/orch.mscz"][0], "parts")
+        self.assertEqual(acts["Test/orch.mscz"][0], "render")
+        self.assertTrue(acts["Test/orch.mscz"][1].startswith("partner score changed (Test/solo.mscz"))
         rep = lib.build()
         self.assertIn("NoteWaterfall/test_Song_Piano_and_Orchestra.parts.json", rep.parts)
         with open(os.path.join(out, "test_Song_Piano_and_Orchestra.json"), "rb") as f:
@@ -388,8 +390,14 @@ class LibraryOptionsTest(ScoreFixtures):
         self.assertTrue(opts)
         for rel, o in opts.items():
             ro = o.render_options("/scores")
-            if o.simplified_from:
-                self.assertEqual(ro["arrangement"]["rel"], o.simplified_from)
+            if o.partner:
+                self.assertEqual(ro["partner"]["rel"], o.partner)
+                self.assertEqual(ro["partner"]["kind"], "simplified" if o.simplified_from else "orchestra")
+                self.assertTrue(o.song)
+        # a score that is not a song of its own is another's partner
+        for rel, o in opts.items():
+            if not o.song:
+                self.assertTrue(any(x.partner == rel for x in opts.values()), rel)
 
 
 # ------------------------------------------------------------------------------

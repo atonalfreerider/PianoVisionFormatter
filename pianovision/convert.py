@@ -48,6 +48,7 @@ class NoteSource:
     element: int = -1
     grace: Optional[int] = None
     tick: Optional[Fraction] = None   # score position (whole notes) of the chord
+    track: int = -1                # the song's MIDI track (a staff; ``orchestra_from``: another score's after its own)
 
     def to_dict(self) -> dict:
         d = {"hand": self.hand, "index": self.index, "ticksStart": self.ticks, "midi": self.midi,
@@ -63,7 +64,8 @@ class NoteSource:
 def note_source(hand: str, index: int, n) -> NoteSource:
     """NoteSource of a pvjson Note built from a provenance render."""
     src = n.src
-    ns = NoteSource(hand=hand, index=index, ticks=n.ticks, midi=n.midi, velocity=n.raw_velocity, note=src)
+    ns = NoteSource(hand=hand, index=index, ticks=n.ticks, midi=n.midi, velocity=n.raw_velocity, note=src,
+                    track=getattr(n, "track", -1))
     if src is not None and src.chord is not None and src.chord.xml_path is not None:
         ns.staff, ns.measure, ns.voice, ns.chord = src.chord.xml_path
         ns.element = src.xml_index
@@ -87,7 +89,8 @@ class Converted:
     # with parts=True and provenance=True: {part: {hand: [NoteSource per note of the parts document]}}, plus
     # "simplified_staff": the simplified part's notes written on the simplified staves (the hand-edit identity)
     parts_provenance: Optional[Dict[str, Dict[str, List[NoteSource]]]] = None
-    # with parts=True and an arrangement in the options: what the alignment did (pianovision.arrangement.report_dict)
+    # with parts=True and a partner score in the options (simplified_from, orchestra_from): what the alignment did
+    # (pianovision.arrangement.report_dict, with the clock's plan: pianovision.timeline)
     arrangement: Optional[dict] = None
     # the score's staves have other roles than the legacy classification gave them (pvjson.staves_revised)
     staves_revised: bool = False
@@ -112,30 +115,51 @@ def convert_mscz(mscz_path: str, compat: Optional[Compat] = None, orchestra: boo
     score note it comes from (:class:`NoteSource`); ``parts`` also returns Note Waterfall's
     parts of the song (:mod:`pianovision.parts`).  The JSON is the same either way.
     ``options``: the score's build options (:meth:`pianovision.buildopts.BuildOptions.render_options`): its title
-    and composer, its piano staves and hands (:mod:`pianovision.handsplit`), and with ``parts`` the arrangement that
-    becomes the simplified part (:mod:`pianovision.arrangement`; its report in ``Converted.arrangement``)."""
+    and composer, its piano staves and hands (:mod:`pianovision.handsplit`), and a partner score
+    (:mod:`pianovision.timeline`): with ``simplified_from`` the song is this orchestral score on the piano solo's
+    clock and, with ``parts``, the solo's piano part its simplified part; with ``orchestra_from`` the song is this
+    solo with the orchestral score's orchestra (the report in ``Converted.arrangement``)."""
     from .handsplit import apply_piano_options
     compat = compat or Compat()
+    partner = (options or {}).get("partner")
+    own = {k: v for k, v in (options or {}).items() if k != "partner"} or None
     root = score_root(mscz_path)
-    score = read_score(mscz_path)
-    # the parts' lyrics find the notes that sing them through the notes' provenance (the JSON is the same)
-    renderer = Renderer(score, compat, provenance=provenance or parts)
-    midi = renderer.render()
-    apply_piano_options(midi, options)
+    pr = None
+    if partner and partner["kind"] == "simplified":
+        # the song is this orchestral score, rendered on the solo's clock
+        from .timeline import SONG_ORCHESTRA, pair
+        pr = pair(mscz_path, compat, own, partner["path"], partner.get("compat"), partner.get("options"),
+                  SONG_ORCHESTRA, partner.get("measure_map", "auto"), provenance=provenance or parts)
+        score, renderer, midi = pr.orch_render.score, pr.orch_render.renderer, pr.orch_render.midi
+    else:
+        score = read_score(mscz_path)
+        # the parts' lyrics find the notes that sing them through the notes' provenance (the JSON is the same)
+        renderer = Renderer(score, compat, provenance=provenance or parts)
+        midi = renderer.render()
+        apply_piano_options(midi, own)
+    orch_stats = None
+    if partner and partner["kind"] == "orchestra":
+        # the song is this solo; the orchestral score's orchestra, on the solo's clock, onto its measures
+        from .timeline import SONG_SOLO, Rendered, inject_orchestra, pair
+        pr = pair(partner["path"], partner.get("compat"), partner.get("options"), mscz_path, compat, own, SONG_SOLO,
+                  partner.get("measure_map", "auto"), solo_render=Rendered(score, renderer, midi))
+        orch_stats = inject_orchestra(midi, pr, partner.get("rel", ""))
     prov: Optional[Dict[str, list]] = {} if provenance else None
     parts_out: Optional[dict] = {} if parts else None
     c = _finish(midi, root, mscz_path, orchestra, simplified, keep_midi, compat.metadata, prov,
-                parts_out, options)
+                parts_out, own)
     c.staves_revised = staves_revised(midi)
     if provenance:
         c.score = score
         c.provenance = {hand: [note_source(hand, i, n) for i, n in enumerate(prov[hand])]
                         for hand in ("right", "left")}
     if parts:
-        arrangement = (options or {}).get("arrangement")
-        if arrangement:
+        if partner and partner["kind"] == "simplified":
             from .arrangement import apply_arrangement
-            c.arrangement = apply_arrangement(arrangement, score, renderer, midi, parts_out)
+            c.arrangement = apply_arrangement(partner, pr, score, parts_out)
+        elif partner:
+            from .arrangement import orchestra_report
+            c.arrangement = orchestra_report(partner, pr, orch_stats, parts_out)
         c.parts = parts_out["doc"]
         if provenance:
             c.parts_provenance = _parts_provenance(parts_out)
