@@ -38,7 +38,7 @@ timing_script = "tools/accompaniment_timing.py"
 # Note Waterfall's companion audio from recordings you own (python -m pianovision recordings match|align|retime|status):
 # a recording linked to its song (a TypeSafe judgment; TYPESAFE_API_KEY), aligned and retimed onto the song's timeline
 music_dir = "~/Music"                               # read only
-exclude = ["Note Waterfall Accompaniments", "Note Waterfall Vocals", "MuseScore MIDI"]
+exclude = ["Note Waterfall Accompaniments", "Note Waterfall Vocals", "Note Waterfall Recordings", "MuseScore MIDI"]
 links = "recordings.json"                           # the links (and your decisions), checked in
 out_dir = "~/.cache/nw-recordings/out"              # <song>.mp3, audio_map.proposed.json, accuracy/, recordings-report.md
 work_dir = "~/.cache/nw-recordings/work"            # inventory, references, alignments, WAVs
