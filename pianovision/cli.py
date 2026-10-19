@@ -14,6 +14,8 @@
     arrangement    the measure alignment of a song made with a partner score (simplified_from, orchestra_from), as a
                    report
     recordings     companion audio from recordings you own: match them to songs (TypeSafe), align, retime
+    scorefix       a score's repeat structure; structural fixes into a copy or, with a backup, the score
+    lyrics         a lyrics text file onto the score's vocal line (import): a copy, or the score after a backup
 """
 
 from __future__ import annotations
@@ -632,6 +634,109 @@ def cmd_scorefix(args) -> int:
     return 0
 
 
+def cmd_lyrics(args) -> int:
+    """A lyrics text file onto the score's vocal line (import): the report (--dry-run), a copy (--out) or, with a
+    backup, the score itself (--in-place --backup DIR); the edited score is verified before it is written."""
+    import hashlib
+    import shutil
+    import tempfile
+    from . import lyricsimport as LI
+    if not args.dry_run:
+        if args.in_place and args.out:
+            _p("error: --out COPY.mscz or --in-place, not both")
+            return 2
+        if not args.in_place and not args.out:
+            _p("error: --out COPY.mscz, --in-place --backup DIR, or --dry-run")
+            return 2
+        if args.out and os.path.abspath(args.out) == os.path.abspath(args.score):
+            _p("error: --out is the score itself; use --in-place --backup DIR")
+            return 2
+        if args.in_place and not args.backup:
+            _p("error: --in-place needs --backup DIR (the original is copied there first)")
+            return 2
+        if args.in_place and os.path.exists(os.path.join(args.backup, os.path.basename(args.score))):
+            _p(f"error: {os.path.join(args.backup, os.path.basename(args.score))} exists (a backup is never "
+               f"overwritten)")
+            return 2
+    try:
+        text = LI.read_text(args.lyrics)
+        plan = LI.plan_import(args.score, text, staff=args.staff, keep_parentheses=args.keep_parentheses,
+                              replace=args.replace)
+    except LI.LyricsImportError as e:
+        _p(f"error: {e}")
+        return 2
+    for line in LI.format_plan(plan):
+        _p(line)
+    if args.dry_run:
+        return 0
+    if not plan.placements:
+        _p("error: no syllable to write")
+        return 1
+    try:
+        new = LI.build_mscz(plan)
+    except LI.LyricsImportError as e:
+        _p(f"error: {e}")
+        return 2
+    work = os.path.expanduser(args.work or LI.WORK_DIR)
+    os.makedirs(work, exist_ok=True)
+    cand_dir = tempfile.mkdtemp(prefix="import-", dir=work)
+    cand = os.path.join(cand_dir, os.path.basename(args.score))
+    with open(cand, "wb") as f:
+        f.write(new)
+    mscore = None
+    if not args.no_musescore:
+        mscore = args.mscore
+        if not mscore:
+            from .accompaniment import load_settings
+            from .library import find_config
+            mscore = load_settings(find_config(args.config)).path("mscore")
+    _p("verification:")
+    ver = LI.verify(plan, cand, mscore=mscore, work=work)
+    for line in ver.lines:
+        _p(f"  {line}")
+    if not ver.ok:
+        _p(f"verification failed: nothing written (the edited copy: {cand})")
+        return 1
+
+    def put(dest: str, mode_from: Optional[str] = None) -> None:
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(dest)), prefix=".lyrics-", suffix=".tmp")
+        with os.fdopen(fd, "wb") as f:
+            f.write(new)
+        if mode_from:
+            shutil.copymode(mode_from, tmp)
+        os.replace(tmp, dest)
+
+    if not args.in_place:
+        put(args.out, args.score)
+        shutil.rmtree(cand_dir, ignore_errors=True)
+        _p(f"{args.out}: {len(plan.placements)} syllables written")
+        return 0
+    if not args.yes:
+        if not sys.stdin.isatty():
+            _p("error: no terminal to confirm; pass --yes")
+            return 2
+        if input(f"overwrite {args.score} (original to {args.backup})? [y/N] ").strip().lower() != "y":
+            return 1
+    os.makedirs(args.backup, exist_ok=True)
+    bak = os.path.join(args.backup, os.path.basename(args.score))
+    if os.path.exists(bak):
+        _p(f"error: {bak} exists (a backup is never overwritten); nothing written")
+        return 2
+    with open(args.score, "rb") as f:
+        if f.read() != plan.mscz:
+            _p("error: the score changed while the lyrics were imported; nothing written")
+            return 2
+    shutil.copy2(args.score, bak)
+    with open(bak, "rb") as f:
+        if hashlib.sha256(f.read()).digest() != hashlib.sha256(plan.mscz).digest():
+            _p("error: the backup differs from the score read; nothing written")
+            return 2
+    put(args.score, args.score)
+    shutil.rmtree(cand_dir, ignore_errors=True)
+    _p(f"{args.score}: {len(plan.placements)} syllables written (original: {bak})")
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="pianovision", description="MuseScore library -> PianoVision JSON -> Quest")
     ap.add_argument("--config", help="pianovision.toml (default: ./pianovision.toml or next to the package)")
@@ -812,6 +917,52 @@ Settings: [recordings] in pianovision.toml (music_dir, out_dir, work_dir, python
     p.add_argument("--backup", help="apply --in-place: folder the original is copied to first")
     p.add_argument("-y", "--yes", action="store_true", help="apply --in-place: do not ask")
     p.set_defaults(fn=cmd_scorefix)
+
+    p = sub.add_parser(
+        "lyrics", help="a lyrics text file onto the score's vocal line (import): a copy, or the score after a backup",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Puts a song's lyrics, from a text file you supply, on the vocal line of its MuseScore score: "
+                    "each sung line on its phrase, each syllable on its note, verse k on the k-th pass through "
+                    "repeated measures. Reports show counts, line and measure numbers, never the text.",
+        epilog="""the lyrics file (UTF-8; blank lines ignored):
+  [Verse 1]                one sung line per text line
+  a lov-er's word          "-" splits a word into syllables yourself (else pyphen if installed, else rules)
+  hold_ me now__           "_" holds a syllable over one more note (a melisma), "__" over two
+  [Piano Solo]             a header without lines: instrumental
+  [Chorus]                 without lines, named like an earlier sung section: that section again
+  [Verse 3 @ m.10 pass 3]  pin: the section's first line starts in m.10 (file order), its 3rd time through
+  [Outro x2], "... (x2)"   the section / the line twice
+  (ooh)                    parenthesized text is backing vocals: left out (--keep-parentheses keeps it)
+Junk pasted from a lyrics site ("You might also like" and the titles after it, "N Contributors", "Embed",
+licence footers) is skipped up to the next header and reported by line number.
+
+The vocal line is the score's vocal staff (or --staff N), voice 1, in playback order; rests split it into
+phrases; lines are matched to phrases in order (a line may span phrases, lines may share one). Extra notes hold
+the syllable before them; extra syllables are merged; each mismatch is reported. Measure numbers count file
+order, as `scorefix report` does. Run it after any repeat fix: the verse numbers follow the passes.
+
+Writing: --out writes a copy; --in-place copies the original to --backup DIR first. Before anything is written,
+the edited score is verified: the formatter renders the same notes, finds every syllable on its note and pass,
+and MuseScore 4.7 headless opens and exports it; on a failure nothing is written.""")
+    p.add_argument("action", choices=("import",))
+    p.add_argument("score", help="the score (.mscz)")
+    p.add_argument("lyrics", help="the lyrics text file (UTF-8)")
+    p.add_argument("-o", "--out", help="the copy to write")
+    p.add_argument("--in-place", action="store_true", help="overwrite the score (needs --backup)")
+    p.add_argument("--backup", help="--in-place: folder the original is copied to first")
+    p.add_argument("-y", "--yes", action="store_true", help="--in-place: do not ask")
+    p.add_argument("--dry-run", action="store_true",
+                   help="write nothing: per section and line, syllables against notes, held notes, merges and "
+                        "notes left over, with measure numbers")
+    p.add_argument("--staff", type=int, metavar="N", help="the vocal staff, 1-based (default: the score's one "
+                                                          "vocal staff)")
+    p.add_argument("--replace", action="store_true", help="remove the staff's existing lyrics first (otherwise a "
+                                                          "staff with lyrics is refused)")
+    p.add_argument("--keep-parentheses", action="store_true", help="sing parenthesized text too")
+    p.add_argument("--no-musescore", action="store_true", help="skip MuseScore's check of the edited score")
+    p.add_argument("--mscore", help="MuseScore executable (default: [accompaniment] mscore of pianovision.toml)")
+    p.add_argument("--work", help="scratch folder for the check (default: ~/.cache/nw-lyricsimport)")
+    p.set_defaults(fn=cmd_lyrics)
 
     p = sub.add_parser("gui", help="the Piano Library window: library, build, push to the headset, hand edits")
     p.add_argument("--read-only", action="store_true",

@@ -41,6 +41,7 @@ orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits); op
 | `accompaniment [--only GLOB…] [--out DIR] [--force] [--dry-run] [--list] [--no-timing]` | Note Waterfall's companion audio: each score's orchestra (everything but the piano part) rendered by MuseScore with Muse Sounds, one mp3 per song (see below) |
 | `arrangement [SCORE…] [--write]` | the measure alignment of a song made with a partner score (`scores.json` `simplified_from`, `orchestra_from`), as a report; `build` writes it to `.arrangements/` (see below) |
 | `recordings match\|align\|retime\|status\|route\|confirm\|reject [--only GLOB…]` | what each song's companion audio is (generated from the score, or for sung songs the vocals of a recording you own: TypeSafe judgments), and those vocals separated, aligned and retimed onto the song's timeline (see below) |
+| `lyrics import SCORE LYRICS.txt [--dry-run] [-o COPY] [--in-place --backup DIR] [--staff N] [--replace]` | a song's lyrics, from a text file you supply, onto the vocal line of its score: each line on its phrase, each syllable on its note, verse k on the k-th pass through repeated bars; a copy, or the score after a backup, verified first (see below) |
 | `scorefix report\|apply\|reference SCORE [FIXES.json] [--out COPY] [--in-place --backup DIR]` | a score's repeat structure as MuseScore plays it (voltas no pass reaches, bars never played, wrong bar lengths); structural fixes (tempo, voltas, repeat counts, segno / coda / D.S.) into a copy, or into the score after a backup; the score's notes on its own clock for an alignment with a recording (see below) |
 
 ## Piano Library (the window)
@@ -688,6 +689,69 @@ stays byte for byte. `FIXES.json` is a list:
 `scorefix reference SCORE --out ref.json` renders the score into `tools/recording_align.py`'s reference format. Use
 it to check a fixed copy against a recording, for example with `recording_align.py align --ref ref.json --audio REC`.
 
+## Lyrics from a text file (lyrics import)
+
+`python3 -m pianovision lyrics import SCORE LYRICS.txt` puts a song's lyrics on the vocal line of its score, from a
+text file you supply. Note Waterfall then shows the falling melody notes with their syllables: `build` reads the
+score's lyrics into the parts file (`pianovision.lyrics`). The tool works on whatever text it is given and its reports
+never show it: only counts, line numbers and bar numbers.
+
+The text file is plain UTF-8; blank lines are ignored:
+
+```
+[Verse 1]                 a section header; [Chorus: who sings] is fine (only the name is used)
+one sung line per text line
+a lov-er's word           "-" splits a word into syllables yourself (your split wins)
+hold_ me now__            "_" holds a syllable over one more note (a melisma), "__" over two
+[Piano Solo]              a header without lines: an instrumental section
+[Chorus]                  a header without lines, named like an earlier sung section: that section again
+[Verse 3 @ m.10 pass 3]   optional pin: the section's first line starts in bar 10, its 3rd time through
+[Outro x2]                the section twice; a line ending in "(x2)" is sung twice
+```
+
+* Parenthesized text, `(ooh)`, is taken as backing vocals and left out (`--keep-parentheses` keeps it).
+* Junk pasted from a lyrics site is tolerated: a line that obviously is not lyrics ("You might also like" and the
+  song titles after it, "12 Contributors", "See … Live", "Get tickets", "Translations", writer and licence
+  footers) starts a block that is skipped up to the next header; a "Title Lyrics" first line and an "Embed" glued
+  to the last line are dropped. Each skip is reported by line number.
+* Words are split into syllables by pyphen's English hyphenation when pyphen is installed, else by a small
+  rule-based English syllabifier (`lyricsimport.syllables`: "lit-tle", "go-ing", "love-ly", "did-n't"). Mark any
+  word it gets wrong with "-" yourself.
+
+How the text meets the score:
+
+1. The vocal line is the score's vocal staff (the formatter's classification, `pvjson.staff_roles`; `--staff N`
+   names another), its first voice, in playback order: repeats, voltas and D.S./coda jumps unrolled as MuseScore
+   plays them. A tied note counts once. Rests split the line into phrases.
+2. The text's lines are matched to the phrases in order, by the cheapest fit of syllables to notes (a dynamic
+   programme): a line on one phrase, a line over several phrases (a rest inside the line), several lines in one
+   phrase (no rest between them), a phrase no line is sung on, a line sung nowhere. The headers are soft anchors
+   (a section starts after a rest, an instrumental section is a long rest); the `@ m.N` pins are hard ones. The
+   dry run says, per line, how it was matched.
+3. In each match the syllables go onto the notes in order. Extra notes hold the syllable before them (a melisma,
+   preferably on the last syllable of a word, under a slur, on a change of pitch, at the end of a line; never across
+   a rest). More syllables than notes are merged: the syllables of one word first, else two words on one note with
+   MuseScore's elision. Notes left over get no syllable. Each merge and leftover note is a mismatch in the report.
+4. Each syllable is written on its chord with the verse number of its pass: on the k-th pass through a bar, verse
+   k, which is how `pianovision.lyrics` (and MuseScore) read them, so repeated music carries stacked verses. A word's
+   last syllable held over more notes gets an extender up to the last note it holds.
+
+Bars are numbered in file order, as `scorefix report` numbers them. The verse numbers follow the passes: apply
+any repeat fix (`scorefix`) first, then import the lyrics.
+
+`--dry-run` writes nothing and prints, per section and line, the syllables against the notes, the held notes, the
+merges and the notes left over, with bar numbers and passes ("m.41, m.10-13 (2nd time)"). `-o COPY.mscz` writes a
+copy; `--in-place --backup DIR` overwrites the score after copying the original to DIR (never over an existing
+backup; it asks unless `--yes`). A staff that already has lyrics is refused unless `--replace` removes them first.
+
+The `<Lyrics>` elements are written as MuseScore 4.7.5 saves them (`no`, `syllabic`, `ticks_f` for an extender,
+`text`, right after the chord's duration); everything else in the file stays byte for byte. Before anything is
+written, the edited score is verified in `~/.cache/nw-lyricsimport` (`--work`): the formatter reads it and renders
+the same notes (the PianoVision JSON byte for byte, the parts file the same but for its lyrics),
+`lyrics.collect_lyrics` finds every syllable on its note and pass, and MuseScore (`[accompaniment] mscore`,
+`--mscore`) headless opens it and exports it, with its lyrics counted (skipped with `--no-musescore`, or when less
+than 2 GB of memory is free). On a failure nothing is written.
+
 ## Fidelity
 
 Checked against the 140 existing outputs, which the old scripts made from
@@ -763,6 +827,7 @@ pianovision/        the package (stdlib only)
   parts.py            Note Waterfall's parts files (original / simplified piano part, orchestra)
   markers.py          the parts files' markers (rehearsal marks, sections, tempo words) from the score's texts
   lyrics.py           the parts files' sung syllables, on the notes that sing them
+  lyricsimport.py     lyrics from a text file onto a score's vocal line (lyrics import): syllables, matching, writing
   buildopts.py        per-score build options (scores.json): title, piano staves and hands, partner scores
   arrangement.py      a piano solo aligned with an orchestral score: measure alignment, retiming, report
   timeline.py         a partner song on the solo's clock: the tempo plan, the edit of the orchestral score, orchestra_from
