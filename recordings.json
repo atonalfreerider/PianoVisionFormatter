@@ -7891,88 +7891,89 @@
     },
     "Pop/love-needs-a-heart-jackson-browne.mscz": {
       "song": "brow_Love_Needs_A_Heart.json",
-      "status": "none",
-      "recording": null,
+      "status": "linked",
+      "recording": "Love Needs a Heart (Remastered).mp3",
+      "variants": {
+        "vocals": "(separated from the full mix)",
+        "full": "Love Needs a Heart (Remastered).mp3"
+      },
+      "variant": "vocals",
       "confidence": 1.0,
-      "p_same": null,
-      "p_none": 1.0,
+      "p_same": 0.95,
+      "p_none": 0.0,
       "consistent": true,
-      "why": "no candidate is this composition",
+      "why": "picked with high confidence",
       "alternatives": [],
       "judged": {
         "model": "jev-1.13.0",
-        "time": "2026-10-13T12:49:02",
-        "key": "8445721b0d0d8752",
+        "time": "2026-10-19T14:23:01",
+        "key": "2b9835e3b3f9ab25",
         "candidates": [
           {
+            "recording": "Love Needs a Heart (Remastered).mp3",
+            "score": 0.641
+          },
+          {
             "recording": "Zouk/full/Baby Love.mp3",
-            "score": 0.147
+            "score": 0.144
           },
           {
             "recording": "Zouk/Prism Of Love.mp3",
-            "score": 0.14
-          },
-          {
-            "recording": "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3",
-            "score": 0.124
+            "score": 0.135
           },
           {
             "recording": "Zouk/Baby Love 48000 1_01.mp3",
-            "score": 0.119
+            "score": 0.118
           },
           {
             "recording": "Zouk/full/Not Another Love Song (prod By Ozzie).mp3",
-            "score": 0.101
+            "score": 0.098
+          },
+          {
+            "recording": "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3",
+            "score": 0.092
           },
           {
             "recording": "Zouk/Not Another Love Song (prod By Ozzie) 48000 1_01.mp3",
-            "score": 0.09
-          },
-          {
-            "recording": "Zouk/Benta_-_Lover_In_Dark_AObeats_Remix[MP3Fiber.com].mp3",
-            "score": 0.081
-          },
-          {
-            "recording": "Zouk/full/Benta - Lover In Dark (AObeats Remix).mp3",
-            "score": 0.081
+            "score": 0.088
           }
         ],
         "answers": {
           "pick": {
+            "Love Needs a Heart (Remastered).mp3": 1.0,
             "Zouk/full/Baby Love.mp3": 0.0,
             "Zouk/Prism Of Love.mp3": 0.0,
-            "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3": 0.0,
             "Zouk/Baby Love 48000 1_01.mp3": 0.0,
             "Zouk/full/Not Another Love Song (prod By Ozzie).mp3": 0.0,
+            "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3": 0.0,
             "Zouk/Not Another Love Song (prod By Ozzie) 48000 1_01.mp3": 0.0,
-            "Zouk/Benta_-_Lover_In_Dark_AObeats_Remix[MP3Fiber.com].mp3": 0.0,
-            "Zouk/full/Benta - Lover In Dark (AObeats Remix).mp3": 0.0,
-            "none": 1.0
+            "none": 0.0
           },
-          "pick_choice": "none",
+          "pick_choice": "Love Needs a Heart (Remastered).mp3",
           "pick_reversed": {
-            "Zouk/full/Benta - Lover In Dark (AObeats Remix).mp3": 0.0,
-            "Zouk/Benta_-_Lover_In_Dark_AObeats_Remix[MP3Fiber.com].mp3": 0.0,
             "Zouk/Not Another Love Song (prod By Ozzie) 48000 1_01.mp3": 0.0,
+            "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3": 0.0,
             "Zouk/full/Not Another Love Song (prod By Ozzie).mp3": 0.0,
             "Zouk/Baby Love 48000 1_01.mp3": 0.0,
-            "Zouk/full/Egzod & Croix - Need You Forever [Fated x Tribal Trap].mp3": 0.0,
             "Zouk/Prism Of Love.mp3": 0.0,
             "Zouk/full/Baby Love.mp3": 0.0,
-            "none": 1.0
+            "Love Needs a Heart (Remastered).mp3": 1.0,
+            "none": 0.0
           },
-          "pick_reversed_choice": "none",
+          "pick_reversed_choice": "Love Needs a Heart (Remastered).mp3",
           "same": [
-            0.05,
-            0.06,
-            0.05,
-            0.08,
+            0.95,
+            0.04,
             0.04,
             0.05,
-            0.05,
-            0.06
+            0.04,
+            0.04,
+            0.04
           ]
         }
+      },
+      "decision": {
+        "variant": "full"
       }
     },
     "Rachmaninoff/Prelude_in_C-sharp_Minor.mscz": {
