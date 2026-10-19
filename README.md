@@ -41,6 +41,7 @@ orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits); op
 | `accompaniment [--only GLOB…] [--out DIR] [--force] [--dry-run] [--list] [--no-timing]` | Note Waterfall's companion audio: each score's orchestra (everything but the piano part) rendered by MuseScore with Muse Sounds, one mp3 per song (see below) |
 | `arrangement [SCORE…] [--write]` | the measure alignment of a song made with a partner score (`scores.json` `simplified_from`, `orchestra_from`), as a report; `build` writes it to `.arrangements/` (see below) |
 | `recordings match\|align\|retime\|status\|route\|confirm\|reject [--only GLOB…]` | what each song's companion audio is (generated from the score, or for sung songs the vocals of a recording you own: TypeSafe judgments), and those vocals separated, aligned and retimed onto the song's timeline (see below) |
+| `scorefix report\|apply\|reference SCORE [FIXES.json] [--out COPY] [--in-place --backup DIR]` | a score's repeat structure as MuseScore plays it (voltas no pass reaches, bars never played, wrong bar lengths); structural fixes (tempo, voltas, repeat counts, segno / coda / D.S.) into a copy, or into the score after a backup; the score's notes on its own clock for an alignment with a recording (see below) |
 
 ## Piano Library (the window)
 
@@ -656,6 +657,35 @@ orders), `p_same` (the pick's Noul), `p_none`, `consistent`, `why`, `alternative
 raw answers) and yours, `decision`: `{}` confirms the pick, `{"recording": "<path>"}` links another file,
 `{"recording": null}` rejects, `"variant": "vocals"|"full"|"no_piano"` chooses the file. `match` never changes a
 decision, and decides again from the stored answers when a question has not changed.
+
+## Score structure fixes (scorefix)
+
+`python3 -m pianovision scorefix report SCORE` prints what the score plays, with repeats, voltas and jumps unrolled
+the way MuseScore unrolls them (`pianovision.repeats`; MuseScore's own MIDI export agrees). It also lists the voltas
+no pass reaches: a volta numbered "99", as a PDF import leaves it, is skipped every time, together with an end repeat
+inside it. Then the bars that are never played, and the bars whose length is not the time signature's. Bars are
+numbered in file order; when a bar is excluded from the count, MuseScore shows numbers one lower.
+
+`scorefix apply SCORE FIXES.json --out COPY.mscz` writes structural fixes into a copy. Everything else in the file
+stays byte for byte. `FIXES.json` is a list:
+
+```json
+[{"op": "tempo", "bpm": 126},
+ {"op": "volta", "measure": 38, "endings": [1], "text": "1.", "measures": 4, "closed": true},
+ {"op": "repeat_count", "measure": 71, "count": 3},
+ {"op": "marker", "measure": 10, "kind": "segno"},
+ {"op": "jump", "measure": 72, "kind": "ds_al_coda"}]
+```
+
+* `marker` kinds: `segno`, `coda`, `tocoda`, `fine`. They are written as MuseScore 4 writes them: the coda sign is
+  `codab`, "To Coda" is `coda`.
+* `jump` kinds: `ds_al_coda`, `dc_al_coda`, `ds_al_fine`, `dc_al_fine`, `ds`, `dc`.
+* `--in-place --backup DIR` overwrites the score itself. It copies the original to DIR and checks the copy first,
+  never overwrites a backup, refuses if the score changed meanwhile, writes atomically, and asks unless `--yes` is
+  given.
+
+`scorefix reference SCORE --out ref.json` renders the score into `tools/recording_align.py`'s reference format. Use
+it to check a fixed copy against a recording, for example with `recording_align.py align --ref ref.json --audio REC`.
 
 ## Fidelity
 
