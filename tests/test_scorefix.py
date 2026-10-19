@@ -1,6 +1,9 @@
 """A score's repeat structure checked and fixed in a copy (pianovision.scorefix)."""
 
+import contextlib
 import difflib
+import io
+import json
 import os
 import tempfile
 import unittest
@@ -254,6 +257,56 @@ class Structure(unittest.TestCase):
         self.assertEqual([m["number"] for m in ref["measures"]], [1, 2, 3, 2, 3, 4])
         self.assertEqual(sorted({n[4] for n in ref["notes"]}), ["p", "v"])
         self.assertEqual(sum(1 for n in ref["notes"] if n[4] == "v"), 6)
+
+
+class Command(unittest.TestCase):
+    """``python3 -m pianovision scorefix``: a copy, or the score itself only with a backup."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.score = make_score(os.path.join(self.tmp.name, "s.mscz"), start_repeat=(2,), end_repeat={5: 2},
+                                voltas=[(4, 2, "99", "99", True), (6, 1, "99", "99", False)])
+        self.fixes = os.path.join(self.tmp.name, "fixes.json")
+        with open(self.fixes, "w") as f:
+            json.dump([{"op": "volta", "measure": 4, "endings": [1], "text": "1."},
+                       {"op": "volta", "measure": 6, "endings": [2], "text": "2."}], f)
+        self.original = rb(self.score)
+
+    def run_cli(self, *argv):
+        from pianovision.cli import main
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            code = main(["scorefix", *argv])
+        return code, out.getvalue()
+
+    def test_copy_leaves_the_score(self):
+        out = os.path.join(self.tmp.name, "copy.mscz")
+        code, text = self.run_cli("apply", self.score, self.fixes, "--out", out)
+        self.assertEqual(code, 0)
+        self.assertEqual(rb(self.score), self.original)
+        self.assertIn("1-5, 2-3, 6-8", text)
+
+    def test_refuses_to_overwrite_without_a_backup(self):
+        self.assertEqual(self.run_cli("apply", self.score, self.fixes, "--out", self.score)[0], 2)
+        self.assertEqual(self.run_cli("apply", self.score, self.fixes, "--in-place", "--yes")[0], 2)
+        self.assertEqual(rb(self.score), self.original)
+
+    def test_in_place_with_a_backup(self):
+        bak = os.path.join(self.tmp.name, "backup")
+        code, _ = self.run_cli("apply", self.score, self.fixes, "--in-place", "--backup", bak, "--yes")
+        self.assertEqual(code, 0)
+        self.assertEqual(rb(os.path.join(bak, "s.mscz")), self.original)
+        self.assertEqual(SF.ranges(SF.play_order(read_score(self.score))), "1-5, 2-3, 6-8")
+        # a second run does not overwrite the backup
+        self.assertEqual(self.run_cli("apply", self.score, self.fixes, "--in-place", "--backup", bak, "--yes")[0], 2)
+
+    def test_report(self):
+        js = os.path.join(self.tmp.name, "r.json")
+        code, text = self.run_cli("report", self.score, "--json", js)
+        self.assertEqual(code, 0)
+        self.assertIn("no pass plays it", text)
+        with open(js) as f:
+            self.assertEqual(len(json.load(f)["unreachable_voltas"]), 2)
 
 
 if __name__ == "__main__":

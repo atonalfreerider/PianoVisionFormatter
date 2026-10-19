@@ -546,6 +546,89 @@ def cmd_gui(args) -> int:
 
 # ------------------------------------------------------------------------------
 
+def cmd_scorefix(args) -> int:
+    """A score's repeat structure (report), structural fixes into a copy or, with a backup, the score itself
+    (apply), its notes on its own clock for an alignment with a recording (reference)."""
+    import hashlib
+    import json
+    import shutil
+    import tempfile
+    from .mscx import read_score
+    from . import scorefix as SF
+    if args.action == "report":
+        st = SF.structure(read_score(args.score))
+        num = SF.displayed_numbers(read_score(args.score))
+        if args.json:
+            with open(args.json, "w", encoding="utf-8") as f:
+                json.dump(dict(st, displayed_numbers=num), f, indent=1)
+        _p(f"{st['measures']} measures; plays {st['played']} ({st['distinct_played']} distinct): {st['play_order_text']}")
+        if st["never_played"]:
+            _p(f"never played: {st['never_played']}")
+        for v in st["unreachable_voltas"]:
+            _p(f"volta m.{v['start']}-{v['end']} endings {v['endings']}: no pass plays it (passes {v['passes']})")
+        for m in st["irregular_lengths"]:
+            _p(f"m.{m['measure']}: {m['beats']:g} beats in {m['timesig']}"
+               + (" (excluded from the measure count)" if m["excluded_from_count"] else ""))
+        if any(num[k] != k for k in num):
+            _p("measure numbers here count file order; MuseScore shows " + ", ".join(
+                f"{k} as {num[k]}" for k in list(num)[:3]) + ", ...")
+        return 0
+    if args.action == "reference":
+        ref = SF.score_reference(args.score)
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(ref, f)
+        _p(f"{args.out}: {len(ref['measures'])} measures played, {ref['song_end']:.1f} s")
+        return 0
+    # apply
+    with open(args.fixes, encoding="utf-8") as f:
+        fixes = json.load(f)
+    with open(args.score, "rb") as f:
+        src = f.read()
+    new, log = SF.apply_fixes_mscz(src, fixes)
+    for line in log:
+        _p(line)
+    if not args.in_place:
+        if not args.out:
+            _p("error: --out COPY.mscz or --in-place --backup DIR")
+            return 2
+        if os.path.abspath(args.out) == os.path.abspath(args.score):
+            _p("error: --out is the score itself; use --in-place --backup DIR")
+            return 2
+        with open(args.out, "wb") as f:
+            f.write(new)
+        _p(f"{args.out}: plays {SF.structure(read_score(args.out))['play_order_text']}")
+        return 0
+    if not args.backup:
+        _p("error: --in-place needs --backup DIR (the original is copied there first)")
+        return 2
+    if not args.yes:
+        if not sys.stdin.isatty():
+            _p("error: no terminal to confirm; pass --yes")
+            return 2
+        if input(f"overwrite {args.score} (original to {args.backup})? [y/N] ").strip().lower() != "y":
+            return 1
+    os.makedirs(args.backup, exist_ok=True)
+    bak = os.path.join(args.backup, os.path.basename(args.score))
+    if os.path.exists(bak):
+        _p(f"error: {bak} exists")
+        return 2
+    shutil.copy2(args.score, bak)
+    with open(bak, "rb") as f:
+        if hashlib.sha256(f.read()).digest() != hashlib.sha256(src).digest():
+            _p("error: the backup differs from the score; nothing written")
+            return 2
+    with open(args.score, "rb") as f:
+        if f.read() != src:
+            _p("error: the score changed while the fixes were made; nothing written")
+            return 2
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(args.score)), suffix=".mscz")
+    with os.fdopen(fd, "wb") as f:
+        f.write(new)
+    os.replace(tmp, args.score)
+    _p(f"{args.score}: plays {SF.structure(read_score(args.score))['play_order_text']} (original: {bak})")
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="pianovision", description="MuseScore library -> PianoVision JSON -> Quest")
     ap.add_argument("--config", help="pianovision.toml (default: ./pianovision.toml or next to the package)")
@@ -713,6 +796,18 @@ Settings: [recordings] in pianovision.toml (music_dir, out_dir, work_dir, python
     p.add_argument("--work", help="scratch folder (default: [recordings] work_dir)")
     p.add_argument("--python", help="a Python with numpy, scipy, soundfile, librosa (default: [recordings] python)")
     p.set_defaults(fn=cmd_recordings)
+
+    p = sub.add_parser("scorefix", help="a score's repeat structure; structural fixes (tempo, voltas, repeats, "
+                                        "D.S./coda) into a copy or, with a backup, the score")
+    p.add_argument("action", choices=("report", "apply", "reference"))
+    p.add_argument("score")
+    p.add_argument("fixes", nargs="?", help="apply: the fixes, JSON (see pianovision.scorefix.apply_fixes)")
+    p.add_argument("-o", "--out", help="apply: the copy to write; reference: ref.json")
+    p.add_argument("--json", help="report: also write the report as JSON")
+    p.add_argument("--in-place", action="store_true", help="apply: overwrite the score (needs --backup)")
+    p.add_argument("--backup", help="apply --in-place: folder the original is copied to first")
+    p.add_argument("-y", "--yes", action="store_true", help="apply --in-place: do not ask")
+    p.set_defaults(fn=cmd_scorefix)
 
     p = sub.add_parser("gui", help="the Piano Library window: library, build, push to the headset, hand edits")
     p.add_argument("--read-only", action="store_true",
