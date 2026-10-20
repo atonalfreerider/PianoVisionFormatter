@@ -40,7 +40,7 @@ orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits); op
 | `gui [--read-only] [--no-device]` | the Piano Library window (see below) |
 | `accompaniment [--only GLOB…] [--out DIR] [--force] [--dry-run] [--list] [--no-timing]` | Note Waterfall's companion audio: each score's orchestra (everything but the piano part) rendered by MuseScore with Muse Sounds, one mp3 per song (see below) |
 | `arrangement [SCORE…] [--write]` | the measure alignment of a song made with a partner score (`scores.json` `simplified_from`, `orchestra_from`), as a report; `build` writes it to `.arrangements/` (see below) |
-| `recordings match\|align\|retime\|status\|route\|confirm\|reject [--only GLOB…]` | what each song's companion audio is (generated from the score, or for sung songs the vocals of a recording you own: TypeSafe judgments), and those vocals separated, aligned and retimed onto the song's timeline (see below) |
+| `recordings match\|align\|retime\|tempo\|status\|route\|confirm\|reject [--only GLOB…]` | what each song's companion audio is (generated from the score, or for sung songs a recording you own: TypeSafe judgments); for sung songs by default the recording leads: `tempo` rewrites the score's tempo map so the original recording plays unstretched (see below); `retime` stretches a recording onto the score instead |
 | `lyrics import SCORE LYRICS.txt [--dry-run] [-o COPY] [--in-place --backup DIR] [--staff N] [--replace]` | a song's lyrics, from a text file you supply, onto the vocal line of its score: each line on its phrase, each syllable on its note, verse k on the k-th pass through repeated bars; a copy, or the score after a backup, verified first (see below) |
 | `scorefix report\|apply\|reference SCORE [FIXES.json] [--out COPY] [--in-place --backup DIR]` | a score's repeat structure as MuseScore plays it (voltas no pass reaches, bars never played, wrong bar lengths); structural fixes (tempo, voltas, repeat counts, segno / coda / D.S.) into a copy, or into the score after a backup; the score's notes on its own clock for an alignment with a recording (see below) |
 
@@ -533,8 +533,11 @@ Rach 3/II and III have them in `accompaniment.json`).
 ## Companion audio from your recordings (recordings)
 
 `python3 -m pianovision recordings` decides, for every song of the library, what Note Waterfall's companion audio is,
-and for sung songs makes it from a recording in the music folder (`~/Music`, only read): the **singing**, isolated
-and put on the song's timeline (tempo map, fermatas, repeats as played) so it plays in sync with the falling notes.
+and for sung songs makes it from a recording in the music folder (`~/Music`, only read). By default the recording
+leads: the score's tempo map is rewritten to follow it and the original file plays unstretched ([recordings
+tempo](#the-recording-leads-a-sung-song-timed-to-its-recording-recordings-tempo)). With `"timing": "score"` in a
+link's decision the recording (its **singing**, isolated, or the full mix you chose) is put on the song's timeline
+instead (tempo map, fermatas, repeats as played) so it plays in sync with the falling notes.
 You play the piano, so a recording's piano is never wanted:
 
 * **generated** (classical and instrumental music: concertos, Rhapsody in Blue, the Rite of Spring, film score cues
@@ -659,6 +662,108 @@ orders), `p_same` (the pick's Noul), `p_none`, `consistent`, `why`, `alternative
 raw answers) and yours, `decision`: `{}` confirms the pick, `{"recording": "<path>"}` links another file,
 `{"recording": null}` rejects, `"variant": "vocals"|"full"|"no_piano"` chooses the file. `match` never changes a
 decision, and decides again from the stored answers when a question has not changed.
+
+## The recording leads: a sung song timed to its recording (recordings tempo)
+
+For sung pop and film songs the recording you own is the source of truth for the timing. `python3 -m pianovision
+recordings tempo` rewrites the score's tempo map so that every measure as played lasts what the recording's measure
+lasts, and Note Waterfall plays the **original** file, never stretched, at an offset. This is the default for sung
+songs (`[recordings] sung_timing = "recording"`; a link's `decision` `"timing": "score"` stretches that song's
+recording onto the score with `retime` as before). `pianovision/rectempo.py`, `tools/recording_align.py bars`,
+`tools/beat_activations.py`.
+
+```bash
+python3 -m pianovision recordings tempo '70s/fountain-of-sorrow.mscz'            # analyse, write a verified copy
+python3 -m pianovision recordings tempo SONG --dry-run                          # the numbers and decisions only
+python3 -m pianovision recordings tempo SONG -o COPY.mscz                       # the copy also there
+python3 -m pianovision recordings tempo SONG --in-place --backup DIR [--yes]    # that copy over the score
+python3 -m pianovision recordings tempo                                         # every sung song with a recording
+```
+
+1. **The measures in the recording.** The alignment of the song's notes with the recording (`align`, above) is the
+   coarse map: straight across its gaps, the recording's tempo carried on before its first match and after its last.
+   The recording's beats are detected twice: madmom's recurrent networks and DBN (`tools/beat_activations.py`, run
+   with `[recordings] beats_python`: madmom 0.16.1 in the beat_this environment here, its 2016 models; nothing
+   installed or downloaded, the aliases madmom still uses on Python 3.11 / numpy 2 are put back for that process),
+   and librosa's beat tracker driven, frame by frame, by the tempo the coarse map implies. Each detection is put on
+   the score's lattice: its beats, with the phase the detections share snapped to the beat, the half beat (or a third
+   in compound time). A transcription an eighth off the recording's pulse has all its detections on its off-beats
+   (Love Needs a Heart: the chords the score writes on the "and"s are the recording's beats). A Viterbi path weighs
+   the coarse map's place (0.2 beat; 0.6 in and next to measures of another length) against a steady tempo between
+   consecutive detections, so a stretch the coarse map has a little early or late is placed by the run of beats around
+   it, and an extra detection is left out. The detected beats are the anchors; between anchors up to 4 beats apart the
+   tempo is steady, elsewhere the coarse map's shape is moved by the anchors. Every position of every measure as
+   played gets a time and every measure a confidence: `detected` (an anchor on its start; both detectors agreeing
+   within 50 ms, a small residual against the coarse map and a strong activation score highest), `between`,
+   `coarse`, `outside` (before the recording starts: the recording's tempo carried back). madmom's beats are the
+   primary ones: librosa's land 30 ms later on all three songs below, and the onsets of the recording against the
+   timed notes (`verify`) agree with madmom's within 5 ms.
+2. **Measures of another length** (a bar of 5, 6 or 10 beats in 4/4 that the recording plays as a plain 4-beat
+   bar) count their time signature's beats in the recording and get the recording's duration; their positions are
+   spread as the coarse map has them. A regular measure in an alignment gap whose length on the coarse map is a
+   beat or more off its own (and no measure of another length next to it) counts the beats it has there (Love Has
+   No Pride plays three 9/8 bars with two beats and three with five).
+3. **The tempo map** (`rectempo.plan`): per written measure the times of its positions from its start shaped into
+   tempo marks by `timeline._shape`: a mark where the measure starts, more only where one tempo would miss a
+   position by more than `tempo_tolerance_ms` (20); every measure lands on its length (MuseScore's tempo precision).
+   Written as `timeline` writes a partner's clock: invisible tempo marks "recording tempo q = ...", the score's own
+   tempo marks, fermatas and gradual tempo changes `<play>0</play>`, breaths and section breaks pause 0; into the
+   formatter's model and the file alike (MuseScore's MIDI export of the copy has every note-on where the formatter
+   has it).
+4. **Repeats.** A written measure played on several passes can carry one tempo only. The passes' mean is simulated
+   (a measure played once takes up the error that came before it); if the error stays within `repeat_tolerance_ms`
+   (40) at every measure as played the repeats stay, otherwise (`--unroll auto`; `always`, `never`) the copy has them
+   **written out** (`rectempo.unroll_mscx`): the measures in the order they are played, start/end repeats, voltas,
+   segno / coda / fine markers and jumps removed, each copy with its own tempo; the k-th pass's copy carries the
+   syllables that pass sings (verse k, as `lyrics.collect_lyrics` reads it: a chord without this pass's verse is
+   silent when the verse is sung elsewhere in the measure, else its lowest verse) as verse 1; slurs and ties that
+   would now run into another measure are dropped (a note tied over a jump ends at its barline: the formatter and
+   MuseScore held it into the next measure played); clefs, key and time signatures are restated where the new order
+   needs them; element ids are dropped from the second and later copies (MuseScore gives them new ones). Frames go
+   before the first copy of the measure they precede.
+5. **The offset.** Note Waterfall plays the audio file at `audioFileTime = songTime + GlobalAudioLead + AudioOffset`
+   (`PlaybackController.SongToAudioFileTime`), and `deploy_songs.py` writes the audio map's `offset` into the
+   song's `.audio.json`, which becomes `AudioOffset`. So `offset` = the recording time at which the song's first
+   measure starts. **Positive**: the recording has more lead-in than the score; playback from the app's lead-in
+   (`-LeadIn`, 3 s) starts the file `offset - LeadIn` seconds in (`DecideAudioStart`: Immediate), or schedules it from
+   0 when that is negative, so the recording's intro before the score's first measure is heard for the lead-in and
+   the rest skipped. **Negative**: the score starts before the recording (Fountain of Sorrow's first measure, which
+   the recording does not have): the first measures play at the recording's tempo (carried back) and the audio is
+   scheduled to start `-offset` seconds into the song. Times are the recording as ffmpeg decodes it, gapless: the
+   1105 samples (25 ms) of encoder and decoder delay that the original mp3's LAME header declares are skipped. A
+   decoder that ignores the header, and a player fed the mp3's frames (the Sonos), plays the file 25 ms later.
+6. **Verification** of the copy before anything is proposed: the formatter's render of the copy against the
+   recording's measures and beats (the song's clock + offset; median, p95, max; all p95 within 30 ms), its note onsets
+   against where the recording plays their positions; the notes the same as the score's but for their timing (per
+   measure as played: onset, length, pitch, staff; a tie over a jump and an arpeggio rolled at the new tempo are
+   listed); `lyrics.collect_lyrics` the same syllables on the same notes and passes; the parts file the same
+   original, orchestra and vocal notes and sung notes; MuseScore (`[accompaniment] mscore`, `--no-musescore` skips)
+   opens it, exports MusicXML with its lyrics and MIDI on the formatter's clock; and the original recording against
+   the copy's notes at the offset (`recording_align.py verify --offset`: chroma lag and onset lag over windows).
+   The heavy steps (alignment, madmom, MuseScore) wait until `min_free_mb` (6144) of memory is available.
+
+Outputs in `<tempo_dir>/<song>/` (`~/.cache/nw-rectempo`): the proposed copy (the score's file name), `report.md`,
+`tempo.json` (everything, also what `retime` / `align` read), `audio_map.entry.json` (the original file, the
+offset; `enabled` only when the checks pass and the recording is in the score's key), and the analysis (`ref.json`,
+`align.json`, `act.npz`, `bars.json`, `copy-verify.json`), cached by their inputs. `--in-place --backup DIR` applies
+the verified copy only if the score and the recording have not changed since and the copy passed its checks (else
+it runs again first); it copies the original to `DIR` (never over an existing backup), writes atomically with the
+file's mode kept and records it in `tempo.json`. `recordings align` / `retime` then propose the original file at the
+offset for Note Waterfall's audio map once the score in the library is the applied copy.
+
+Three songs (2026-10-19):
+
+| | Fountain of Sorrow | Love Needs a Heart | Love Has No Pride |
+|---|---|---|---|
+| measures as played | 210 (122 written) | 63 | 98 (61 written) |
+| confidence high / medium / low | 124 / 63 / 23 | 22 / 33 / 8 | 38 / 34 / 26 |
+| beats placed (both detectors agree) | 806 (761) | 245 (194) | 245 (190) |
+| one tempo per written measure, worst | 307 ms: written out | no repeats | 1170 ms: written out |
+| offset | -0.974 s | +0.115 s | +11.090 s |
+| copy vs recording: measures, beats, note onsets (p95) | 0, 15, 12.5 ms | 0, 12.5, 16.7 ms | 0, 18.6, 16.7 ms |
+| recording vs copy's notes: onset lag median (within 50 ms) | +3.4 ms (99 %) | +3.4 ms (97 %) | +1.3 ms (100 %) |
+
+Love Has No Pride's recording is a semitone above the score: its entry stays disabled until you decide.
 
 ## Score structure fixes (scorefix)
 

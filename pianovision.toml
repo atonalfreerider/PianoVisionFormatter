@@ -59,3 +59,10 @@ separator_model = "htdemucs_ft"
 min_vocal_activity = 0.1                            # a vocals stem singing in less of the matched recording is not used
 min_melody_agreement = 0.3                          # its pitch must agree with the score's vocal line this often
 audio_map = "~/Desktop/Note-Waterfall/Tools/audio_map.json"   # read only: what Note Waterfall has now
+# sung songs: the recording leads (recordings tempo): the score's tempo map follows the recording, which plays as it is
+sung_timing = "recording"                           # "recording" (nothing stretched) or "score" (retime stretches it)
+tempo_dir = "~/.cache/nw-rectempo"                  # per song: analysis, the proposed copy, report.md, the audio_map entry
+beats_python = "~/miniconda3/envs/beat_this/bin/python"   # madmom 0.16 (beat detection); "" = librosa's beats only
+tempo_tolerance_ms = 20.0                           # a position inside a measure lands this close to the recording's time
+repeat_tolerance_ms = 40.0                          # repeats stay when one tempo per written measure keeps within this
+min_free_mb = 6144                                  # the heavy steps (alignment, madmom, MuseScore) wait for this much memory

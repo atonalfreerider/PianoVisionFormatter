@@ -9,7 +9,8 @@ audio and time-stretches it (its ``rubberband`` filter, librubberband).
     recording_align.py align   --ref ref.json --audio REC [--out align.json]
     recording_align.py retime  --ref ref.json --align align.json --audio FILE [--source REC] --out out.wav
                                [--retune-cents C] [--latency-cache FILE]
-    recording_align.py verify  --ref ref.json --audio out.wav [--key K] [--out verify.json]
+    recording_align.py verify  --ref ref.json --audio out.wav [--key K] [--offset S] [--out verify.json]
+    recording_align.py bars    --ref ref.json --align align.json --audio REC [--activations act.npz] --out bars.json
     recording_align.py vocals  --ref ref.json --audio vocals.mp3 [--active spans.json] [--out vocals.json]
     recording_align.py latency [--out latency.json]
 
@@ -55,6 +56,15 @@ chroma against the synthesis' that agrees best in 8 s windows every 4 s (within 
 stands out by 0.02 count): the chord changes time it, which works for a band recording too; ``onset_lag``, the
 same from the onset envelopes in 6 s windows (correlation 0.3 or more), reliable for piano and orchestra.
 
+**bars** (``recordings tempo``: the recording leads).  Where the recording plays every measure as played: the
+alignment's map as a coarse map (straight across its gaps, its tempo carried on before the first and after the last
+piece), the recording's beats detected (madmom's DBN beats from ``--activations``, ``tools/beat_activations.py``;
+librosa's beat tracker with the coarse map's tempo frame by frame), each detection on the score's lattice of beats
+(the phase they share snapped to the beat, half beat or third: :func:`lattice_of`) by a Viterbi path between the
+coarse map and a steady tempo (:func:`assign_lattice`), and every position's time from those anchors with a
+confidence per measure (:func:`cmd_bars`).  A measure of another length than its time signature counts the
+signature's beats in the recording.
+
 **vocals.**  Retimed vocals against the score's vocal line (:func:`cmd_vocals`): melody agreement (pYIN pitch against
 the vocal note, by pitch class) at the plan's timing and the shift that agrees best, overall and per 10 s window;
 the vocal notes' starts against the stem's onsets; the stem's level where the vocal line rests (bleed).
@@ -72,7 +82,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pianovision import recmap as RM          # noqa: E402
 
-VERSION = 3                 # bump when align / retime / verify change their results
+VERSION = 3                 # bump when align / retime / verify change their results (bars: BARS_VERSION)
 SR = 22050
 HOP = 512                   # chroma frames: 23.2 ms
 OHOP = 128                  # onset envelope: 5.8 ms
@@ -720,6 +730,11 @@ def lag_stats(windows, valid_index=3):
 def cmd_verify(args):
     ref = read_ref(args.ref)
     y = load(args.audio)
+    off = getattr(args, "offset", 0.0) or 0.0
+    if off:
+        # the audio as Note Waterfall plays it: file time = song time + offset
+        k = int(round(abs(off) * SR))
+        y = y[k:] if off > 0 else np.concatenate([np.zeros(k, np.float32), y])
     syn = synthesize(ref)
     n = min(len(y), len(syn))
     Ca, loud_a = normalize(chroma(y[:n]))
@@ -926,6 +941,419 @@ def cmd_vocals(args):
 
 
 # ------------------------------------------------------------------------------
+# bars: where the recording plays each of the song's measures (the recording leads)
+# ------------------------------------------------------------------------------
+
+BARS_VERSION = 1
+SIGMA_COARSE = 0.2          # beats: how far the alignment may put a detected beat from its place in the score
+SIGMA_LOOSE = 0.6           # ... in and next to the measures of other lengths and the alignment's gaps
+SIGMA_TEMPO = 0.12          # beats per beat of interval: how much the tempo may change from one detection to the next
+SKIP_COST = 5.0             # a detection left out (an extra beat, a fill)
+AGREE_S = 0.05              # two detectors agree on a beat within this
+STEADY_SPAN = 4.0           # beats: between anchors this close, positions follow a steady tempo
+
+
+def coarse_map(tm, song_end, lead_s=8.0):
+    """(song, recording) anchors covering the whole song, increasing in both: the pieces' anchors; straight across
+    the gaps between pieces (a passage the recording plays shorter or longer); before the first piece and after the
+    last the neighbouring piece's tempo (over up to ``lead_s`` seconds) carried on: the recording's beat before its
+    first match (an intro) and after its last.  Recording times may be negative (the song starts before the file)."""
+    pts = []
+    for p in tm.pieces:
+        for s, r in p.anchors:
+            if pts and (s <= pts[-1][0] + 1e-6 or r <= pts[-1][1] + 1e-6):
+                continue
+            pts.append((float(s), float(r)))
+    if not pts:
+        return np.array([0.0, song_end]), np.array([0.0, song_end])
+
+    def ratio(seg):
+        s0, r0 = seg[0]
+        s1, r1 = seg[-1]
+        return (r1 - r0) / (s1 - s0) if s1 > s0 else 1.0
+
+    head = [a for a in pts if a[0] <= pts[0][0] + lead_s]
+    tail = [a for a in pts if a[0] >= pts[-1][0] - lead_s]
+    if pts[0][0] > 1e-6:
+        pts.insert(0, (0.0, pts[0][1] - pts[0][0] * ratio(head if len(head) > 1 else pts)))
+    if pts[-1][0] < song_end - 1e-6:
+        pts.append((song_end, pts[-1][1] + (song_end - pts[-1][0]) * ratio(tail if len(tail) > 1 else pts)))
+    S = np.array([a[0] for a in pts])
+    R = np.array([a[1] for a in pts])
+    return S, R
+
+
+class BeatSpace:
+    """The song's measures numbered in the recording's beats: a measure of the score's length counts its own beats; a
+    measure whose length is not its time signature's (a 5/4 bar in 4/4) counts its time signature's beats, a plain
+    bar on the recording (``estimate``: the beats its length on the coarse map holds at the beat of the regular
+    measures around it, reported where that differs), and positions inside it follow the coarse map.  ``B``: a
+    position in recording beats from the song's start.  ``loose``: per measure, whether the coarse map is less sure
+    there (a measure of another length or next to one, a measure in one of the alignment's gaps)."""
+
+    def __init__(self, measures, S, R, gaps=(), estimate=False, gap_beats=True):
+        self.ms = measures
+        self.S, self.R = S, R
+        n = len(measures)
+        self.r0 = np.array([self.rec(m["start"]) for m in measures])
+        self.r1 = np.array([self.rec(m["end"]) for m in measures])
+        self.n_score = np.array([max(1, len(m.get("beats") or [m["start"]])) for m in measures])
+        odd = np.array([bool(m.get("odd")) for m in measures])
+        self.odd = odd
+        per = (self.r1 - self.r0) / self.n_score
+        nrec = self.n_score.astype(float).copy()
+        self.period_est = np.zeros(n)
+        self.n_coarse = np.zeros(n, int)
+        for j in range(n):
+            near = [per[k] for k in range(max(0, j - 4), min(n, j + 5)) if not odd[k] and per[k] > 0]
+            p = float(np.median(near)) if near else float(np.median(per[per > 0])) if (per > 0).any() else 0.5
+            self.period_est[j] = p
+            self.n_coarse[j] = max(0, int(round((self.r1[j] - self.r0[j]) / max(p, 1e-6))))
+            if odd[j]:
+                nom = measures[j].get("nominal") or measures[j].get("timesig") or [4, 4]
+                beats = nom[0] // 3 if nom[1] == 8 and nom[0] % 3 == 0 and nom[0] > 3 else nom[0]
+                nrec[j] = self.n_coarse[j] if estimate else max(1, int(beats))
+        self.loose = np.zeros(n, bool)
+        self.in_gap = np.zeros(n, bool)
+        for j in range(n):
+            if odd[max(0, j - 1):j + 2].any():
+                self.loose[j] = True
+            m = measures[j]
+            for g in gaps:
+                if g["song"][0] < m["end"] - 1e-3 and g["song"][1] > m["start"] + 1e-3 and not g.get("edge") and \
+                        g["kind"] in ("song_missing", "recording_extra", "different"):
+                    self.in_gap[j] = True
+            # a regular measure in a gap whose length on the coarse map is a beat or more off its own: the recording
+            # plays it with another number of beats
+            # (not next to a measure of another length: that one's beats are what the coarse map spreads around)
+            if gap_beats and self.in_gap[j] and not odd[max(0, j - 1):j + 2].any() and \
+                    abs(self.n_coarse[j] - nrec[j]) >= 1:
+                nrec[j] = max(1, self.n_coarse[j])
+                self.loose[j] = True
+        self.n_rec = nrec.astype(int)
+        # positions inside spread over the recording's beats as the coarse map has them
+        self.scaled = odd | (self.n_rec != self.n_score)
+        self.b0 = np.concatenate([[0.0], np.cumsum(self.n_rec)])[:-1]
+        self.song_starts = np.array([m["start"] for m in measures])
+
+    def rec(self, s):
+        return float(np.interp(s, self.S, self.R, left=self.R[0] + (s - self.S[0]), right=self.R[-1] + s - self.S[-1]))
+
+    def song(self, r):
+        return float(np.interp(r, self.R, self.S, left=self.S[0] + (r - self.R[0]), right=self.S[-1] + r - self.R[-1]))
+
+    def measure_of_song(self, s):
+        return int(np.clip(np.searchsorted(self.song_starts, s, side="right") - 1, 0, len(self.ms) - 1))
+
+    def b_of_position(self, j, rtick, song_t):
+        """B of a position ``rtick`` ticks into measure j (song time ``song_t`` on the score's own clock)."""
+        m = self.ms[j]
+        if self.n_rec[j] == 0:
+            return float(self.b0[j])
+        if self.scaled[j]:
+            span = self.r1[j] - self.r0[j]
+            f = (self.rec(song_t) - self.r0[j]) / span if span > 1e-9 else rtick / max(m["ticks"], 1)
+            return float(self.b0[j] + self.n_rec[j] * min(max(f, 0.0), 1.0))
+        return float(self.b0[j] + rtick / max(m["beat_ticks"], 1))
+
+    def b_of_rec(self, r):
+        """B of a recording time through the coarse map (the score's positions in between by its own clock)."""
+        s = self.song(r)
+        j = self.measure_of_song(s)
+        m = self.ms[j]
+        if self.n_rec[j] == 0:
+            return float(self.b0[j])
+        if self.scaled[j]:
+            span = self.r1[j] - self.r0[j]
+            f = (r - self.r0[j]) / span if span > 1e-9 else 0.0
+            return float(self.b0[j] + self.n_rec[j] * f)
+        pos = m.get("positions") or [[0, m["start"]]]
+        ts = [p[1] for p in pos] + [m["end"]]
+        tk = [p[0] for p in pos] + [m["ticks"]]
+        rt = float(np.interp(s, ts, tk, left=0.0, right=float(m["ticks"])))
+        if s > m["end"]:
+            rt = m["ticks"] + (s - m["end"]) / max(m["end"] - m["start"], 1e-9) * m["ticks"]
+        return float(self.b0[j] + rt / max(m["beat_ticks"], 1))
+
+    def coarse_rec_of_b(self, B):
+        """The coarse map's recording time of B."""
+        total = float(self.b0[-1] + self.n_rec[-1])
+        if B <= 0:
+            return self.r0[0] + B * self.period_est[0]
+        if B >= total:
+            return self.r1[-1] + (B - total) * self.period_est[-1]
+        j = int(np.clip(np.searchsorted(self.b0, B, side="right") - 1, 0, len(self.ms) - 1))
+        while j > 0 and self.n_rec[j] == 0:
+            j -= 1
+        f = (B - self.b0[j]) / max(self.n_rec[j], 1)
+        if self.scaled[j]:
+            return float(self.r0[j] + f * (self.r1[j] - self.r0[j]))
+        m = self.ms[j]
+        pos = m.get("positions") or [[0, m["start"]]]
+        tk = [p[0] for p in pos] + [m["ticks"]]
+        ts = [p[1] for p in pos] + [m["end"]]
+        return self.rec(float(np.interp(f * m["ticks"], tk, ts)))
+
+    def period_at(self, B):
+        return float((self.coarse_rec_of_b(B + 2.0) - self.coarse_rec_of_b(B - 2.0)) / 4.0)
+
+
+def lattice_of(Bs, compound, window=16):
+    """The lattice the detected beats sit on: their spacing (the score's beats, or half beats / thirds when a
+    detector follows the subdivision, or every other beat) from the median step between consecutive detections, and
+    the phase: the circular mean of the detections' places snapped to the nearest musical phase (on the beat, the
+    half beat, a third in compound time: a transcription an eighth off the recording's pulse has its detections all
+    on its off-beats), the whole song's (a region's own only where the song has no clear phase and the region a
+    clear one: a coarse map a quarter beat off for a while must not move a whole region onto the off-beats).
+    Returns (spacing, phases, how clear each region is: the mean resultant length 0..1)."""
+    Bs = np.asarray(Bs, float)
+    dB = np.diff(Bs)
+    dB = dB[(dB > 0.15) & (dB < 4.0)]
+    med = float(np.median(dB)) if len(dB) else 1.0
+    options = [1.0 / 3, 1.0, 2.0] if compound else [0.5, 1.0, 2.0]
+    spacing = min(options, key=lambda o: abs(np.log(med / o)))
+    base = [0.0, 1.0 / 3, 2.0 / 3] if compound else [0.0, 0.5]
+    allowed = sorted({(p + k) for p in base for k in range(3) if p + k < spacing - 1e-9} | {0.0})
+
+    def snap(ph):
+        return min(allowed + [spacing], key=lambda a: abs(a - ph)) % spacing
+
+    ang = np.exp(2j * np.pi * (Bs / spacing))
+    whole = ang.mean() if len(ang) else 1.0
+    g_ph = snap((np.angle(whole) / (2 * np.pi)) % 1.0 * spacing)
+    phases, clear = np.full(len(Bs), g_ph), np.zeros(len(Bs))
+    for i in range(len(Bs)):
+        w = ang[max(0, i - window):i + window + 1].mean()
+        clear[i] = abs(w)
+        # a region keeps the song's phase unless the song has none and the region a clear one of its own
+        if abs(whole) < 0.3 <= 0.7 <= abs(w):
+            phases[i] = snap((np.angle(w) / (2 * np.pi)) % 1.0 * spacing)
+    return spacing, phases, clear
+
+
+def assign_lattice(d, Bs, spacing, phases, period, sigma=None):
+    """Each detected beat (times ``d``, coarse places ``Bs``) on a point of its lattice (``phases`` + k ``spacing``
+    beats) or left out: a Viterbi path over the points within three sigmas of the coarse place, costing the distance
+    from it (``sigma``: :data:`SIGMA_COARSE`, :data:`SIGMA_LOOSE` where the coarse map is less sure) and, between
+    consecutive kept detections, the change of tempo against ``period`` (recording seconds per beat;
+    :data:`SIGMA_TEMPO`), so a run of steady beats settles a place the coarse map leaves in doubt.  Returns per
+    detection the lattice point or None."""
+    n = len(d)
+    sigma = np.full(n, SIGMA_COARSE) if sigma is None else np.asarray(sigma)
+    cands, ecost = [], []
+    for i in range(n):
+        reach = max(3.0 * sigma[i], 0.55 * spacing)
+        k0 = int(np.floor((Bs[i] - phases[i] - reach) / spacing))
+        cs = [phases[i] + k * spacing for k in range(k0, k0 + int(2 * reach / spacing) + 3)
+              if abs(phases[i] + k * spacing - Bs[i]) <= reach]
+        cands.append(np.array(cs))
+        ecost.append(((np.array(cs) - Bs[i]) / sigma[i]) ** 2)
+    INF = 1e18
+    cost = [None] * n
+    back = [None] * n
+    for i in range(n):
+        c = ecost[i] + SKIP_COST * i                                  # start here (the ones before left out)
+        bk = [(-1, -1)] * len(cands[i])
+        c = c.copy()
+        for gap in (1, 2, 3):
+            ip = i - gap
+            if ip < 0:
+                break
+            dt = d[i] - d[ip]
+            for a, ca in enumerate(cands[i]):
+                db = ca - cands[ip]
+                exp = dt / max(period[i], 1e-3)
+                sig = SIGMA_TEMPO * max(1.0, exp)
+                t = np.where(db > 1e-6, ((db - exp) / sig) ** 2, INF)
+                tot = cost[ip] + t + SKIP_COST * (gap - 1)
+                b = int(np.argmin(tot))
+                if tot[b] + ecost[i][a] < c[a]:
+                    c[a] = tot[b] + ecost[i][a]
+                    bk[a] = (ip, b)
+        cost[i], back[i] = c, bk
+    out = [None] * n
+    if not n:
+        return out
+    # end: the best final state, the detections after it left out
+    best, bi, ba = INF, -1, -1
+    for i in range(n):
+        if len(cost[i]):
+            a = int(np.argmin(cost[i]))
+            tot = cost[i][a] + SKIP_COST * (n - 1 - i)
+            if tot < best:
+                best, bi, ba = tot, i, a
+    while bi >= 0 and ba >= 0:
+        out[bi] = float(cands[bi][ba])
+        bi, ba = back[bi][ba]
+    return out
+
+
+def local_period(det, Bs, spacing, bs, window=8):
+    """Recording seconds per beat around each detection: the median interval between consecutive detections about
+    one lattice step apart on the coarse map (+-``window``), over the step; the coarse map's where there are none."""
+    dt = np.diff(det)
+    dB = np.diff(Bs)
+    ok = (dB > 0.6 * spacing) & (dB < 1.4 * spacing)
+    out = np.zeros(len(det))
+    for i in range(len(det)):
+        lo, hi = max(0, i - window), min(len(dt), i + window)
+        sel = [dt[k] for k in range(lo, hi) if ok[k]]
+        out[i] = float(np.median(sel)) / spacing if len(sel) >= 3 else bs.period_at(Bs[i])
+    return out
+
+
+def detections_on_lattice(det, bs, compound, lo, hi):
+    """Detected beats (times) between recording times lo..hi placed on the lattice: [(B, time, residual)]."""
+    det = np.asarray([t for t in det if lo <= t <= hi])
+    if not len(det):
+        return [], {"detections": 0}
+    Bs = np.array([bs.b_of_rec(t) for t in det])
+    keep = np.concatenate([[True], np.diff(Bs) > 1e-6])                  # the coarse map stands still: the first
+    det, Bs = det[keep], Bs[keep]
+    spacing, phases, clear = lattice_of(Bs, compound)
+    period = local_period(det, Bs, spacing, bs)
+    sigma = np.array([SIGMA_LOOSE if bs.loose[bs.measure_of_song(bs.song(t))] else SIGMA_COARSE for t in det])
+    q = assign_lattice(det, Bs, spacing, phases, period, sigma)
+    out = [(b, float(t), float(B - b)) for t, B, b in zip(det, Bs, q) if b is not None]
+    vals, counts = np.unique(np.round(phases, 3), return_counts=True)
+    return out, {"detections": int(len(det)), "kept": len(out), "spacing_beats": round(spacing, 3),
+                 "phases": {str(v): int(c) for v, c in zip(vals, counts)},
+                 "phase_clarity_median": round(float(np.median(clear)), 3),
+                 "residual_beats_median": round(float(np.median([abs(x[2]) for x in out])), 3) if out else None}
+
+
+def cmd_bars(args):
+    """Where the recording plays every measure of the song as played (module docstring of pianovision.rectempo):
+    the alignment's coarse map, the recording's beats detected (madmom's activations from ``--activations``, else
+    none; librosa's beat tracker with the tempo the alignment implies), each detected beat put on the score's
+    lattice of beats, half beats (thirds in compound time), and every measure position's time from those anchors."""
+    import librosa
+    ref = read_ref(args.ref)
+    al = read_ref(args.align)
+    tm = RM.TimeMap.from_dict(al["map"])
+    ms = ref["measures"]
+    song_end = float(ms[-1]["end"])
+    y = load(args.audio)
+    rec_end = len(y) / SR
+    S, R = coarse_map(tm, song_end)
+    global SIGMA_TEMPO
+    if args.sigma_tempo:
+        SIGMA_TEMPO = args.sigma_tempo
+    bs = BeatSpace(ms, S, R, al.get("gaps") or [], estimate=args.estimate_odd, gap_beats=not args.no_gap_beats)
+    total_b = float(bs.b0[-1] + bs.n_rec[-1])
+    compound = all((m.get("timesig") or [4, 4])[1] == 8 and (m.get("timesig") or [4, 4])[0] % 3 == 0
+                   for m in ms if not m.get("odd"))
+    # librosa: onset envelope (5.8 ms) and its beat tracker with the tempo the coarse map implies, frame by frame
+    H = OHOP
+    env = librosa.onset.onset_strength(y=y, sr=SR, hop_length=H)
+    fr = SR / H
+    tf = np.arange(len(env)) / fr
+    gb = np.arange(-4.0, total_b + 4.0, 0.5)
+    gr = np.array([bs.coarse_rec_of_b(b) for b in gb])
+    per = np.gradient(gr, gb)
+    ok = per > 0.15
+    bpm = 60.0 / np.clip(np.interp(tf, gr[ok], per[ok]), 0.25, 2.0)
+    _t, lb = librosa.beat.beat_track(onset_envelope=env, sr=SR, hop_length=H, bpm=bpm, tightness=100, trim=False,
+                                     units="time")
+    det = {"librosa": np.asarray(lb, float)} if not args.coarse_only else {}
+    act = None
+    if args.activations and os.path.isfile(args.activations) and not args.coarse_only:
+        z = np.load(args.activations)
+        det["madmom"] = np.asarray(z["beats"], float)
+        act = np.asarray(z["beat"], float)
+    primary = "madmom" if "madmom" in det else "librosa" if det else "none"
+    lo, hi = max(0.0, bs.coarse_rec_of_b(-1.0)), min(rec_end, bs.coarse_rec_of_b(total_b + 1.0))
+    placed, stats = {}, {}
+    for name, times in det.items():
+        placed[name], stats[name] = detections_on_lattice(times, bs, compound, lo, hi)
+        stats[name]["total"] = int(len(times))
+    # agreement and the detectors' relative bias (the other one against the primary)
+    anchors = {round(b, 4): (t, e) for b, t, e in placed.get(primary, [])}
+    other = [k for k in placed if k != primary]
+    confirm = {}
+    bias = None
+    if other:
+        o = {round(b, 4): t for b, t, _e in placed[other[0]]}
+        diffs = [o[k] - anchors[k][0] for k in anchors if k in o and abs(o[k] - anchors[k][0]) <= AGREE_S]
+        bias = float(np.median(diffs)) if diffs else 0.0
+        for k in anchors:
+            confirm[k] = k in o and abs(o[k] - bias - anchors[k][0]) <= AGREE_S
+        stats["agreement"] = round(float(np.mean(list(confirm.values()))), 3) if confirm else None
+        stats["bias_ms"] = round(bias * 1000.0, 1)
+    keys = sorted(anchors)
+    AB = np.array(keys)
+    AT = np.array([anchors[k][0] for k in keys])
+    AE = np.array([anchors[k][1] for k in keys])
+    AC = np.array([confirm.get(k, False) for k in keys])
+    if args.activations and act is not None and len(AT):
+        idx = np.clip(np.round(AT * 100).astype(int), 0, len(act) - 1)
+        AS = act[idx]
+    else:
+        AS = np.ones(len(AT))
+    resid = AT - np.array([bs.coarse_rec_of_b(b) for b in AB]) if len(AB) else np.zeros(0)
+
+    def rec_of_b(B):
+        """Between anchors at most :data:`STEADY_SPAN` beats apart: a steady tempo from one to the next; elsewhere
+        the coarse map's shape moved by the anchors' residuals."""
+        if not len(AB):
+            return bs.coarse_rec_of_b(B)
+        i = int(np.searchsorted(AB, B))
+        if 0 < i < len(AB) and AB[i] - AB[i - 1] <= STEADY_SPAN + 1e-6:
+            f = (B - AB[i - 1]) / (AB[i] - AB[i - 1])
+            return float(AT[i - 1] + f * (AT[i] - AT[i - 1]))
+        if i < len(AB) and abs(AB[i] - B) < 1e-9:
+            return float(AT[i])
+        return bs.coarse_rec_of_b(B) + float(np.interp(B, AB, resid))
+
+    def conf_of_b(B, t):
+        if t < 0.0 or t > rec_end:
+            return 0.0, "outside"
+        if not len(AB):
+            return 0.2, "coarse"
+        i = int(np.searchsorted(AB, B))
+        cands = [k for k in (i - 1, i) if 0 <= k < len(AB)]
+        k = min(cands, key=lambda q: abs(AB[q] - B))
+        dist = abs(AB[k] - B)
+
+        def qual(q):
+            return (1.0 if AC[q] or not other else 0.75) * max(0.0, 1.0 - abs(AE[q]) / 0.5) * \
+                (0.6 + 0.4 * min(1.0, float(AS[q]) / 0.3))
+        if dist < 1e-3:
+            return round(qual(k), 3), "detected"
+        lo_k = i - 1 if i - 1 >= 0 else None
+        hi_k = i if i < len(AB) else None
+        if lo_k is not None and hi_k is not None and AB[hi_k] - AB[lo_k] <= 2.0 + 1e-6:
+            return round(0.8 * min(qual(lo_k), qual(hi_k)), 3), "between"
+        return round(0.4 * float(np.exp(-max(0.0, dist - 1.0) / 2.0)), 3), "coarse"
+
+    bars = []
+    for j, m in enumerate(ms):
+        Bst = float(bs.b0[j])
+        Ben = Bst + float(bs.n_rec[j])
+        t0, t1 = rec_of_b(Bst), rec_of_b(Ben)
+        pos_out = []
+        for rt, st in (m.get("positions") or [[0, m["start"]]]):
+            B = bs.b_of_position(j, rt, st)
+            pos_out.append([int(rt), round(rec_of_b(B), 5)])
+        beats = [round(rec_of_b(Bst + k), 5) for k in range(int(bs.n_rec[j]))]
+        bc = [conf_of_b(Bst + k, rec_of_b(Bst + k))[0] for k in range(int(bs.n_rec[j]))]
+        c0, src = conf_of_b(Bst, t0)
+        bars.append({"index": j, "number": m["number"], "pass": m.get("pass", 1), "odd": bool(m.get("odd")),
+                     "beats_score": int(bs.n_score[j]), "beats_recording": int(bs.n_rec[j]),
+                     "beats_coarse": int(bs.n_coarse[j]), "loose": bool(bs.loose[j]),
+                     "start": round(t0, 5), "end": round(t1, 5), "coarse_start": round(bs.r0[j], 5),
+                     "conf": c0, "source": src, "beat_conf": bc, "beats": beats, "positions": pos_out})
+    out = {"format": 1, "version": BARS_VERSION, "audio": os.path.abspath(args.audio), "duration": round(rec_end, 3),
+           "song_end": song_end, "compound": compound, "primary": primary, "detectors": stats,
+           "anchors": int(len(AB)), "anchors_confirmed": int(AC.sum()) if len(AC) else 0,
+           "anchor_residual_beats_median": round(float(np.median(np.abs(AE))), 3) if len(AE) else None,
+           "coarse_minus_detected_ms_median": round(float(-np.median(resid)) * 1000.0, 1) if len(resid) else None,
+           "coarse_map": [[round(float(a), 4), round(float(b), 4)] for a, b in zip(S, R)],
+           "bars": bars}
+    write_json(args.out, out)
+
+
+# ------------------------------------------------------------------------------
 
 def write_json(path, d):
     if not path:
@@ -966,6 +1394,8 @@ def main(argv=None):
     p.add_argument("--ref", required=True)
     p.add_argument("--audio", required=True)
     p.add_argument("--key", type=int, default=0)
+    p.add_argument("--offset", type=float, default=0.0,
+                   help="the audio is played from this file time at the song's start (Note Waterfall's offset)")
     p.add_argument("--out")
     p.set_defaults(fn=cmd_verify)
     p = sub.add_parser("vocals")
@@ -974,6 +1404,20 @@ def main(argv=None):
     p.add_argument("--active", help="JSON [[from, to], ...]: the song spans the recording plays")
     p.add_argument("--out")
     p.set_defaults(fn=cmd_vocals)
+    p = sub.add_parser("bars")
+    p.add_argument("--ref", required=True, help="the song's measures as played, with their positions (rectempo)")
+    p.add_argument("--align", required=True)
+    p.add_argument("--audio", required=True)
+    p.add_argument("--activations", help="madmom's beats and activations (tools/beat_activations.py)")
+    p.add_argument("--coarse-only", action="store_true", help="no beat detection: the alignment's map alone")
+    p.add_argument("--sigma-tempo", type=float, help=f"tempo change allowed per beat (default {SIGMA_TEMPO})")
+    p.add_argument("--no-gap-beats", action="store_true",
+                   help="a regular measure in an alignment gap keeps its own number of beats")
+    p.add_argument("--estimate-odd", action="store_true",
+                   help="a measure of another length counts the beats the coarse map gives it, not its time "
+                        "signature's")
+    p.add_argument("--out")
+    p.set_defaults(fn=cmd_bars)
     p = sub.add_parser("latency")
     p.add_argument("--out")
     p.set_defaults(fn=lambda a: write_json(a.out, measure_latency()))

@@ -365,9 +365,12 @@ class ProcessRoutingTest(unittest.TestCase):
         self.full = os.path.join(self.music, "Song.mp3")
         with open(self.full, "wb") as f:
             f.write(b"x" * 100)
+        # the stretch (sung_timing "score"); the recording-led default has a test of its own
         self.s = R.Settings(music_dir=self.music, work_dir=os.path.join(self.tmp, "work"),
                             out_dir=os.path.join(self.tmp, "out"), stems_dir=os.path.join(self.tmp, "stems"),
-                            links=os.path.join(self.tmp, "recordings.json"))
+                            links=os.path.join(self.tmp, "recordings.json"), sung_timing="score",
+                            tempo_dir=os.path.join(self.tmp, "tempo"),
+                            audio_map=os.path.join(self.tmp, "audio_map.json"))
         self.recs = {"Song.mp3": R.Recording("Song.mp3", {"full": "Song.mp3"})}
         self.song = R.Song("Pop/song.mscz", "song.json", "Song", "Artist")
         self.tools = []
@@ -385,12 +388,45 @@ class ProcessRoutingTest(unittest.TestCase):
             with open(out, "w") as f:
                 json.dump(al, f)
 
-    def run_job(self, route, variant, retime=True):
-        job = R.Job(self.song, {}, "Song.mp3", variant, "auto", route)
+    def run_job(self, route, variant, retime=True, lib=None, entry=None):
+        job = R.Job(self.song, entry or {}, "Song.mp3", variant, "auto", route)
         ref = {"sig": "s1", "measures": [], "song_end": 100.0}
         with mock.patch.object(R, "write_reference", return_value=(os.path.join(self.tmp, "ref.json"), ref)), \
                 mock.patch.object(R, "_run_tool", side_effect=self.fake_tool):
-            return R.process(None, self.s, job, self.recs, {}, False, retime, lambda m: None)
+            return R.process(lib, self.s, job, self.recs, {}, False, retime, lambda m: None)
+
+    def test_sung_songs_follow_the_recording_by_default(self):
+        from types import SimpleNamespace
+        from pianovision.rectempo import sha256_file
+        self.s.sung_timing = "recording"
+        scores = os.path.join(self.tmp, "Scores")
+        os.makedirs(os.path.join(scores, "Pop"))
+        score = os.path.join(scores, "Pop", "song.mscz")
+        with open(score, "wb") as f:
+            f.write(b"the score")
+        lib = SimpleNamespace(cfg=SimpleNamespace(scores=scores))
+        with mock.patch("pianovision.separation.vocals_stem") as sep:
+            r = self.run_job(R.ROUTE_VOCALS, "vocals", lib=lib)
+        sep.assert_not_called()                                     # nothing separated, nothing stretched
+        self.assertEqual(self.tools, ["align"])
+        self.assertEqual((r["timing"], r["audio"]), ("recording", self.full))
+        self.assertIn("does not follow the recording yet", r["checks"]["problems"][0])
+        # `recordings tempo` made and applied its copy: the original file at the offset, enabled
+        st = {"score": score, "score_sha256": "0" * 64, "recording": self.full, "ok": True, "checks": [],
+              "offset": -0.974, "applied": {"sha256": sha256_file(score)}, "repeats": {"unrolled": True},
+              "verify": {"bar_starts": {"p95_ms": 0.0}}}
+        R._write_json(os.path.join(self.s.tempo_dir, "song", "tempo.json"), st)
+        r = self.run_job(R.ROUTE_VOCALS, "vocals", lib=lib)
+        self.assertTrue(r["checks"]["ok"], r["checks"])
+        e = R.proposal(self.s, {"songs": {"song.json": r}})["songs"]["song.json"]
+        self.assertEqual((e["audio"], e["offset"], e["enabled"]), (self.full, -0.974, True))
+        # the score changed since: not enabled; your decision "timing": "score" stretches the recording again
+        with open(score, "wb") as f:
+            f.write(b"edited")
+        r = self.run_job(R.ROUTE_VOCALS, "vocals", lib=lib)
+        self.assertIn("the score changed", r["checks"]["problems"][0])
+        self.assertEqual(R.effective_timing({"decision": {"timing": "score"}}, self.s), "score")
+        self.assertEqual(R.effective_timing({}, self.s), "recording")
 
     def test_generated_route_is_a_diagnostic_without_delivery(self):
         with mock.patch("pianovision.separation.vocals_stem") as sep:

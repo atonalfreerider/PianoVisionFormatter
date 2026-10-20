@@ -5961,22 +5961,35 @@
     },
     "70s/Love_Has_No_Pride.mscz": {
       "song": "titu_Love_Has_No_Pride.json",
-      "status": "none",
-      "recording": null,
-      "confidence": 0.927,
-      "p_same": null,
-      "p_none": 0.945,
+      "status": "linked",
+      "recording": "Love Has No Pride.mp3",
+      "variants": {
+        "vocals": "(separated from the full mix)",
+        "full": "Love Has No Pride.mp3"
+      },
+      "variant": "vocals",
+      "confidence": 0.976,
+      "p_same": 0.92,
+      "p_none": 0.015,
       "consistent": true,
-      "why": "no candidate is this composition",
+      "why": "picked with high confidence",
       "alternatives": [],
       "judged": {
         "model": "jev-1.13.0",
-        "time": "2026-10-13T12:49:01",
-        "key": "532c32c95c5b4a65",
+        "time": "2026-10-19T18:11:18",
+        "key": "ee85ef75eef7c478",
         "candidates": [
           {
+            "recording": "Love Has No Pride.mp3",
+            "score": 0.542
+          },
+          {
             "recording": "Zouk/full/Baby Love.mp3",
-            "score": 0.114
+            "score": 0.116
+          },
+          {
+            "recording": "Love Needs a Heart (Remastered).mp3",
+            "score": 0.111
           },
           {
             "recording": "Zouk/Prism Of Love.mp3",
@@ -5984,30 +5997,39 @@
           },
           {
             "recording": "Zouk/Baby Love 48000 1_01.mp3",
-            "score": 0.092
+            "score": 0.094
           }
         ],
         "answers": {
           "pick": {
-            "Zouk/full/Baby Love.mp3": 0.02,
-            "Zouk/Prism Of Love.mp3": 0.03,
+            "Love Has No Pride.mp3": 0.97,
+            "Zouk/full/Baby Love.mp3": 0.0,
+            "Love Needs a Heart (Remastered).mp3": 0.01,
+            "Zouk/Prism Of Love.mp3": 0.0,
             "Zouk/Baby Love 48000 1_01.mp3": 0.0,
-            "none": 0.95
+            "none": 0.02
           },
-          "pick_choice": "none",
+          "pick_choice": "Love Has No Pride.mp3",
           "pick_reversed": {
             "Zouk/Baby Love 48000 1_01.mp3": 0.0,
-            "Zouk/Prism Of Love.mp3": 0.04,
-            "Zouk/full/Baby Love.mp3": 0.02,
-            "none": 0.94
+            "Zouk/Prism Of Love.mp3": 0.0,
+            "Love Needs a Heart (Remastered).mp3": 0.0,
+            "Zouk/full/Baby Love.mp3": 0.0,
+            "Love Has No Pride.mp3": 0.99,
+            "none": 0.01
           },
-          "pick_reversed_choice": "none",
+          "pick_reversed_choice": "Love Has No Pride.mp3",
           "same": [
-            0.11,
-            0.1,
-            0.1
+            0.92,
+            0.05,
+            0.08,
+            0.06,
+            0.07
           ]
         }
+      },
+      "decision": {
+        "variant": "full"
       }
     },
     "70s/Pink_Floyd_-_The_Great_Gig_in_the_Sky.mscz": {

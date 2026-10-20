@@ -371,10 +371,11 @@ def song_time(pcs: Sequence[Piece], t: float) -> Optional[float]:
 # the edit: the formatter's model and MuseScore's copy
 # ------------------------------------------------------------------------------
 
-def apply_to_score(score, p: Plan) -> None:
+def apply_to_score(score, p: Plan, label: str = "solo tempo") -> None:
     """The plan in a score model (:func:`pianovision.mscx.read_score`), as :func:`apply_to_mscx` writes it into the
     file: tempo marks, fermatas and gradual tempo changes do not play, breaths and section breaks pause 0 s, and the
-    plan's marks (invisible) are added.  The notes and their places in the file stay."""
+    plan's marks (invisible, their text ``label`` q = ...) are added.  The notes and their places in the file
+    stay."""
     from .score import SEG_BREATH, SEG_CHORDREST, Element
     for m in score.measures:
         for seg in m.segments:
@@ -396,11 +397,11 @@ def apply_to_score(score, p: Plan) -> None:
         if seg is None:
             raise ValueError(f"timeline: no chord or rest {mk.rtick} ticks into measure {mk.measure + 1}")
         seg.annotations.append(Element("Tempo", track=mk.track, props={
-            "tempo": mk.text, "followText": "0", "visible": "0", "text": _mark_text(mk)}))
+            "tempo": mk.text, "followText": "0", "visible": "0", "text": _mark_text(mk, label)}))
 
 
-def _mark_text(mk: Mark) -> str:
-    return f"solo tempo q = {mk.bps * 60:.2f}"
+def _mark_text(mk: Mark, label: str = "solo tempo") -> str:
+    return f"{label} q = {mk.bps * 60:.2f}"
 
 
 _TAG_RE = re.compile(r'<(/?)([A-Za-z_][\w.:-]*)((?:[^>"\'/]|"[^"]*"|\'[^\']*\'|/(?!>))*)(/?)>|<!--.*?-->|<\?.*?\?>'
@@ -467,7 +468,7 @@ def _neutralise(text: str) -> str:
     return re.sub(r"<(Breath|LayoutBreak)>(.*?)</\1>", no_pause, text, flags=re.S)
 
 
-def apply_to_mscx(mscx: bytes, p: Plan) -> bytes:
+def apply_to_mscx(mscx: bytes, p: Plan, label: str = "solo tempo") -> bytes:
     """The plan written into the score file (the main .mscx, as bytes): ``<play>0</play>`` in every tempo mark,
     fermata and gradual tempo change, a 0 s pause in every breath and section break, and an invisible tempo mark per
     plan mark before its chord or rest.  Every other byte stays."""
@@ -480,12 +481,12 @@ def apply_to_mscx(mscx: bytes, p: Plan) -> bytes:
     for mk in sorted(p.marks, key=lambda x: offsets[x.path], reverse=True):
         at = offsets[mk.path]
         el = (f"<Tempo>\n<tempo>{mk.text}</tempo>\n<followText>0</followText>\n<visible>0</visible>\n"
-              f"<text>{_mark_text(mk)}</text>\n</Tempo>\n")
+              f"<text>{_mark_text(mk, label)}</text>\n</Tempo>\n")
         text = text[:at] + el + text[at:]
     return text.encode("utf-8")
 
 
-def write_edited(src: str, dst: str, p: Plan) -> str:
+def write_edited(src: str, dst: str, p: Plan, label: str = "solo tempo") -> str:
     """A copy of the score file ``src`` at ``dst`` with the plan written in (every other member as it is)."""
     import os
     import zipfile
@@ -496,7 +497,7 @@ def write_edited(src: str, dst: str, p: Plan) -> str:
             for item in zin.infolist():
                 data = zin.read(item.filename)
                 if item.filename == main:
-                    data = apply_to_mscx(data, p)
+                    data = apply_to_mscx(data, p, label)
                 zout.writestr(item, data)
     os.replace(tmp, dst)
     return dst
