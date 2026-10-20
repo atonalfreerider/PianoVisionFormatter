@@ -2102,9 +2102,56 @@ def mute_solos(lib, s: Settings, spec: str, source: Optional[str] = None, offset
     return 0
 
 
-def _tilde(path: str) -> str:
-    home = os.path.expanduser("~")
-    return "~" + path[len(home):] if path.startswith(home + os.sep) else path
+def vocal_spans(lib, s: Settings, spec: str, vocals: Optional[str] = None, log: Log = print) -> int:
+    """``recordings vocal-spans SONG``: where the singer of the song's recording sings, on the score's clock
+    (:mod:`pianovision.vocalspans`), at ``<tempo_dir>/<song>/sung.json`` for ``lyrics import --sung``.  The score
+    must follow the recording (``recordings tempo``: its offset); the vocals stem is separated once and cached
+    (``vocals``: a stem you have)."""
+    import hashlib
+    from . import rectempo as RT
+    from . import separation as SEP
+    from . import vocalspans as VS
+    song = _one_song(lib, spec, log)
+    if song is None:
+        return 2
+    link = load_links(s.links)["links"].get(song.rel) or {}
+    rec = (link.get("variants") or {}).get("full") or link.get("recording")
+    src = os.path.join(s.path("music_dir"), rec) if rec else None
+    if not src or not os.path.isfile(src):
+        log(f"{song.output}: no recording linked")
+        return 2
+    st = tempo_state(s, song)
+    score = os.path.join(lib.cfg.scores, song.rel)
+    with open(score, "rb") as f:
+        sha = hashlib.sha256(f.read()).hexdigest()
+    if not st or "offset" not in st:
+        log(f"{song.output}: the score does not follow the recording yet (`recordings tempo SONG` first)")
+        return 2
+    if sha not in (st.get("score_sha256"), st.get("copy_sha256")):
+        log(f"  note: {song.rel} changed since `recordings tempo` timed it (its notes and measures must not have)")
+    if not vocals:
+        vocals = SEP.vocals_stem(src, s.path("stems_dir"), s.separator_model, s.separator_python,
+                                 s.path("separator_script"), log=log)
+    scratch = os.path.join(s.path("tempo_dir"), song.stem)
+    os.makedirs(scratch, exist_ok=True)
+    rv = SEP.rms_levels(vocals, VS.WINDOW, scratch)
+    rm = SEP.rms_levels(src, VS.WINDOW, scratch)
+    secs = VS.spans_from_levels(rv, rm)
+    rd = RT.render(score)
+    tl = rd.timeline
+    last = tl.tick(tl.measures[-1].end_utick) if tl.measures else 0
+    spans = VS.to_uticks(secs, float(st["offset"]), rd.seconds, tl.utick, last)
+    where = VS.measure_ranges(spans, [m.utick for m in tl.measures], [tl.label(j) for j in range(len(tl.measures))])
+    out = os.path.join(scratch, "sung.json")
+    doc = {"format": 1, "score": song.rel, "score_sha256": sha, "recording": src, "vocals": vocals,
+           "offset": st["offset"], "measures": where, "spans": [list(x) for x in spans],
+           "recording_seconds": [list(x) for x in secs]}
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=1)
+    sung_s = sum(b - a for a, b in secs)
+    log(f"{song.output}: {len(secs)} sung stretches, {sung_s:.0f} s of {len(rv) * VS.WINDOW:.0f} s; sung in {where}")
+    log(f"  {out}  (lyrics import --sung)")
+    return 0
 
 
 def _one_song(lib, spec: str, log: Log) -> Optional[Song]:

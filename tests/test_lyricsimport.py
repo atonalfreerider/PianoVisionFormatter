@@ -63,6 +63,36 @@ class ImportTest(unittest.TestCase):
         return code, out.getvalue()
 
     # ------------------------------------------------------------------
+    def test_the_recording_says_where_the_singing_is(self):
+        # four measures of quarters with no rest: the singer sings m.2 and m.4 only, with a breath in m.4
+        voice = [[q(60), q(62), q(64), q(65)] for _ in range(4)]
+        path = self.score(voice)
+        spans = [(1 * W, 2 * W), (3 * W, 3 * W + 960), (3 * W + 960, 4 * W)]
+        plan = LI.plan_import(path, "La la la la\nMo mo\nKi ki\n", sung=spans)
+        got = [(p.slot.measure, p.text) for p in plan.placements]
+        self.assertEqual(got, [(2, "La"), (2, "la"), (2, "la"), (2, "la"), (4, "Mo"), (4, "mo"), (4, "Ki"), (4, "ki")])
+        self.assertEqual(plan.vocal.unsung, 8)
+        self.assertEqual(len(plan.vocal.phrases), 3)            # m.2, then m.4 split at the breath
+        self.assertTrue(any("singer is silent" in w for w in plan.warnings))
+        # without: the lines start on the first notes
+        plain = LI.plan_import(path, "La la la la\nMo mo\nKi ki\n")
+        self.assertEqual(plain.placements[0].slot.measure, 1)
+
+    def test_a_phrase_the_singer_sings_is_rather_sung(self):
+        # two sung phrases and one line that fits the second better: with the recording, the first is not skipped
+        voice = [[q(60), q(62), rest("half")], [q(64), q(65), q(67), rest("quarter")]]
+        path = self.score(voice)
+        spans = [(0, W), (W, 2 * W)]
+        plan = LI.plan_import(path, "La la la la la\n", sung=spans)
+        self.assertEqual(plan.placements[0].slot.measure, 1)
+
+    def test_sung_file(self):
+        good = self.text('{"spans": [[0, 960], [1920, 2400]]}', "sung.json")
+        self.assertEqual(LI.read_sung(good), [(0, 960), (1920, 2400)])
+        for bad in ('{"spans": [[0, 960], [900, 2400]]}', '{"spans": [[10, 5]]}', '{}'):
+            with self.assertRaises(LI.LyricsImportError):
+                LI.read_sung(self.text(bad, "bad.json"))
+
     def test_repeats_carry_stacked_verses(self):
         # m.1-2 repeated (a rest ends each pass), then m.3-4
         voice = [[q(67), q(69), q(71), q(72)], [q(74), q(72), rest("half")],

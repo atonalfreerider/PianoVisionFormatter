@@ -942,6 +942,15 @@ hold_ me now__            "_" holds a syllable over one more note (a melisma), "
 * Words are split into syllables by pyphen's English hyphenation when pyphen is installed, else by a small
   rule-based English syllabifier (`lyricsimport.syllables`: "lit-tle", "go-ing", "love-ly", "did-n't"). Mark any
   word it gets wrong with "-" yourself.
+* **Where the recording's singer sings** (`--sung FILE`, from `python3 -m pianovision recordings vocal-spans
+  SONG`, `pianovision/vocalspans.py`): a piano arrangement's right hand plays the tune with its fills, intro and
+  solos, and rarely rests where the singer breathes. When the score follows its recording (`recordings tempo`), the
+  recording's vocals stem (Demucs, cached) gives the stretches where the singer sings (50 ms blocks within 22 dB of
+  the stem's loud level and no more than 18 dB under the mix; breaths under 0.3 s joined), on the score's clock
+  (widened by 0.25 s before, 0.15 s after). A note outside them gets no syllable and splits the phrases, a breath
+  between two stretches starts a phrase, and a phrase the singer sings costs more to leave without a line than a
+  held syllable. Let It Be (2026-10-20): its second chorus had gone onto the guitar solo's bars (m. 33-44, where
+  nobody sings) and is now in m. 28-32; Skyfall and No Time to Die no longer start singing on the piano intro.
 
 How the text meets the score:
 
