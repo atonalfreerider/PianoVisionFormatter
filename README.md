@@ -375,6 +375,7 @@ makes of the score changes, never the score.
 | `orchestra_from` | on a piano solo: an orchestral score of the same music; its orchestra, measure-aligned, becomes the song's orchestra, on the solo's clock (below) |
 | `measure_map` | the alignment of the two: `"auto"` or overrides (below) |
 | `piano_from` | `"simplified_from"` (with `simplified_from`): the solo is the song's piano part too, Note Waterfall's `original` part and PianoVision's hands, wherever the alignment maps a solo measure; the measures the solo leaves out keep the score's own piano part, and there is no separate simplified part (below) |
+| `clock` | `"solo"` (default) or `"own"` (with `simplified_from`): the song plays on the orchestral score's own clock, its tempo marks, fermatas and pauses, instead of the solo's; the solo's notes (the simplified part, and the piano part with `piano_from`) are placed on it through the same alignment. For an orchestral score whose tempo map follows a recording (`recordings tempo`: [A concerto's recording](#a-concertos-recording-your-measure-times-and-the-solo-passages-muted)) |
 | `song` | `false`: the score is not a song of its own. `build` renders nothing for it and retires the output it made before to the attic (`status` lists it as "not a song of its own", the window as "partner only"); it can still be another score's partner |
 
 The manifest records, per score, a hash of the options that make its own render and, with a partner, the partner's
@@ -842,6 +843,38 @@ Three songs (2026-10-19):
 | recording vs copy's notes: onset lag median (within 50 ms) | +3.4 ms (99 %) | +3.4 ms (97 %) | +1.3 ms (100 %) |
 
 Love Has No Pride's recording is a semitone above the score: its entry stays disabled until you decide.
+
+### A concerto's recording: your measure times and the solo passages muted
+
+A concerto (Rhapsody in Blue) can play a recording you own instead of the generated companion: the recording leads as
+above, and the passages where the piano plays alone are muted, since you play them; where the orchestra plays the
+recording's piano may blend in.
+
+```bash
+python3 -m pianovision recordings route SCORE vocals                     # deliver the recording (not generated)
+python3 -m pianovision recordings confirm SCORE RECORDING --variant full
+python3 -m pianovision recordings tempo SCORE --anchors TIMING.txt --unroll never --in-place --backup DIR
+python3 -m pianovision build                                             # with "clock": "own" (scores.json)
+python3 -m pianovision recordings mute-solos SCORE                       # <solo_mute_dir>/<song>.mp3 + entry
+```
+
+* **Your measure times** (`--anchors FILE`, one `measure|m:ss.sss` per line, `387:2|...` for a measure's second
+  pass, `#` comments): rubato and cadenzas defeat the beat detectors and a free alignment can take a wrong turn in a
+  long solo. Your times are fixed points: the alignment's path keeps within 0.3 s of each (`recording_align.py
+  align --pins`, a band on the DTW's cost matrix), and the measures start there exactly (`bars --pins`: the anchors
+  that place the measures, detected beats that contradict them dropped). The report lists each anchor against where
+  its measure lands (`anchors` check: within 1 ms).
+* **The clock** (`"clock": "own"` in scores.json, with `simplified_from`): the song keeps the orchestral score's own
+  tempo map (the recording's) instead of the piano solo's; the solo still gives the piano part (`piano_from`),
+  placed on that clock through the measure alignment.
+* **The muted copy** (`recordings mute-solos`, `pianovision/solomute.py`): from the song's parts file, the stretches
+  where no orchestra note sounds (each from its start to its end) and the piano part plays, at least
+  `solo_min_seconds` (2) long, are muted on the recording's clock (song time + the offset): a 0.35 s fade out where
+  the orchestra's last note ends, silence, a 0.12 s fade in ending 50 ms before the orchestra comes back. The rest
+  of the recording is untouched and nothing moves; encoded as the generated companions are (constant bit rate, the
+  codec delay cut, no Xing header), to `[recordings] solo_mute_dir` (`~/Music/Note Waterfall Recordings`, excluded
+  from the music folder's scan) with `<song>.solo-mute.json` (the passages, the level inside each) and the
+  audio_map entry.
 
 ## Score structure fixes (scorefix)
 

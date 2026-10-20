@@ -17,6 +17,9 @@
     "                    Waterfall's original part and PianoVision's hands) wherever the alignment maps a solo",
     "                    measure; the measures it leaves out keep this score's piano part; no separate simplified",
     "                    part. Hand edits of the solo's notes go through the solo's own song (`hands review` says so)",
+    "  clock             'own' (with simplified_from): the song keeps this score's own clock (its tempo marks: a",
+    "                    score whose tempo follows a recording, `recordings tempo`), not the solo's; the solo's",
+    "                    notes are placed on it through the alignment",
     "  song              false: not a song of its own (build retires its output); it can still be another's partner",
     "A partner (simplified_from, orchestra_from) is rendered with its own options here; the companion audio",
     "(`accompaniment`) renders the orchestral score on the solo's clock too (pianovision/timeline.py)."

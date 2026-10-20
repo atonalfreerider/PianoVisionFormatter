@@ -35,6 +35,11 @@ options say).  The partner is rendered with its own options (piano staves, hands
 its manifest knobs.  ``song: false``: the score is not a song of its own (``build`` renders nothing for it and
 retires an output it made before); it can still be another score's partner.
 
+``clock: "own"`` (with ``simplified_from`` only; default ``"solo"``): the song plays on the orchestral score's own
+clock, its tempo marks, fermatas and pauses (a score whose tempo map follows a recording: ``recordings tempo``),
+instead of the solo's; the solo's notes (the simplified part, and the piano part with ``piano_from``) are placed on
+it through the same measure alignment.
+
 ``piano_from: "simplified_from"`` (with ``simplified_from`` only): the solo is the source of truth for the piano part
 too.  Wherever the alignment maps a solo measure, the song's piano part (Note Waterfall's ``original`` part and
 PianoVision's hands) is the solo's notes on the song's clock, exactly as the simplified part has them; the orchestral
@@ -57,9 +62,10 @@ from typing import Any, Dict, List, Optional
 
 OPTIONS_NAME = "scores.json"
 KNOWN = ("title", "composer", "piano_staves", "hands", "simplified_from", "orchestra_from", "measure_map", "piano_from",
-         "song")
+         "clock", "song")
 # what makes the song's own render (the manifest's "song" hash; the partner is hashed apart)
-SONG_KEYS = ("title", "composer", "piano_staves", "hands", "piano_from")
+SONG_KEYS = ("title", "composer", "piano_staves", "hands", "piano_from", "clock")
+CLOCKS = ("solo", "own")              # clock: the solo's (default) or, with simplified_from, the orchestral score's own
 PIANO_FROM = ("simplified_from",)     # piano_from: the partner whose piano part is the song's
 PARTNER_KINDS = {"simplified_from": "simplified", "orchestra_from": "orchestra"}
 
@@ -78,6 +84,7 @@ class BuildOptions:
     orchestra_from: str = ""
     measure_map: Any = "auto"
     piano_from: str = ""                                     # "simplified_from": the solo is the piano part too
+    clock: str = "solo"                                      # "own": the orchestral score's own clock (simplified_from)
     song: bool = True
     raw: Dict[str, Any] = field(default_factory=dict)        # the entry as written (comments left out)
 
@@ -94,7 +101,8 @@ class BuildOptions:
                 piano_staves=[int(x) for x in d.get("piano_staves", []) or []], hands=str(d.get("hands", "staves")),
                 simplified_from=str(d.get("simplified_from", "") or ""),
                 orchestra_from=str(d.get("orchestra_from", "") or ""), measure_map=d.get("measure_map", "auto"),
-                piano_from=str(d.get("piano_from", "") or ""), song=song, raw=d)
+                piano_from=str(d.get("piano_from", "") or ""), clock=str(d.get("clock", "solo") or "solo"),
+                song=song, raw=d)
         if o.hands not in ("staves", "split"):
             raise OptionsError(f"{OPTIONS_NAME}: {rel}: hands must be \"staves\" or \"split\", not {o.hands!r}")
         if o.hands == "split" and not o.piano_staves:
@@ -116,6 +124,11 @@ class BuildOptions:
             if not getattr(o, o.piano_from):
                 raise OptionsError(f"{OPTIONS_NAME}: {rel}: piano_from \"{o.piano_from}\" needs {o.piano_from} "
                                    f"(a piano solo of the same music)")
+        if o.clock not in CLOCKS:
+            raise OptionsError(f"{OPTIONS_NAME}: {rel}: clock must be \"solo\" or \"own\", not {o.clock!r}")
+        if o.clock == "own" and not o.simplified_from:
+            raise OptionsError(f"{OPTIONS_NAME}: {rel}: clock \"own\" needs simplified_from (an orchestral score "
+                               f"that keeps its own clock while a piano solo gives its piano part)")
         return o
 
     @property
@@ -160,6 +173,9 @@ class BuildOptions:
             if self.piano_from:
                 # the solo is the song's piano part too (pianovision.arrangement.PianoFrom); the clock does not change
                 out["partner"]["piano"] = True
+            if self.clock == "own":
+                # the song keeps this score's own tempo map; the solo's notes are placed on it
+                out["partner"]["clock"] = "own"
         return out
 
 

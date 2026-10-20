@@ -164,6 +164,41 @@ class PlanTest(Fixtures):
         self.assertEqual((tl["mapped"], tl["filled"], tl["seconds"]), (8, 2, 40.0))
         self.assertEqual(tl["stretch"], {"5": 2.0, "6": 2.0})
 
+    def test_clock_own_keeps_the_orchestral_scores_timing(self):
+        # a score whose tempo map follows a recording (clock "own"): its own tempo, fermata and pause stay; the solo
+        # only gives the simplified part, placed on that clock through the alignment
+        orch = self.orchestral()
+        solo = self.solo()
+        plain = convert_mscz(orch, parts=True)
+        part = dict(self.partner("simplified", solo, "Test/solo.mscz"), clock="own")
+        c = convert_mscz(orch, parts=True, options={"partner": part})
+        # (the plain render gives the pause ticks of its own, the edited copy a tempo: compare the times, in order)
+        own = [s for s, _t, _p in song_notes(plain.data, "left")]
+        got = [s for s, _t, _p in song_notes(c.data, "left")]
+        self.assertEqual(len(got), len(own))
+        for g, o in zip(got, own):
+            self.assertAlmostEqual(g, o, delta=T.TOLERANCE)
+        self.assertGreater(got[4] - got[3], 2.0)                  # m. 4 keeps its fermata
+        self.assertGreater(got[9] - got[8], 2.9)                  # m. 9 its pause
+        simp = c.parts["parts"]["simplified"]["right"]
+        starts = sorted({round(n["start"], 3) for n in simp if n.get("simplified")})
+        self.assertEqual(len(starts), 8)
+        for s_, k in zip(starts, (0, 1, 2, 3, 6, 7, 8, 9)):
+            self.assertAlmostEqual(s_, own[k], delta=T.TOLERANCE)
+        tl = c.arrangement["timeline"]
+        self.assertEqual((tl["clock"], tl["stretch"], tl["own_shape"]), ("own", {}, []))
+        self.assertAlmostEqual(tl["seconds"], own[-1] + 2.0, delta=0.05)
+
+    def test_clock_own_needs_simplified_from(self):
+        with self.assertRaises(buildopts.OptionsError):
+            buildopts.BuildOptions.from_dict("a.mscz", {"orchestra_from": "b.mscz", "clock": "own"})
+        with self.assertRaises(buildopts.OptionsError):
+            buildopts.BuildOptions.from_dict("a.mscz", {"simplified_from": "b.mscz", "clock": "recording"})
+        o = buildopts.BuildOptions.from_dict("a.mscz", {"simplified_from": "b.mscz", "clock": "own"})
+        self.assertEqual(o.render_options("/s")["partner"]["clock"], "own")
+        self.assertNotIn("clock", buildopts.BuildOptions.from_dict("a.mscz", {"simplified_from": "b.mscz"})
+                         .render_options("/s")["partner"])
+
     def test_a_fermata_of_the_solo_lands_inside_the_measure(self):
         orch = self.orchestral()
         solo = self.solo(bpm=120, fermata_in=1)

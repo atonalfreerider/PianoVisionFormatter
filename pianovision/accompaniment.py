@@ -1444,7 +1444,7 @@ def timeline_key(c: Candidate) -> Optional[dict]:
     return {"kind": p["kind"], "song": _sha256_file(c.path), "partner": p.get("rel"),
             "partner_sha": _sha256_file(p["path"]), "compat": p.get("compat"), "options": p.get("options"),
             "song_compat": _verify_compat(c.entry), "measure_map": p.get("measure_map", "auto"),
-            "revision": [ARRANGEMENT_REVISION, TIMELINE_REVISION]}
+            "revision": [ARRANGEMENT_REVISION, TIMELINE_REVISION], **({"clock": p["clock"]} if p.get("clock") else {})}
 
 
 def song_pair(c: Candidate):
@@ -1458,7 +1458,7 @@ def song_pair(c: Candidate):
         return pair(p["path"], p.get("compat"), p.get("options"), c.path, _verify_compat(c.entry), own, SONG_SOLO,
                     p.get("measure_map", "auto"))
     return pair(c.path, _verify_compat(c.entry), own, p["path"], p.get("compat"), p.get("options"), SONG_ORCHESTRA,
-                p.get("measure_map", "auto"))
+                p.get("measure_map", "auto"), clock=p.get("clock", "solo"))
 
 
 def _song_title(c: Candidate, a: Analysis) -> Tuple[str, str]:

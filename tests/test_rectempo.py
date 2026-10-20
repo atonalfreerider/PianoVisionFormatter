@@ -79,6 +79,33 @@ class OffsetTest(unittest.TestCase):
         self.assertEqual(RT.offset_of([]), 0.0)
 
 
+class AnchorsTest(unittest.TestCase):
+    def test_measure_times_you_give(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            path = os.path.join(tmp, "timing.txt")
+            with open(path, "w", newline="") as f:
+                f.write("# timed by ear\r\n001|00:00.700\r\n019|00:56.149\r\n\r\n387:2|14:40.5\r\n400, 900.25\r\n")
+            self.assertEqual(RT.read_anchors(path), [("1", 0.7), ("19", 56.149), ("387:2", 880.5), ("400", 900.25)])
+            with open(path, "w") as f:
+                f.write("19 at 0:56\n")
+            with self.assertRaises(RT.RecTempoError):
+                RT.read_anchors(path)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_anchors_name_measures_as_played(self):
+        ref = {"measures": [{"number": 1, "start": 0.0}, {"number": 2, "start": 2.0}, {"number": 2, "pass": 2,
+                                                                                       "start": 4.0},
+                            {"number": 3, "start": 6.0}]}
+        pins = RT.resolve_anchors(ref, [("1", 0.5), ("2:2", 5.0), ("3", 7.5)])
+        self.assertEqual([(q["index"], q["song"], q["recording"], q["label"]) for q in pins],
+                         [(0, 0.0, 0.5, "m. 1"), (2, 4.0, 5.0, "m. 2:2"), (3, 6.0, 7.5, "m. 3")])
+        for bad in (("2", 3.0), ("2:3", 3.0), ("9", 1.0)):     # a repeated measure needs its pass; no such measure
+            with self.assertRaises(RT.RecTempoError):
+                RT.resolve_anchors(ref, [bad])
+
+
 class Scores(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
