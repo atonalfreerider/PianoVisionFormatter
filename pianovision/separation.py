@@ -130,6 +130,31 @@ def vocals_stem(src: str, stems_dir: str, model: str = "htdemucs_ft", python: st
     return vocals
 
 
+STEMS = ("vocals", "drums", "bass", "other")        # htdemucs_ft's stems, in the order a mixer lists them
+
+
+def all_stems(src: str, stems_dir: str, model: str = "htdemucs_ft", python: str = "", script: str = "",
+              device: str = "auto", timeout: int = 7200, log: Log = print) -> Dict[str, str]:
+    """Every stem of the audio file ``src`` ({name: wav}), separated once and then served from the cache
+    (``<stems_dir>/<content>/<model>-stems/``)."""
+    out = os.path.join(os.path.expanduser(stems_dir), content_hash(src), model + "-stems")
+    have = {n: os.path.join(out, n + ".wav") for n in STEMS}
+    if all(os.path.isfile(p) for p in have.values()):
+        return have
+    st = status(python)
+    if not st["available"]:
+        raise SeparationUnavailable(st["missing"])
+    os.makedirs(out, exist_ok=True)
+    log(f"  separating {os.path.basename(src)} into {', '.join(STEMS)} ({model}) ...")
+    env = dict(os.environ, HF_HUB_OFFLINE="1")
+    r = subprocess.run([st["python"], script, "--input", src, "--out-dir", out, "--model", model, "--device", device,
+                        "--all-stems"], capture_output=True, text=True, timeout=timeout, env=env,
+                       stdin=subprocess.DEVNULL)
+    if r.returncode != 0 or not all(os.path.isfile(p) for p in have.values()):
+        raise RuntimeError(f"separation failed: {(r.stderr or r.stdout)[-1500:]}")
+    return have
+
+
 def rms_levels(path: str, window: float, scratch: str, sample_rate: int = 44100) -> List[float]:
     """RMS level (dBFS) of consecutive ``window``-second blocks of the mono mix of ``path``; ffmpeg's measurement file
     goes to ``scratch`` (never next to the input: the music folder is only read)."""

@@ -546,6 +546,8 @@ def cmd_recordings(args) -> int:
         if args.action == "confirm":
             return R.decide_link(lib, s, args.items[0], args.items[1] if len(args.items) > 1 else None,
                                  args.variant, log=_p)
+        if args.action == "stems":
+            return R.stems(lib, s, args.items[0], log=_p)
         if args.action == "vocal-spans":
             return R.vocal_spans(lib, s, args.items[0], vocals=args.vocals, log=_p)
         if args.action == "mute-solos":
@@ -942,6 +944,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             your decision: use the pick (or RECORDING, a path below the music folder)
   reject SONG
             your decision: no recording for this song
+  stems SONG
+            the recording's stems (Demucs: vocals, drums, bass, other) for Note Waterfall's mixer, encoded on the
+            recording's timeline to <stems_out_dir>/<song>/; the audio_map stems to add
   vocal-spans SONG [--vocals FILE]
             where the recording's singer sings, on the score's clock (tempo first), for lyrics import --sung
   mute-solos SONG [--source FILE] [--offset S] [--min-seconds S]
@@ -950,7 +955,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 Settings: [recordings] in pianovision.toml (music_dir, out_dir, work_dir, python, model, thresholds).""")
     p.add_argument("action", choices=("match", "align", "retime", "tempo", "status", "confirm", "reject", "route",
-                                      "mute-solos", "vocal-spans"))
+                                      "mute-solos", "vocal-spans", "stems"))
     p.add_argument("items", nargs="*", metavar="ARG",
                    help="confirm: SONG [RECORDING]; reject: SONG; route: SONG vocals|generated|auto; tempo: [SONG ...]")
     p.add_argument("--only", action="append", default=[], metavar="GLOB",
