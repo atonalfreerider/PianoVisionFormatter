@@ -876,6 +876,15 @@ python3 -m pianovision recordings mute-solos SCORE                       # <solo
   from the music folder's scan) with `<song>.solo-mute.json` (the passages, the level inside each) and the
   audio_map entry.
 
+Rhapsody in Blue (2026-10-20), `Rhapsody/Rhapsody In Blue_ Gershwin.mp3` (16:26): your 32 measure times
+(`Rhapsody-measure-timing.txt`) with m. 1 at the clarinet's first sound (0.70 s, not 0:00) and m. 166 and 170 left
+out (the recording plays them about 19 s later: chroma match 0.71 / 0.84 there against 0.56 / 0.48 at your times;
+the alignment through them squeezed m. 162-165 to 80 ms each). 522 measures as played, the repeats of m. 387-390
+kept (one tempo for both passes: off by up to 265 ms, inside a muted solo); the copy's measures on the recording's
+(the repeats aside: 0 ms), its notes against the recording: onset lag median 5 ms, chroma lag median -7 ms. Eight
+solo passages muted, 504 s of 986 (1:09-1:52, 1:57-2:03, 2:07-2:58, 4:43-4:49, 5:56-7:55, 8:24-10:38, 12:27-14:46,
+15:59-16:05).
+
 ## Score structure fixes (scorefix)
 
 `python3 -m pianovision scorefix report SCORE` prints what the score plays, with repeats, voltas and jumps unrolled
