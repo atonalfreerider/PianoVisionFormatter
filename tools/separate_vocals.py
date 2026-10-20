@@ -6,10 +6,11 @@ pianovision package.  The model's weights must already be in Demucs' cache: this
 offline (``HF_HUB_OFFLINE=1``), so nothing is downloaded.
 
     separate_vocals.py --input REC --out-dir DIR [--model htdemucs_ft] [--device auto|cuda|cpu]
-                       [--segment S] [--overlap 0.25]
+                       [--segment S] [--overlap 0.25] [--all-stems]
 
 writes ``DIR/vocals.wav`` (32-bit float, the input's sample rate and length) and ``DIR/tool.json`` (versions, the
-device and settings that worked, seconds, the GPU's peak memory).  On the GPU, a run that runs out of memory is tried
+device and settings that worked, seconds, the GPU's peak memory); with ``--all-stems`` every stem the model makes
+(htdemucs_ft: vocals, drums, bass, other), ``DIR/<stem>.wav``.  On the GPU, a run that runs out of memory is tried
 again with shorter segments (5 s, then 3 s), then on the CPU.
 """
 
@@ -25,7 +26,7 @@ import time
 
 def run_demucs(args, device, segment, out):
     import demucs.separate
-    argv = ["--two-stems", "vocals", "-n", args.model, "-d", device, "--float32", "--overlap", str(args.overlap),
+    argv = ([] if args.all_stems else ["--two-stems", "vocals"]) + ["-n", args.model, "-d", device, "--float32", "--overlap", str(args.overlap),
             "-o", out, "--filename", "{stem}.{ext}"]
     if segment:
         argv += ["--segment", str(segment)]
@@ -40,6 +41,7 @@ def main(argv=None):
     ap.add_argument("--device", default="auto")
     ap.add_argument("--segment", type=float, default=0.0, help="seconds per segment (0: the model's own, 7.8 s)")
     ap.add_argument("--overlap", type=float, default=0.25)
+    ap.add_argument("--all-stems", action="store_true", help="keep every stem the model makes, not only the vocals")
     args = ap.parse_args(argv)
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
     import demucs
@@ -64,7 +66,10 @@ def main(argv=None):
             found = glob.glob(os.path.join(tmp, "**", "vocals.wav"), recursive=True)
             if not found:
                 raise RuntimeError("demucs wrote no vocals.wav")
-            shutil.move(found[0], os.path.join(args.out_dir, "vocals.wav"))
+            keep = glob.glob(os.path.join(os.path.dirname(found[0]), "*.wav")) if args.all_stems else found[:1]
+            for w in keep:
+                if not os.path.basename(w).startswith("no_"):
+                    shutil.move(w, os.path.join(args.out_dir, os.path.basename(w)))
             done = {"device": dev, "segment": seg, "seconds": round(time.monotonic() - t0, 1)}
             if dev == "cuda":
                 done["gpu_peak_mb"] = round(torch.cuda.max_memory_allocated() / 2 ** 20)

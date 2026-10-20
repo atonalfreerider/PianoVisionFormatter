@@ -127,6 +127,8 @@ class Settings:
     # a concerto's recording with the piano's solo passages muted (recordings mute-solos, pianovision.solomute)
     solo_mute_dir: str = "~/Music/Note Waterfall Recordings"   # <song>.mp3 + <song>.solo-mute.json
     solo_min_seconds: float = 2.0       # a stretch where the piano plays alone shorter than this is not muted
+    # a recording's stems for Note Waterfall's mixer (recordings stems): <stems_out_dir>/<song>/<stem>.mp3
+    stems_out_dir: str = "~/Music/Note Waterfall Stems"
 
     def path(self, name: str) -> str:
         return os.path.abspath(os.path.expanduser(getattr(self, name)))
@@ -2151,6 +2153,82 @@ def vocal_spans(lib, s: Settings, spec: str, vocals: Optional[str] = None, log: 
     sung_s = sum(b - a for a, b in secs)
     log(f"{song.output}: {len(secs)} sung stretches, {sung_s:.0f} s of {len(rv) * VS.WINDOW:.0f} s; sung in {where}")
     log(f"  {out}  (lyrics import --sung)")
+    return 0
+
+
+_LAG_SCRIPT = """
+import subprocess, sys, numpy as np
+def dec(p):
+    r = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-ss", "30", "-t", "20", "-i", p, "-ac", "1", "-ar", "44100",
+                        "-f", "f32le", "-"], capture_output=True)
+    return np.frombuffer(r.stdout, np.float32)
+a = dec(sys.argv[1]); b = sum(dec(p)[:len(a)] for p in sys.argv[2:])
+n = min(len(a), len(b)); a, b = a[:n], b[:n]
+c = np.fft.irfft(np.fft.rfft(a, 2 * n) * np.conj(np.fft.rfft(b, 2 * n)))
+k = int(np.argmax(c)); k = k if k < n else k - 2 * n
+bb = np.roll(b, k)
+print(k, round(float(np.dot(a, bb) / (np.linalg.norm(a) * np.linalg.norm(bb) + 1e-12)), 4))
+"""
+
+
+def stems(lib, s: Settings, spec: str, log: Log = print) -> int:
+    """``recordings stems SONG``: the song's recording (its link's full mix) separated into stems (Demucs, cached:
+    :func:`pianovision.separation.all_stems`), each encoded as the generated companions are (constant bit rate, the
+    codec delay cut, no Xing header: sample 0 is the recording's sample 0 as ffmpeg decodes it, so the stems play at
+    the recording's offset), to ``<stems_out_dir>/<song>/<stem>.mp3``; checks that the stems add up to the recording,
+    on time; writes the audio_map ``stems`` to add (``stems.entry.json``)."""
+    from . import separation as SEP
+    from .accompaniment import _ffmpeg, encode_args
+    song = _one_song(lib, spec, log)
+    if song is None:
+        return 2
+    link = load_links(s.links)["links"].get(song.rel) or {}
+    rec = (link.get("variants") or {}).get("full") or link.get("recording")
+    src = os.path.join(s.path("music_dir"), rec) if rec else None
+    if not src or not os.path.isfile(src):
+        log(f"{song.output}: no recording linked")
+        return 2
+    wavs = SEP.all_stems(src, s.path("stems_dir"), s.separator_model, s.separator_python, s.path("separator_script"),
+                         log=log)
+    py = os.path.expanduser(s.python)
+
+    def lag_of(files: List[str]) -> Tuple[Optional[int], Optional[float]]:
+        """Samples (44.1 kHz) the files' sum is later than the recording as ffmpeg decodes it, and the correlation."""
+        if not os.path.isfile(py):
+            return None, None
+        r = subprocess.run([py, "-c", _LAG_SCRIPT, src] + files, capture_output=True, text=True, timeout=600,
+                           stdin=subprocess.DEVNULL)
+        if r.returncode != 0 or not r.stdout.split():
+            return None, None
+        k, c = r.stdout.split()[:2]
+        return -int(k), float(c)
+    # Demucs decodes the input without its gapless trim: the stems start late by the source's codec delay
+    skip, _c = lag_of([wavs[n] for n in SEP.STEMS])
+    skip = skip or 0
+    from .accompaniment import MP3_CODEC_DELAY
+    out = os.path.join(s.path("stems_out_dir"), song.stem)
+    os.makedirs(out, exist_ok=True)
+    mp3s: Dict[str, str] = {}
+    for name in SEP.STEMS:
+        dst = os.path.join(out, name + ".mp3")
+        args = encode_args(wavs[name], dst + ".tmp.mp3", 0.0, s.bitrate, song.title, song.artist,
+                           f"Note Waterfall: the {name} of {os.path.basename(src)} (Demucs {s.separator_model})")
+        af = args.index("-af") + 1
+        args[af] = args[af].replace(f"atrim=start_sample={MP3_CODEC_DELAY}",
+                                    f"atrim=start_sample={MP3_CODEC_DELAY + skip}" if skip >= 0 else
+                                    f"adelay={-skip}S:all=1,atrim=start_sample={MP3_CODEC_DELAY}")
+        _ffmpeg(args)
+        os.replace(dst + ".tmp.mp3", dst)
+        mp3s[name] = dst
+    lag, corr = lag_of([mp3s[n] for n in SEP.STEMS])
+    entry = {song.output: {name: _tilde(mp3s[name]) for name in SEP.STEMS}}
+    with open(os.path.join(out, "stems.entry.json"), "w", encoding="utf-8") as f:
+        json.dump(entry, f, indent=2, ensure_ascii=False)
+    log(f"{song.output}: {', '.join(SEP.STEMS)} -> {out}" + (f" (the separation's {skip} samples late cut)" if skip else "")
+        + (f"; the stems' sum against the recording: lag {lag} samples, correlation {corr}" if lag is not None else ""))
+    if lag is not None and (abs(lag) > 2 or corr < 0.9):
+        log(f"  WARNING: the stems do not line up with the recording")
+        return 1
     return 0
 
 

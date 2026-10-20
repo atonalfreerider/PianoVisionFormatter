@@ -845,6 +845,19 @@ Three songs (2026-10-19):
 
 Love Has No Pride's recording is a semitone above the score: its entry stays disabled until you decide.
 
+### Stems for Note Waterfall's mixer (recordings stems)
+
+`python3 -m pianovision recordings stems SONG` separates the song's recording (its link's full mix) into Demucs
+htdemucs_ft's four stems, vocals, drums, bass and other (`separation.all_stems`, cached by the recording's content in
+`stems_dir`; `tools/separate_vocals.py --all-stems`), and encodes each as the generated companions are (constant bit
+rate, the codec delay cut, no Xing header) to `[recordings] stems_out_dir/<song>/<stem>.mp3` (`~/Music/Note
+Waterfall Stems`, excluded from the music folder's scan), with `stems.entry.json`: the `stems` of the song's
+audio_map entry. Demucs decodes an mp3 without its gapless trim, so the separated stems start late by the source's
+codec delay (1105 samples at its rate: 1015 at 44.1 kHz for a 48 kHz file); that lag is measured against the
+recording (the stems' sum, cross-correlated over 20 s from 0:30) and cut, and the encoded stems are checked the same
+way: they play at the recording's offset. Six songs (2026-10-20): Fountain of Sorrow, Love Needs a Heart, Love Has
+No Pride, Let It Be, Skyfall, No Time to Die: 0 samples off, correlation 0.997-0.999.
+
 ### A concerto's recording: your measure times and the solo passages muted
 
 A concerto (Rhapsody in Blue) can play a recording you own instead of the generated companion: the recording leads as
