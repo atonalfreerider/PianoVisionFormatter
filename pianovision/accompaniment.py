@@ -873,11 +873,14 @@ def cache_key(score_sha256: str, options: dict, plan: dict, tools: dict, encode:
 
 def _run(argv: List[str], timeout: Optional[int] = None, env=None, log_path: Optional[str] = None
          ) -> subprocess.CompletedProcess:
-    """Run with a lower priority; the whole process group is killed on timeout."""
+    """Run with a lower priority; the whole process group is killed on timeout.  Stdin is closed: ffmpeg reads
+    keys from it (each "-" lowers its log level, which hides loudnorm's report), and a calling shell loop's input
+    must not be eaten."""
     out = open(log_path, "wb") if log_path else subprocess.PIPE
     try:
-        p = subprocess.Popen(["nice", "-n", "10"] + argv, stdout=out, stderr=subprocess.STDOUT if log_path
-                             else subprocess.PIPE, env=env, start_new_session=True)
+        p = subprocess.Popen(["nice", "-n", "10"] + argv, stdin=subprocess.DEVNULL, stdout=out,
+                             stderr=subprocess.STDOUT if log_path else subprocess.PIPE, env=env,
+                             start_new_session=True)
         try:
             so, se = p.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:

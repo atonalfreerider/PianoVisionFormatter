@@ -474,5 +474,13 @@ class SettingsTest(unittest.TestCase):
             shutil.rmtree(tmp)
 
 
+class RunTest(unittest.TestCase):
+    def test_stdin_is_closed(self):
+        # ffmpeg reads keys from stdin ("-" lowers its log level and hid loudnorm's report when a shell loop fed
+        # the score list to it): the tools get an empty stdin, whatever the caller's is
+        r = A._run(["sh", "-c", "cat; echo end"], timeout=10)
+        self.assertEqual(r.stdout, b"end\n")
+
+
 if __name__ == "__main__":
     unittest.main()

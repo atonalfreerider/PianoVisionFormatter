@@ -140,7 +140,7 @@ def rms_levels(path: str, window: float, scratch: str, sample_rate: int = 44100)
              f"astats=metadata=1:reset=1:measure_overall=RMS_level:measure_perchannel=none,"
              f"ametadata=mode=print:file={tmp}")
     r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-v", "error", "-i", path, "-af", graph, "-f", "null",
-                        "-"], capture_output=True, text=True)
+                        "-"], capture_output=True, text=True, stdin=subprocess.DEVNULL)
     out: List[float] = []
     try:
         if r.returncode != 0:
