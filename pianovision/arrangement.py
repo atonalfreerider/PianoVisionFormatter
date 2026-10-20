@@ -945,11 +945,17 @@ class RetimeStats:
     warped_units: int = 0           # units of another length on the two sides, warped
     silent_mapped: List[int] = field(default_factory=list)   # mapped orchestral measures where the arrangement
                                                              # sounds nothing while the orchestral piano plays
+    to_orchestra: int = 0           # reduction "orchestra": the arrangement's notes that are the orchestra now ...
+    to_orchestra_measures: List[int] = field(default_factory=list)   # ... in these orchestral measures as played
+    replaced_orchestra: int = 0     # ... and the orchestra's own notes they stand for there
 
     def to_dict(self) -> dict:
-        return {"mapped_notes": self.mapped_notes, "dropped_notes": self.dropped_notes,
-                "clipped_notes": self.clipped_notes, "restruck_notes": self.restruck_notes,
-                "fill_notes": self.fill_notes, "fill_clipped": self.fill_clipped, "warped_units": self.warped_units}
+        d = {"mapped_notes": self.mapped_notes, "dropped_notes": self.dropped_notes,
+             "clipped_notes": self.clipped_notes, "restruck_notes": self.restruck_notes,
+             "fill_notes": self.fill_notes, "fill_clipped": self.fill_clipped, "warped_units": self.warped_units}
+        if self.to_orchestra:
+            d.update(to_orchestra=self.to_orchestra, replaced_orchestra=self.replaced_orchestra)
+        return d
 
 
 class Retimer:
@@ -1112,11 +1118,14 @@ class PianoFrom:
     score note (``src``): its accent and velocity are the arrangement's, its hand-edit identity the simplified
     part's."""
 
-    def __init__(self, pr, score):
+    def __init__(self, pr, score, reduction: bool = False):
         al, orch = pr.al, pr.orch
         self.al = al
         self.seconds = orch.seconds
         self.drums = drum_staves(score)
+        # reduction "orchestra": where the orchestral piano part rests and its orchestra plays, the arrangement's notes
+        # are the orchestra arranged for piano (a tutti the solo plays), not the piano part
+        self.reduction = Reduction(pr, score) if reduction else None
         out, self.stats, self.arr_sounds = retime_arrangement(pr.solo_notes, al, orch.seconds, orch.tpb,
                                                               pr.solo.notes, orch.notes)
         self.arranged = {h: [d for _t, _s, d in sorted(v, key=lambda x: (x[0], x[1]))] for h, v in out.items()}
@@ -1146,6 +1155,7 @@ class PianoFrom:
                     st.fill_notes += which == "primary"
                     kept.append(n)
                 hands[h] = kept
+        reduced: List[List[Note]] = [[], []]
         for h, hand in enumerate(("right", "left")):
             arranged = []
             for d in self.arranged[hand]:
@@ -1157,8 +1167,60 @@ class PianoFrom:
                                      accent=int(d.get("accent", 0)),
                                      raw_velocity=int(round(d["velocity"] * 127)), track=tracks.get(h, -1),
                                      arranged=extra))
+                if self.reduction is not None and self.reduction(t):
+                    arranged[-1].arranged = None            # an orchestra note now (its parts-file fields: staff)
+                    reduced[h].append(arranged.pop())
             # in time order, the orchestral notes first (they never share a measure with the arrangement's)
             streams.primary[h] = sorted(streams.primary[h] + arranged, key=lambda n: n.time)
+        if self.reduction is not None:
+            # the reduction stands for the orchestra's instruments where the piano rests in its measures
+            meas = {O.measure_at(n.ticks) for hand in reduced for n in hand}
+            st.to_orchestra = sum(map(len, reduced))
+            st.to_orchestra_measures = sorted(meas)
+            st.replaced_orchestra = 0
+            for h in (0, 1):
+                kept = []
+                for n in streams.other_orchestra[h]:
+                    if O.measure_at(n.ticks) in meas and self.reduction(n.ticks):
+                        st.replaced_orchestra += 1
+                        continue
+                    kept.append(n)
+                streams.other_orchestra[h] = sorted(kept + reduced[h], key=lambda n: n.time)
+
+
+class Reduction:
+    """Where a song's orchestral score has its orchestra playing and its piano part resting (:class:`PianoFrom`'s
+    ``reduction``): a MIDI tick of the song (the orchestral score on the song's clock) is in such a place when no note
+    of the piano part sounds in the eighth from it on (a note ending there does not) and some orchestra note does."""
+
+    def __init__(self, pr, score):
+        midi = pr.orch_render.midi
+        self.tl = pr.al.orch
+        self.win = pr.orch.tpb // 2
+        piano, pitched = staff_tracks(score, midi)
+        others = [t for t in pitched if t not in piano]
+        self.piano = _merged_spans((n.on, n.off) for n in sounding_notes(midi, piano, self.tl))
+        self.orchestra = _merged_spans((n.on, n.off) for n in sounding_notes(midi, others, self.tl))
+
+    def __call__(self, tick: int) -> bool:
+        u = self.tl.utick(tick)
+        return not _overlaps(self.piano, u, u + self.win) and _overlaps(self.orchestra, u, u + self.win)
+
+
+def _merged_spans(spans) -> List[Tuple[int, int]]:
+    out: List[List[int]] = []
+    for a, b in sorted(spans):
+        if out and a <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return [(a, b) for a, b in out]
+
+
+def _overlaps(spans: Sequence[Tuple[int, int]], a: int, b: int) -> bool:
+    """Some span of ``spans`` (merged, in order) meets ``[a, b)``."""
+    k = bisect.bisect_left(spans, (b, b)) - 1
+    return k >= 0 and spans[k][1] > a
 
 
 # the fields of a parts-file NOTE that the note itself gives (pianovision.parts.build_parts); the rest are extras
@@ -1408,7 +1470,8 @@ def report_dict(al: Alignment, stats: RetimeStats, spec: dict, clock: Side, kind
                          "dropped": len(al.drops)},
             "segments": segs, "fills": fills, "drops": drops, "transposed": transposed, "moved": moved,
             "merged": merged, "trimmed": trimmed, "weak": weak, "timesig_mismatches": mism, "anchors": anchors,
-            "silent_mapped": _ranges(O, stats.silent_mapped), "notes": stats.to_dict(), "cost": round(al.cost, 3)}
+            "silent_mapped": _ranges(O, stats.silent_mapped), "notes": stats.to_dict(), "cost": round(al.cost, 3),
+            **({"to_orchestra": _ranges(O, stats.to_orchestra_measures)} if stats.to_orchestra else {})}
 
 
 def report_markdown(rep: dict, song: str = "") -> str:
@@ -1548,6 +1611,12 @@ def report_markdown(rep: dict, song: str = "") -> str:
         L.append("")
         L.append("Mapped measures where the arrangement is silent while the orchestral piano plays: "
                  + ", ".join(rep["silent_mapped"]))
+    if rep.get("to_orchestra"):
+        L.append("")
+        L.append(f"The orchestra arranged for piano (reduction \"orchestra\"): {n['to_orchestra']} of the arrangement's "
+                 f"notes, where the orchestral piano part rests and its orchestra plays, are the song's orchestra "
+                 f"(standing for {n['replaced_orchestra']} notes of its instruments there), in "
+                 + ", ".join(rep["to_orchestra"]))
     return "\n".join(L) + "\n"
 
 
