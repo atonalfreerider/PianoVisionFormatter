@@ -17,6 +17,7 @@ It needs Python 3.11+ and nothing else.
 python3 -m pianovision sync          # render new/edited scores, copy changes to the Quest
 python3 -m pianovision status        # what would change + library health report
 python3 -m pianovision watch --deploy   # keep going: rebuild on every save, deploy when the Quest is plugged in
+python3 -m pianovision hands sync    # keep going: hand edits recorded on the Quest -> the scores (a login service)
 ```
 
 Settings live in `pianovision.toml` (scores folder, output folder, device folder,
@@ -37,6 +38,7 @@ orchestra/simplified options, and `[hands]` for Note Waterfall's hand edits); op
 | `rename [SCORE…] [--dry-run]` | rename outputs after a score's title/composer was edited; named scores also get the current naming rules (e.g. MuseScore 3 scores that the old scripts named after the file) |
 | `convert SCORE.mscz [-o out.json] [--midi out.mid] [--provenance notes.jsonl] [--parts out.parts.json]` | one-off conversion, no library bookkeeping; `--provenance` also writes, per note of the song, the measure, staff, voice, chord and note element it comes from; `--parts` writes Note Waterfall's parts file |
 | `hands pull\|review\|apply [FILE…]` | hand edits recorded with Note Waterfall's HAND REC → the scores, after approval (see below) |
+| `hands sync [--once] [--dry-run] [--interval S]` | the same by itself while the headset is connected: clean reviews are applied, the others wait for you, with a desktop notification (see [Hand edits sync](#hand-edits-sync-automatic)) |
 | `gui [--read-only] [--no-device]` | the Piano Library window (see below) |
 | `accompaniment [--only GLOB…] [--out DIR] [--force] [--dry-run] [--list] [--no-timing]` | Note Waterfall's companion audio: each score's orchestra (everything but the piano part) rendered by MuseScore with Muse Sounds, one mp3 per song (see below) |
 | `arrangement [SCORE…] [--write]` | the measure alignment of a song made with a partner score (`scores.json` `simplified_from`, `orchestra_from`), as a report; `build` writes it to `.arrangements/` (see below) |
@@ -239,6 +241,58 @@ song and on both piano parts. A note moves only where the song still shows the s
 afterwards: moving the last simplified note of a hand's measure out of it (which would bring
 the piano part back there) is refused; a note of the piano part hidden under a simplified
 measure may come into view in the other hand where that hand is not simplified.
+
+## Hand edits sync (automatic)
+
+`hands sync` does `hands pull`, `review` and `apply --yes` by itself while the Quest is connected, for
+the hand edits that need no decision; the others wait in the inbox for you:
+
+```bash
+python3 -m pianovision hands sync              # keep going (the service below runs this at login)
+python3 -m pianovision hands sync --once       # one look at the headset, then exit
+python3 -m pianovision hands sync --dry-run    # one look: list and review, write nothing
+desktop/install-handsync.sh                    # install the login service (--uninstall removes it)
+```
+
+* **The headset:** `adb devices -l` every 10 s (`--poll`). Each check is its own adb call, so an adb
+  server killed or restarted by something else (Unity's Android builds do that) is simply started again,
+  and an offline or unauthorized headset waits until it is usable. Asleep is fine. On connect and then
+  every 45 s (`--interval`, `[hands] sync_interval`) the md5 of each `HandEdits/*.hands.json` is read
+  (one `adb shell`; `applied/` is not looked at).
+* **New or changed sidecars** (a name and md5 not seen before), and sidecars whose score, song or
+  `scores.json` changed since their review, are pulled into `PianoVision/.hands/inbox` and reviewed.
+* **A clean review is applied**: verified, and every edit moves or is in the score already (no
+  conflict, nothing skipped, stale or unreadable, no error for that score). It goes through exactly the
+  steps of `hands apply --yes`: backup to the attic, overwrite, build, deploy to PianoVision and Note
+  Waterfall, sidecar to `applied/` on the headset once Note Waterfall has the rebuilt song. Notification:
+  *Chopin Nocturne in E Flat Major - Op. 9 No. 2: 77 notes moved to the other hand (40 to the right, 37 to
+  the left), deployed*.
+* **Everything else stays** in the inbox and on the headset, untouched, with one notification per version
+  of the sidecar (*… needs review: 3 edits conflict*); use `hands review` / `apply` or the Piano Library's
+  Hand edits page. It is reviewed again when the sidecar, its score, its song or `scores.json` changes.
+  A sidecar whose edits are all in the score already is only archived.
+* **Never twice:** `state.json` keeps a ledger of the sidecars (name and md5) written into the scores; a
+  sidecar in it is not reviewed for applying again, only deployed and archived if it is still on the
+  headset (every 10 min at most, and on reconnect). Besides, a review reads an edit that is already in the
+  score as "already", and `apply` refuses a score that changed since its review.
+* **Not while MuseScore has the score open:** a MuseScore process with the score on its command line (the
+  Piano Library's *Open in MuseScore*, a double-click), an autosave next to it (`<score>.autosave`: unsaved
+  changes), or a MuseScore window that opened files since it started with the score among its last 10
+  recent files (File › Open; MuseScore 4.7 keeps no lock file). The review waits, with a notification,
+  and is applied once MuseScore lets go of it.
+* **Light:** one look at a time (`sync.lock`; the service also takes `daemon.lock`); a review or a build
+  (one score, no process pool) waits until 4 GB of memory are available (`--min-free-mb`,
+  `[hands] min_free_mb`).
+
+Everything goes to `~/.cache/nw-handsync/sync.log` (`[hands] sync_dir`, `--state-dir`), with `state.json`
+and `status.json` (the headset, each sidecar's status and the last notifications, for the Piano Library
+window). `--no-notify` turns the notifications off; `--no-deploy` and `--no-archive` work as for `apply`.
+
+**The service:** `desktop/nw-handsync.service`, a systemd user unit (runs at login, restarts on failure,
+`Nice=10`, working directory this repository, `PATH` with adb). `desktop/install-handsync.sh` copies it to
+`~/.config/systemd/user/` (pointing it at the repository it is run from), enables and starts it; `systemctl
+--user status nw-handsync`, `journalctl --user -u nw-handsync -f`. A `hands sync --once` while it runs skips
+its look if the service is in the middle of one (`sync.lock`); `--dry-run` takes no lock and writes nothing.
 
 ## Note Waterfall's parts files
 
@@ -942,6 +996,8 @@ pianovision/        the package (stdlib only)
   device.py           adb deploy
   calibrate.py        compatibility-knob search used by verify --calibrate
   handedits.py        hand edits from Note Waterfall -> the scores (hands pull/review/apply)
+  handsync.py         hand edits applied by themselves while the headset is connected (hands sync): headset
+                      polling, review verdicts, MuseScore-open check, ledger, notifications, status file
   accompaniment.py    Note Waterfall's companion audio: render copies, MuseScore + Muse Sounds, probe, mp3
   recordings.py       companion audio from recordings you own: inventory, routes and candidates (TypeSafe judgments),
                       links file, references, align/retime/verify runs, accuracy summaries, audio_map proposal, report
@@ -950,7 +1006,8 @@ pianovision/        the package (stdlib only)
   cli.py              python -m pianovision
   gui.py              the Piano Library window (GTK 4 / libadwaita)
   guimodel.py         what the window shows and does, without GTK (statuses, push plans, device status)
-desktop/            piano-library.sh (launcher), install-launcher.sh, the icon
+desktop/            piano-library.sh (launcher), install-launcher.sh, the icon; nw-handsync.service and
+                    install-handsync.sh (the hands sync login service)
 tools/              accompaniment_timing.py (the accompaniment's timing check; numpy, soundfile, librosa)
                     recording_align.py (recordings: align, retime, verify; numpy, scipy, soundfile, librosa, ffmpeg)
                     separate_vocals.py (recordings: Demucs vocals; run with [recordings] separator_python)

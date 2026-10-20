@@ -8,7 +8,7 @@
     verify    re-render everything and compare with the pinned outputs
     rename    re-name outputs after score titles were edited
     convert   one .mscz -> .json (no library, no manifest)
-    hands     hand edits recorded on the headset -> the scores (pull | review | apply)
+    hands     hand edits recorded on the headset -> the scores (pull | review | apply | sync)
     gui       the Piano Library window (library, build, push to the headset, hand edits)
     accompaniment  Note Waterfall's companion audio: the scores' orchestra rendered by MuseScore with Muse Sounds
     arrangement    the measure alignment of a song made with a partner score (simplified_from, orchestra_from), as a
@@ -346,6 +346,9 @@ def cmd_hands(args) -> int:
     import glob
     from . import handedits as H
     from .device import Adb, DeviceError
+    if args.action == "sync":
+        from .handsync import cli
+        return cli(args)
     lib = _library(args)
     serial = args.serial or lib.cfg.serial
     device_dir = args.device_dir or lib.cfg.hands_dir
@@ -825,10 +828,18 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="also write Note Waterfall's parts file (original / simplified piano part, orchestra)")
     p.set_defaults(fn=cmd_convert)
 
-    p = sub.add_parser("hands", help="hand edits recorded on the headset -> the scores (pull | review | apply)")
-    p.add_argument("action", choices=("pull", "review", "apply"),
+    p = sub.add_parser("hands", help="hand edits recorded on the headset -> the scores (pull | review | apply | sync)",
+                       description="Hand edits recorded with Note Waterfall's HAND REC -> the MuseScore scores. "
+                                   "sync keeps doing it while the headset is connected: new or changed hand-edit "
+                                   "files are pulled and reviewed; a clean review (verified, no conflicts or skipped "
+                                   "edits) is applied as `apply --yes` does (backup, overwrite, build, deploy to both "
+                                   "apps, archive), never twice and never while MuseScore has the score open; the "
+                                   "others stay in the inbox and on the headset, with a desktop notification. Log, "
+                                   "ledger and status in ~/.cache/nw-handsync ([hands] sync_dir).")
+    p.add_argument("action", choices=("pull", "review", "apply", "sync"),
                    help="pull: copy the sidecars from the headset; review: show what would change (writes "
-                        "nothing); apply: review, then per score y/N, back up, overwrite, build, deploy")
+                        "nothing); apply: review, then per score y/N, back up, overwrite, build, deploy; sync: "
+                        "keep applying clean reviews while the headset is connected (desktop/nw-handsync.service)")
     p.add_argument("sidecars", nargs="*", metavar="FILE", help="*.hands.json files (default: the inbox)")
     p.add_argument("--pull", action="store_true", help="pull from the headset first (review/apply)")
     p.add_argument("--inbox", help="folder for pulled sidecars (default: <output>/.hands/inbox)")
@@ -837,12 +848,28 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--all-repeats", action="store_true",
                    help="a note recorded on only some passes of a repeat changes hands on all of them")
     p.add_argument("-y", "--yes", action="store_true", help="apply without asking per score")
-    p.add_argument("--no-deploy", action="store_true", help="apply: do not deploy or archive (build only)")
+    p.add_argument("--no-deploy", action="store_true", help="apply, sync: do not deploy or archive (build only)")
     p.add_argument("--no-archive", action="store_true",
-                   help="apply: leave the sidecars on the headset (they are archived to applied/ otherwise)")
+                   help="apply, sync: leave the sidecars on the headset (they are archived to applied/ otherwise)")
     p.add_argument("--waterfall-deploy", metavar="CMD",
                    help="command that deploys songs to Note Waterfall (default: [hands] waterfall_deploy)")
     p.add_argument("-v", "--verbose", action="store_true")
+    g = p.add_argument_group("sync")
+    g.add_argument("--once", action="store_true", help="sync: look once (if the headset is connected), then exit")
+    g.add_argument("--dry-run", action="store_true",
+                   help="sync: look once, list and review (pulled into a temporary folder); write, apply, deploy "
+                        "and notify nothing")
+    g.add_argument("--interval", type=float, default=None, metavar="S",
+                   help="sync: seconds between looks at the headset's hand edits while it is connected "
+                        "(default: [hands] sync_interval, 45)")
+    g.add_argument("--poll", type=float, default=None, metavar="S",
+                   help="sync: seconds between checks for the headset (`adb devices`; default 10)")
+    g.add_argument("--min-free-mb", type=int, default=None, metavar="MB",
+                   help="sync: memory that must be available before a review or a build (default: [hands] "
+                        "min_free_mb, 4096)")
+    g.add_argument("--state-dir", metavar="DIR",
+                   help="sync: log, ledger and status folder (default: [hands] sync_dir, ~/.cache/nw-handsync)")
+    g.add_argument("--no-notify", action="store_true", help="sync: no desktop notifications (the log has all)")
     p.set_defaults(fn=cmd_hands)
 
     p = sub.add_parser("accompaniment",
