@@ -114,6 +114,26 @@ class PlanTest(Scores):
             for g, s in zip(got, starts):
                 self.assertAlmostEqual(g, s - p.offset, delta=0.001)
 
+    def test_timed_again_the_score_keeps_one_set_of_marks(self):
+        path = self.score(2)
+        rd = RT.render(path)
+        p = RT.plan(rd.score, RT.played_positions(rd), steady(rd, [0.0, 2.0, 3.6]))
+        with open(path, "rb") as f:
+            once = RT.write_copy(f.read(), p, self.path("once.mscz"))
+        with open(once, "rb") as f:
+            base = RT.strip_own_mscz(f.read())
+        with open(self.path("base.mscz"), "wb") as f:
+            f.write(base)
+        rd1 = RT.render(self.path("base.mscz"))
+        p2 = RT.plan(rd1.score, RT.played_positions(rd1), steady(rd1, [0.0, 2.2, 4.0]))
+        twice = RT.write_copy(base, p2, self.path("twice.mscz"))
+        with zipfile.ZipFile(twice) as z:
+            self.assertEqual(z.read("score.mscx").decode().count(RT.MARK_LABEL), len(p2.marks))
+        rd2 = RT.render(twice)
+        self.assertAlmostEqual(rd2.seconds(rd2.timeline.measures[1].tick), 2.2, delta=0.001)
+        rd3 = RT.render(once, plan=p2)                       # the model the same way
+        self.assertAlmostEqual(rd3.seconds(rd3.timeline.measures[1].tick), 2.2, delta=0.001)
+
     def test_a_late_beat_gets_a_mark_of_its_own(self):
         path = self.score(2)
         rd = RT.render(path)

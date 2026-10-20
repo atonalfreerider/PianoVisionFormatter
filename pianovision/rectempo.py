@@ -90,6 +90,10 @@ def render(path: str, compat=None, options: Optional[dict] = None, plan: Optiona
     c = compat if isinstance(compat, Compat) else Compat.from_dict(compat)
     score = read_score(path)
     if plan is not None:
+        for m in score.measures:                            # an earlier run's marks go (write_copy drops them too)
+            for seg in m.segments:
+                seg.annotations = [e for e in seg.annotations if not (
+                    e.tag == "Tempo" and str(e.props.get("text", "")).startswith(MARK_LABEL + " q ="))]
         apply_to_score(score, plan.timeline_plan(), label=MARK_LABEL)
     r = Renderer(score, c)
     midi = r.render()
@@ -880,8 +884,28 @@ def _mscx_of(mscz: bytes) -> Tuple[str, bytes]:
         return member, z.read(member)
 
 
+_OWN_MARK = re.compile(r"[ \t]*<Tempo>\s*(?:<play>0</play>\s*)?<tempo>[^<]*</tempo>\s*<followText>0</followText>\s*"
+                       r"<visible>0</visible>\s*<text>" + re.escape(MARK_LABEL) + r" q = [^<]*</text>\s*</Tempo>\n?")
+
+
+def strip_own_marks(mscx: bytes) -> bytes:
+    """The tempo marks an earlier ``recordings tempo`` wrote taken out (a score timed to its recording again gets
+    one set, not two)."""
+    return _OWN_MARK.sub("", mscx.decode("utf-8")).encode("utf-8")
+
+
+def strip_own_mscz(mscz: bytes) -> bytes:
+    """The .mscz with :func:`strip_own_marks` applied (the same bytes when it has none).  Done before the plan is
+    made: the marks' places in the file count the elements before them."""
+    from .handedits import replace_mscx
+    member, data = _mscx_of(mscz)
+    new = strip_own_marks(data)
+    return mscz if new == data else replace_mscx(mscz, member, new)
+
+
 def write_copy(base: bytes, p: Plan, dst: str) -> str:
-    """The score (``base``: .mscz bytes, unrolled or not) with the tempo map written in, at ``dst``."""
+    """The score (``base``: .mscz bytes, unrolled or not, without an earlier run's marks: :func:`strip_own_mscz`)
+    with the tempo map written in, at ``dst``."""
     from .handedits import replace_mscx
     from .timeline import apply_to_mscx
     member, data = _mscx_of(base)
@@ -912,11 +936,16 @@ def run_song(score_path: str, audio: str, opts: Options, compat=None, options: O
     repeated = len(set(written)) < len(written)
     unroll = repeated and (opts.unroll == "always" or (opts.unroll == "auto" and
                                                          shared.max_abs > opts.repeat_tolerance))
-    base = original
+    base = strip_own_mscz(original)                    # a score timed before: its marks are replaced
     urep = None
     rd1 = rd0
+    if base != original:
+        bp = os.path.join(opts.work, "base.mscz")
+        with open(bp, "wb") as f:
+            f.write(base)
+        rd1 = render(bp, compat, options)
     if unroll:
-        base, urep = unroll_mscz(original, [m.number for m in tl0.measures])
+        base, urep = unroll_mscz(base, [m.number for m in tl0.measures])
         up = os.path.join(opts.work, "unrolled.mscz")
         with open(up, "wb") as f:
             f.write(base)
