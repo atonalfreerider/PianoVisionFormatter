@@ -25,7 +25,9 @@
     "  judged        model, time, the question's hash, the candidates and the raw answers",
     "  decision      yours (`recordings confirm|reject`): {} confirms the pick; {\"recording\": \"<path>\"} links",
     "                another recording; {\"recording\": null} rejects; \"variant\": \"vocals\", \"full\" or",
-    "                \"no_piano\""
+    "                \"no_piano\"; \"timing\": \"recording\" (the score follows the recording, which plays",
+    "                unstretched: `recordings tempo`; the default for sung songs) or \"score\" (the recording is",
+    "                stretched onto the score: `recordings retime`)"
   ],
   "format": 2,
   "routes": {
@@ -3307,7 +3309,8 @@
             "classical": 0.99
           }
         }
-      }
+      },
+      "decision": "vocals"
     },
     "Gershwin/The_Man_I_Love_-_Piano_Solo_-_arr._George_Gershwin.mscz": {
       "song": "gers_THE_MAN_I_LOVE.json",
@@ -6487,6 +6490,98 @@
         }
       }
     },
+    "Film/Bond/No_Time_To_Die_Piano_Arrangement.mscz": {
+      "song": "eili_No_Time_To_Die__Xenobii_Piano_Arrangement.json",
+      "status": "linked",
+      "recording": "No Time To Die.mp3",
+      "variants": {
+        "vocals": "(separated from the full mix)",
+        "full": "No Time To Die.mp3"
+      },
+      "variant": "vocals",
+      "confidence": 0.96,
+      "p_same": 0.88,
+      "p_none": 0.02,
+      "consistent": true,
+      "why": "picked with high confidence",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-20T14:34:14",
+        "key": "aa2005dc9b3aab5c",
+        "candidates": [
+          {
+            "recording": "No Time To Die.mp3",
+            "score": 0.46
+          }
+        ],
+        "answers": {
+          "pick": {
+            "No Time To Die.mp3": 0.98,
+            "none": 0.02
+          },
+          "pick_choice": "No Time To Die.mp3",
+          "pick_reversed": {
+            "No Time To Die.mp3": 0.98,
+            "none": 0.02
+          },
+          "pick_reversed_choice": "No Time To Die.mp3",
+          "same": [
+            0.88
+          ]
+        }
+      },
+      "decision": {
+        "recording": "No Time To Die.mp3",
+        "variant": "full"
+      }
+    },
+    "Film/Bond/adele-skyfall.mscz": {
+      "song": "bond_Skyfall__Adele.json",
+      "status": "linked",
+      "recording": "Adele - Skyfall (Official Lyric Video).mp3",
+      "variants": {
+        "vocals": "(separated from the full mix)",
+        "full": "Adele - Skyfall (Official Lyric Video).mp3"
+      },
+      "variant": "vocals",
+      "confidence": 0.96,
+      "p_same": 0.93,
+      "p_none": 0.02,
+      "consistent": true,
+      "why": "picked with high confidence",
+      "alternatives": [],
+      "judged": {
+        "model": "jev-1.13.0",
+        "time": "2026-10-20T14:34:14",
+        "key": "35e61c0755043263",
+        "candidates": [
+          {
+            "recording": "Adele - Skyfall (Official Lyric Video).mp3",
+            "score": 0.611
+          }
+        ],
+        "answers": {
+          "pick": {
+            "Adele - Skyfall (Official Lyric Video).mp3": 0.98,
+            "none": 0.02
+          },
+          "pick_choice": "Adele - Skyfall (Official Lyric Video).mp3",
+          "pick_reversed": {
+            "Adele - Skyfall (Official Lyric Video).mp3": 0.98,
+            "none": 0.02
+          },
+          "pick_reversed_choice": "Adele - Skyfall (Official Lyric Video).mp3",
+          "same": [
+            0.93
+          ]
+        }
+      },
+      "decision": {
+        "recording": "Adele - Skyfall (Official Lyric Video).mp3",
+        "variant": "full"
+      }
+    },
     "Film/Bond/all-in-a-days-work-tomorrow-never-dies.mscz": {
       "song": "arno_All_in_a_Days_Work__Tomorrow_Never_Dies.json",
       "status": "linked",
@@ -7185,6 +7280,10 @@
             0.96
           ]
         }
+      },
+      "decision": {
+        "recording": "Rhapsody/Rhapsody In Blue_ Gershwin.mp3",
+        "variant": "full"
       }
     },
     "Gershwin/The_Man_I_Love_-_Piano_Solo_-_arr._George_Gershwin.mscz": {
@@ -7695,60 +7794,76 @@
     },
     "Pop/LetItBe-JBV.mscz": {
       "song": "mcca_Let_It_Be.json",
-      "status": "none",
-      "recording": null,
+      "status": "linked",
+      "recording": "Let It Be (Remastered 2009).mp3",
+      "variants": {
+        "vocals": "(separated from the full mix)",
+        "full": "Let It Be (Remastered 2009).mp3"
+      },
+      "variant": "vocals",
       "confidence": 1.0,
-      "p_same": null,
-      "p_none": 1.0,
+      "p_same": 0.98,
+      "p_none": 0.0,
       "consistent": true,
-      "why": "no candidate is this composition",
+      "why": "picked with high confidence",
       "alternatives": [],
       "judged": {
         "model": "jev-1.13.0",
-        "time": "2026-10-13T12:49:02",
-        "key": "b17cee78554460cd",
+        "time": "2026-10-20T14:34:14",
+        "key": "9b1226a4229ef283",
         "candidates": [
           {
-            "recording": "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3",
-            "score": 0.123
+            "recording": "Let It Be (Remastered 2009).mp3",
+            "score": 0.45
           },
           {
-            "recording": "SFdomNYC/Let Me Touch Your Fire (Sn0wmass Remix).mp3",
-            "score": 0.108
+            "recording": "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3",
+            "score": 0.103
           },
           {
             "recording": "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3",
-            "score": 0.096
+            "score": 0.092
+          },
+          {
+            "recording": "SFdomNYC/Let Me Touch Your Fire (Sn0wmass Remix).mp3",
+            "score": 0.09
           },
           {
             "recording": "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3",
-            "score": 0.088
+            "score": 0.085
           }
         ],
         "answers": {
           "pick": {
+            "Let It Be (Remastered 2009).mp3": 1.0,
             "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3": 0.0,
-            "SFdomNYC/Let Me Touch Your Fire (Sn0wmass Remix).mp3": 0.0,
             "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.0,
+            "SFdomNYC/Let Me Touch Your Fire (Sn0wmass Remix).mp3": 0.0,
             "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3": 0.0,
-            "none": 1.0
+            "none": 0.0
           },
-          "pick_choice": "none",
+          "pick_choice": "Let It Be (Remastered 2009).mp3",
           "pick_reversed": {
             "Zouk/You Made Your Bed (So Lay In It) - Travis Garland 48000 1_01.mp3": 0.0,
-            "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.0,
             "SFdomNYC/Let Me Touch Your Fire (Sn0wmass Remix).mp3": 0.0,
+            "Zouk/full/You Made Your Bed (So Lay In It) - Travis Garland.mp3": 0.0,
             "Zouk/A_R_I_Z_O_N_A_-_Let_Me_Touch_Your_Fire_Snøwmass_Remix[MP3Fiber.com].mp3": 0.0,
-            "none": 1.0
+            "Let It Be (Remastered 2009).mp3": 1.0,
+            "none": 0.0
           },
-          "pick_reversed_choice": "none",
+          "pick_reversed_choice": "Let It Be (Remastered 2009).mp3",
           "same": [
-            0.05,
+            0.98,
+            0.18,
             0.04,
-            0.03,
-            0.04
+            0.04,
+            0.05
           ]
         }
+      },
+      "decision": {
+        "recording": "Let It Be (Remastered 2009).mp3",
+        "variant": "full"
       }
     },
     "Pop/Shape of You - piano-solo.mscz": {
