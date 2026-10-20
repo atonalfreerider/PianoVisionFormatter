@@ -1603,6 +1603,8 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
         return rv
     partner = (options or {}).get("partner") or {}
     arrangement = partner if partner.get("kind") == "simplified" else None
+    # the solo's notes are the song's piano part where it plays the measure (scores.json piano_from)
+    piano_from = bool(arrangement and arrangement.get("piano"))
 
     with zipfile.ZipFile(io.BytesIO(mscz)) as z:
         names = z.namelist()
@@ -1641,12 +1643,28 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
     prov = base.provenance
     part_docs = base.parts["parts"]
     pprov = base.parts_provenance
+    # As Note Waterfall counts them: a note marked "simplified" is one of the simplified notes whichever part it is
+    # in (a piano solo's notes in the original part, piano_from); the original part's identities are its other notes.
+    orig_own = {h: [i for i, n in enumerate(part_docs["original"][h]) if not n.get("simplified")] for h in HANDS}
+    simp_doc = part_docs.get("simplified") or ({} if not piano_from else
+                                               {h: [n for n in part_docs["original"][h] if n.get("simplified")]
+                                                for h in HANDS})
     views: Dict[str, Dict[str, List[dict]]] = {
         "pv": lib_flat,
-        "original": {h: part_docs["original"][h] for h in HANDS},
-        "simplified": {h: [n for n in part_docs.get("simplified", {}).get(h, []) if n.get("simplified")]
-                       for h in HANDS}}
-    view_prov = {"pv": prov, "original": pprov["original"], "simplified": pprov["simplified_staff"]}
+        "original": {h: [part_docs["original"][h][i] for i in orig_own[h]] for h in HANDS},
+        "simplified": {h: [n for n in simp_doc.get(h, []) if n.get("simplified")] for h in HANDS}}
+    view_prov = {"pv": prov, "original": {h: [pprov["original"][h][i] for i in orig_own[h]] for h in HANDS},
+                 "simplified": pprov["simplified_staff"]}
+    solo_song = ""
+    if arrangement:
+        se = lib.manifest.entries.get(arrangement.get("rel") or "") or {}
+        if se.get("output") and (not hasattr(lib, "is_song") or lib.is_song(arrangement.get("rel"))):
+            solo_song = se["output"]
+    solo_reason = (f"a note of the piano solo {arrangement.get('rel') if arrangement else ''} (scores.json "
+                   f"simplified_from, piano_from: the song's piano part where the solo plays the measure), not of "
+                   f"this score: its hands are not written back through this song"
+                   + (f"; record them on the solo's own song, {solo_song}" if solo_song else
+                      "; edit them in the solo score"))
     index: Dict[str, Dict[str, Dict[tuple, int]]] = {v: {} for v in views}
     present: Dict[str, Dict[str, Set[tuple]]] = {v: {} for v in views}
     for v, flat in views.items():
@@ -1679,8 +1697,9 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
         results[id(e)] = r
         v = e.part or "pv"
         if v == "simplified" and arrangement:
-            r.reason = (f"the simplified part is the arrangement {arrangement.get('rel')} (scores.json), not this "
-                        "score: its hands are not written back")
+            r.reason = solo_reason if piano_from else (
+                f"the simplified part is the arrangement {arrangement.get('rel')} (scores.json), not this score: its "
+                "hands are not written back")
             continue
         pos = index[v][e.from_hand].get((e.ticks, e.midi, e.occurrence))
         if pos is None:
@@ -1698,7 +1717,9 @@ def review_song(lib, song: str, sidecars: List[Sidecar], all_repeats: bool = Fal
         src = view_prov[v][e.from_hand][pos].note
         if src is None:
             pt = getattr(base.midi, "partner", None)
-            if pt is not None and view_prov[v][e.from_hand][pos].track >= pt.first:
+            if view_prov[v][e.from_hand][pos].arranged:
+                r.reason = solo_reason
+            elif pt is not None and view_prov[v][e.from_hand][pos].track >= pt.first:
                 r.reason = (f"a note of the orchestra from {partner.get('rel')} (scores.json orchestra_from), not of "
                             "this score")
             else:

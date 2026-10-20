@@ -8,7 +8,9 @@ Keys of ``"scores"`` are score paths relative to the scores folder (as ``accompa
          "title": "Rhapsody in Blue (Piano and Orchestra)",   # the song's title and composer: PianoVision's name and
          "composer": "Gershwin",                              #   artist, the output name (instead of the score's)
          "simplified_from": "Gershwin/Rhapsody_in_Blue_Piano_solo.mscz",   # a piano solo of the same music: its
-         "measure_map": "auto"},                              #   piano part the simplified part, its clock the song's
+         "measure_map": "auto",                               #   piano part the simplified part, its clock the song's
+         "piano_from": "simplified_from"},                    # ... and the song's piano part (original part and
+                                                              #   PianoVision's hands) where it plays the measure
        "Rachmaninoff/Rhapsody_on_a_theme_of_Paganini_Variation_18_Piano_Solo.mscz": {
          "orchestra_from": "Rachmaninoff/pagvar18.mscz"},     # an orchestral score of the same music: its orchestra
        "Rachmaninoff/pagvar18.mscz": {                        #   the song's orchestra, on this solo's clock
@@ -33,6 +35,14 @@ options say).  The partner is rendered with its own options (piano staves, hands
 its manifest knobs.  ``song: false``: the score is not a song of its own (``build`` renders nothing for it and
 retires an output it made before); it can still be another score's partner.
 
+``piano_from: "simplified_from"`` (with ``simplified_from`` only): the solo is the source of truth for the piano part
+too.  Wherever the alignment maps a solo measure, the song's piano part (Note Waterfall's ``original`` part and
+PianoVision's hands) is the solo's notes on the song's clock, exactly as the simplified part has them; the orchestral
+measures the solo leaves out keep the orchestral score's own piano part.  The song has no separate simplified part
+then (it would be the same notes).  The solo's notes keep ``"simplified": 1`` in the original part (Note Waterfall
+counts their hand-edit identity apart from the orchestral score's notes, as before); their hand edits are not
+written back through this song (``hands review`` says so: record them on the solo's own song).
+
 Options change what ``build`` makes of a score, so they are part of what the manifest records for it (``options``:
 a hash of them, and the partner's content hash, knobs and options): a change renders the score again.
 """
@@ -46,8 +56,11 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 OPTIONS_NAME = "scores.json"
-KNOWN = ("title", "composer", "piano_staves", "hands", "simplified_from", "orchestra_from", "measure_map", "song")
-SONG_KEYS = ("title", "composer", "piano_staves", "hands")     # what makes a score's own render
+KNOWN = ("title", "composer", "piano_staves", "hands", "simplified_from", "orchestra_from", "measure_map", "piano_from",
+         "song")
+# what makes the song's own render (the manifest's "song" hash; the partner is hashed apart)
+SONG_KEYS = ("title", "composer", "piano_staves", "hands", "piano_from")
+PIANO_FROM = ("simplified_from",)     # piano_from: the partner whose piano part is the song's
 PARTNER_KINDS = {"simplified_from": "simplified", "orchestra_from": "orchestra"}
 
 
@@ -64,6 +77,7 @@ class BuildOptions:
     simplified_from: str = ""
     orchestra_from: str = ""
     measure_map: Any = "auto"
+    piano_from: str = ""                                     # "simplified_from": the solo is the piano part too
     song: bool = True
     raw: Dict[str, Any] = field(default_factory=dict)        # the entry as written (comments left out)
 
@@ -80,7 +94,7 @@ class BuildOptions:
                 piano_staves=[int(x) for x in d.get("piano_staves", []) or []], hands=str(d.get("hands", "staves")),
                 simplified_from=str(d.get("simplified_from", "") or ""),
                 orchestra_from=str(d.get("orchestra_from", "") or ""), measure_map=d.get("measure_map", "auto"),
-                song=song, raw=d)
+                piano_from=str(d.get("piano_from", "") or ""), song=song, raw=d)
         if o.hands not in ("staves", "split"):
             raise OptionsError(f"{OPTIONS_NAME}: {rel}: hands must be \"staves\" or \"split\", not {o.hands!r}")
         if o.hands == "split" and not o.piano_staves:
@@ -95,6 +109,13 @@ class BuildOptions:
         if not o.song and o.partner:
             raise OptionsError(f"{OPTIONS_NAME}: {rel}: song false and {o.partner_key}: a score that is not a song "
                                f"has no partner of its own")
+        if o.piano_from:
+            if o.piano_from not in PIANO_FROM:
+                raise OptionsError(f"{OPTIONS_NAME}: {rel}: piano_from must be \"simplified_from\" (the piano solo the "
+                                   f"simplified part comes from), not {o.piano_from!r}")
+            if not getattr(o, o.piano_from):
+                raise OptionsError(f"{OPTIONS_NAME}: {rel}: piano_from \"{o.piano_from}\" needs {o.piano_from} "
+                                   f"(a piano solo of the same music)")
         return o
 
     @property
@@ -136,6 +157,9 @@ class BuildOptions:
             out["partner"] = {"kind": self.partner_kind, "path": os.path.join(scores_root, self.partner),
                               "rel": self.partner, "compat": partner_compat, "measure_map": self.measure_map,
                               "options": (partner_options.own_options() if partner_options else None) or None}
+            if self.piano_from:
+                # the solo is the song's piano part too (pianovision.arrangement.PianoFrom); the clock does not change
+                out["partner"]["piano"] = True
         return out
 
 

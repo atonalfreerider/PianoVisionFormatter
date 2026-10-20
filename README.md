@@ -320,6 +320,7 @@ makes of the score changes, never the score.
 | `simplified_from` | on an orchestral score: a piano solo of the same music; its piano part becomes the simplified part, measure-aligned, and the song plays on the solo's clock (below) |
 | `orchestra_from` | on a piano solo: an orchestral score of the same music; its orchestra, measure-aligned, becomes the song's orchestra, on the solo's clock (below) |
 | `measure_map` | the alignment of the two: `"auto"` or overrides (below) |
+| `piano_from` | `"simplified_from"` (with `simplified_from`): the solo is the song's piano part too, Note Waterfall's `original` part and PianoVision's hands, wherever the alignment maps a solo measure; the measures the solo leaves out keep the score's own piano part, and there is no separate simplified part (below) |
 | `song` | `false`: the score is not a song of its own. `build` renders nothing for it and retires the output it made before to the attic (`status` lists it as "not a song of its own", the window as "partner only"); it can still be another score's partner |
 
 The manifest records, per score, a hash of the options that make its own render and, with a partner, the partner's
@@ -342,7 +343,8 @@ A piano solo and an orchestral score of the same piece make one song (`pianovisi
 
 * `simplified_from` on the orchestral score: the song has the orchestral score's measures, piano part (the
   `original` part) and orchestra; the solo's piano part is the `simplified` part, which Note Waterfall shows by
-  default. Rhapsody in Blue with its orchestra.
+  default. With `"piano_from": "simplified_from"` as well, the solo's piano part is the song's piano part (step 3).
+  Rhapsody in Blue with its orchestra.
 * `orchestra_from` on the solo: the song has the solo's measures, piano part and tempo; the orchestral score's
   orchestra (its piano staves left out, as its own `piano_staves` say) is the song's orchestra: Note Waterfall's
   `orchestra` part, PianoVision's orchestra mode (the orchestra fills the measures where a hand of the piano rests,
@@ -404,6 +406,23 @@ knobs (a `song: false` score with the default knobs).
    `"orchestraFrom"`, the same keys). Hand edits of the solo's notes are not written back into the orchestral score
    (`hands review` gives the reason); with `orchestra_from` the solo's own notes take hand edits as usual and the
    orchestra's do not.
+
+   **The piano part from the solo** (`"piano_from": "simplified_from"`): the solo is the source of truth for the
+   piano part as well. The solo's notes, retimed exactly as for the simplified part, replace the orchestral score's
+   piano part in every measure the alignment maps before PianoVision's JSON and the parts file are built from the
+   render, so PianoVision's hands and the `original` part are the solo's notes there (their accents, velocities and
+   lyrics the solo's; PianoVision's orchestra fills a hand only where the solo rests a whole measure), and the
+   measures the solo leaves out keep the orchestral score's piano part, as the simplified part fills them (the
+   orchestra plays there; the solo has nothing to give). The song then has no separate simplified part: it would be
+   the same notes, and Note Waterfall's original/simplified switch would show one thing twice; the app shows the
+   original part and greys the switch out. The solo's notes keep `"simplified": 1` in the original part: Note
+   Waterfall reads a note so marked as one of the simplified notes wherever it is, so their hand-edit identity is
+   the one they had in the simplified part (edits recorded there before still apply) and stays apart from the
+   orchestral score's notes (an earlier edit of an orchestral note the solo replaced is stale). `hands review` writes
+   hand edits of the filled measures into the orchestral score as usual and skips the solo's notes, naming the solo's
+   own song to record them on (their score is the solo). The parts file's `"arrangement"` gets `"part":
+   "original"`. The clock is the same either way: the song's tempo map, measures and timings, the companion audio
+   and its cache key do not change.
 4. **Report:** `<output>/.arrangements/<song>.md` and `.json` (and `python3 -m pianovision arrangement`): the mapped
    segments with their confidence (mean similarity, and the margin over the same segment shifted by 1-4 measures)
    and their times on the song's clock, the cuts on both sides, dropped measures, moved/joined/trimmed measures,
@@ -411,7 +430,12 @@ knobs (a `song: false` score with the default knobs).
    score's own, the largest deviation inside a measure, the fills' stretch and (with `orchestra_from`) where the
    companion audio's pieces go.
 
-**Rhapsody in Blue** (419 measures as played against 522): five segments of high confidence (similarity 0.89-1.00)
+**Rhapsody in Blue** (419 measures as played against 522; `piano_from` since 2026-10-20, after errors in the
+orchestral score's piano part at the ending: its staves give the wrong hands in 383-424, 475-480 and 505, where both
+hands sit on one staff or the staves are swapped; 475-480 sound an octave below the solo, which writes 8va over both
+staves, and in 504-507 its 8va lines start and end elsewhere; m. 401 has A-flat for the B of every other statement;
+elsewhere at the ending the two are different piano writing: the solo folds the orchestra in, 425-457 and 481-503):
+five segments of high confidence (similarity 0.89-1.00)
 cover 418 solo measures; the orchestral measures 138-180, 200-254, 256-259 and 472-474 (105) are the orchestral piano
 part's; the solo's measure 371 (a B7 bridge over the cut) is dropped; its 11/4 measure 157 is orchestral 255, its
 measures 200-201 are orchestral 302, and five more measures of other lengths are warped (the solo's measure 37, the

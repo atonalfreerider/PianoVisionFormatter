@@ -13,6 +13,10 @@
     "  measure_map       'auto', or {pin: [[solo, orch], ...], fill: [orch, ...], drop: [solo, ...]} with measures",
     "                    as the scores number them ('12', '12-30', '395:2' = the second pass): see the report in",
     "                    <output>/.arrangements/ and `python3 -m pianovision arrangement`",
+    "  piano_from        'simplified_from' (with simplified_from): the solo is the song's piano part too (Note",
+    "                    Waterfall's original part and PianoVision's hands) wherever the alignment maps a solo",
+    "                    measure; the measures it leaves out keep this score's piano part; no separate simplified",
+    "                    part. Hand edits of the solo's notes go through the solo's own song (`hands review` says so)",
     "  song              false: not a song of its own (build retires its output); it can still be another's partner",
     "A partner (simplified_from, orchestra_from) is rendered with its own options here; the companion audio",
     "(`accompaniment`) renders the orchestral score on the solo's clock too (pianovision/timeline.py)."
@@ -24,7 +28,9 @@
       "_title": "its own title would collide with the piano solo (gers_Rhapsody_in_Blue.json); its metadata's workTitle says 'Second Rhapsody' (wrong)",
       "simplified_from": "Gershwin/Rhapsody_in_Blue_Piano_solo.mscz",
       "measure_map": "auto",
-      "_simplified_from": "the piano solo arrangement, measure-aligned, is the default (simplified) part, and its tempos are the song's (the orchestral score's own ending ran too fast); the measures it leaves out play the orchestral score's Solo Piano part, at the orchestral score's own tempo scaled to the solo's next to them"
+      "_simplified_from": "the piano solo arrangement, measure-aligned, gives the song its tempos (the orchestral score's own ending ran too fast); the measures it leaves out play the orchestral score's Solo Piano part, at the orchestral score's own tempo scaled to the solo's next to them",
+      "piano_from": "simplified_from",
+      "_piano_from": "the solo is the source of truth for the piano part (the user, 2026-10-20: errors in the orchestral score's piano part at the ending): the original part and PianoVision's hands are the solo's notes in the 417 orchestral measures it maps (of 522 as played), the orchestral Solo Piano part only in the 105 it leaves out (138-180, 200-254, 256-259, 472-474). At the ending the orchestral score's staves give the wrong hands (383-423 written mostly on the lower staff, 424's L.H./R.H. on swapped staves, 475-480 both hands on the upper staff, 505's run and top octave on the lower), 475-480 sound an octave below the solo (no 8va where the solo has one over both staves) and its 8va lines in 504-507 start and end elsewhere, 401 has A-flat for the B of every other statement; the rest of the ending is different piano writing, the solo folding the orchestra in (425-457, 481-503)"
     },
     "Rachmaninoff/Rhapsody_on_a_theme_of_Paganini_Variation_18_Piano_Solo.mscz": {
       "orchestra_from": "Rachmaninoff/pagvar18.mscz",

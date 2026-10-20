@@ -43,6 +43,16 @@ again.  Arrangement notes carry ``"simplified": 1`` (they are not the orchestral
 counts their hand-edit identity apart from the original part's); the filled notes are the original part's own notes
 and do not.
 
+**The piano part from the arrangement** (``piano_from: "simplified_from"``, :class:`PianoFrom`).  The arrangement is
+the source of truth for the song's piano part too: its notes, retimed as above, replace the orchestral score's piano
+part in the measures the alignment maps, before PianoVision's JSON and the parts are built from the render
+(:func:`pianovision.pvjson.build_song`), so PianoVision's hands and the ``original`` part are the arrangement's notes
+there and the orchestral score's piano part in the fills, exactly what the simplified part is otherwise.  The song
+then has no separate simplified part.  The arrangement's notes keep ``"simplified": 1`` in the original part (Note
+Waterfall reads a note so marked as one of the simplified notes: the same hand-edit identity as before, apart from
+the orchestral score's notes); their accents, velocities and lyrics are the arrangement's.  The clock is the same
+either way, and so is the companion audio.
+
 The report (:func:`report_markdown`, ``<output>/.arrangements/<song>.md`` and ``.json``) lists the mapped segments
 with their confidence (mean similarity, and how much better the segment fits than shifted by a measure or more),
 the cuts on both sides, the filled and dropped measures, time-signature mismatches and the text anchors.
@@ -1006,16 +1016,13 @@ class Retimer:
         return D.tick(on_u), D.tick(max(off_u, on_u)), how
 
 
-def retime(arr_notes: Dict[str, List[dict]], orch_original: Dict[str, List[dict]], al: Alignment,
-           seconds: Callable[[int], float], tpb: int, orch_piano_sounding: Optional[Sequence[int]] = None,
-           arr_snotes: Sequence[SNote] = (), orch_snotes: Sequence[SNote] = ()
-           ) -> Tuple[Dict[str, List[dict]], RetimeStats]:
-    """The simplified part: the arrangement's notes (``arr_notes``: its parts document's original part, NOTE dicts on
-    its own clock) moved onto the orchestral clock (:class:`Retimer`; ``arr_snotes`` / ``orch_snotes``: the sounding
-    notes the warps of units of unequal length are anchored on), and the orchestral piano part's notes
-    (``orch_original``) in the orchestral measures without counterpart.  ``seconds``: orchestral MIDI tick -> s (its
-    tempo map, pauses included); ``orch_piano_sounding``: per orchestral measure, the ticks the orchestral piano part
-    sounds (to report mapped measures where the arrangement is silent)."""
+def retime_arrangement(arr_notes: Dict[str, List[dict]], al: Alignment, seconds: Callable[[int], float], tpb: int,
+                       arr_snotes: Sequence[SNote] = (), orch_snotes: Sequence[SNote] = ()
+                       ) -> Tuple[Dict[str, List[Tuple[float, int, dict]]], RetimeStats, List[int]]:
+    """The arrangement's notes (``arr_notes``: its parts document's original part, NOTE dicts on its own clock) moved
+    onto the orchestral clock (:class:`Retimer`; ``arr_snotes`` / ``orch_snotes``: the sounding notes the warps of
+    units of unequal length are anchored on), marked ``"simplified": 1``.  Returns ({hand: [(start, seq, NOTE)]} in the
+    arrangement's order, the stats, per orchestral measure the number of arrangement notes sounding in it)."""
     st = RetimeStats()
     O = al.orch
     rt = Retimer(al, arr_snotes, orch_snotes)
@@ -1039,6 +1046,37 @@ def retime(arr_notes: Dict[str, List[dict]], orch_original: Dict[str, List[dict]
             seq += 1
             for j in range(O.measure_at(t_on), O.measure_at(max(t_off - 1, t_on)) + 1):
                 arr_sounds[j] += 1
+    return out, st, arr_sounds
+
+
+def fill_end(O: Timeline, fills: set, j: int, off: int) -> Optional[int]:
+    """A note of the orchestral piano part struck in the filled measure ``j`` (``fills``: the filled measures) and
+    released at MIDI tick ``off``: where it must end instead, the start of the next mapped measure when it is held
+    into one (the arrangement takes over there); None when it ends in the cut."""
+    k = j
+    while k + 1 < len(O.measures) and O.measures[k].end_tick < off and (k + 1) in fills:
+        k += 1
+    end = O.measures[k].end_tick
+    return end if off > end and k + 1 < len(O.measures) else None
+
+
+def _silent_mapped(al: Alignment, arr_sounds: Sequence[int], orch_piano_sounding: Sequence[int]) -> List[int]:
+    mapped = {j for j in al.mapping if j is not None}
+    return [j for j in sorted(mapped) if not arr_sounds[j] and orch_piano_sounding[j]]
+
+
+def retime(arr_notes: Dict[str, List[dict]], orch_original: Dict[str, List[dict]], al: Alignment,
+           seconds: Callable[[int], float], tpb: int, orch_piano_sounding: Optional[Sequence[int]] = None,
+           arr_snotes: Sequence[SNote] = (), orch_snotes: Sequence[SNote] = ()
+           ) -> Tuple[Dict[str, List[dict]], RetimeStats]:
+    """The simplified part: the arrangement's notes (``arr_notes``: its parts document's original part, NOTE dicts on
+    its own clock) moved onto the orchestral clock (:func:`retime_arrangement`), and the orchestral piano part's notes
+    (``orch_original``) in the orchestral measures without counterpart.  ``seconds``: orchestral MIDI tick -> s (its
+    tempo map, pauses included); ``orch_piano_sounding``: per orchestral measure, the ticks the orchestral piano part
+    sounds (to report mapped measures where the arrangement is silent)."""
+    O = al.orch
+    out, st, arr_sounds = retime_arrangement(arr_notes, al, seconds, tpb, arr_snotes, orch_snotes)
+    seq = sum(len(v) for v in out.values())
     fills = set(al.fills)
     for hand in ("right", "left"):
         for n in orch_original.get(hand, []):
@@ -1046,12 +1084,8 @@ def retime(arr_notes: Dict[str, List[dict]], orch_original: Dict[str, List[dict]
             j = O.measure_at(on)
             if j not in fills:
                 continue
-            off = on + int(n["durationTicks"])
-            k = j                                       # end where the arrangement takes over again
-            while k + 1 < len(O.measures) and O.measures[k].end_tick < off and (k + 1) in fills:
-                k += 1
-            end = O.measures[k].end_tick
-            if off > end and k + 1 < len(O.measures):
+            end = fill_end(O, fills, j, on + int(n["durationTicks"]))   # end where the arrangement takes over again
+            if end is not None:
                 d = _note_dict(n, on, end, seconds, tpb, simplified=False)
                 st.fill_clipped += 1
             else:
@@ -1060,9 +1094,75 @@ def retime(arr_notes: Dict[str, List[dict]], orch_original: Dict[str, List[dict]
             out[hand].append((d["start"], seq, d))
             seq += 1
     if orch_piano_sounding is not None:
-        mapped = {j for j in al.mapping if j is not None}
-        st.silent_mapped = [j for j in sorted(mapped) if not arr_sounds[j] and orch_piano_sounding[j]]
+        st.silent_mapped = _silent_mapped(al, arr_sounds, orch_piano_sounding)
     return {h: [d for _t, _s, d in sorted(v, key=lambda x: (x[0], x[1]))] for h, v in out.items()}, st
+
+
+class PianoFrom:
+    """``piano_from: "simplified_from"`` (:mod:`pianovision.buildopts`): the arrangement is the song's piano part.
+
+    Called with the song's :class:`pianovision.pvjson.NoteStreams` before anything is built from them
+    (:func:`pianovision.pvjson.build_song`), it replaces the piano part's notes (the primary and simplified staves)
+    in the orchestral measures the alignment maps with the arrangement's notes on the orchestral clock, exactly the
+    notes the simplified part has (:func:`retime_arrangement`): PianoVision's hands, Note Waterfall's original part
+    and everything made from them (accents of their own, the orchestra merged where a hand rests) follow.  The
+    measures without counterpart keep the orchestral score's piano part (drum staves left out, a note held into a
+    mapped measure ends there), as the simplified part fills them.  An arrangement note is a
+    :class:`pianovision.pvjson.Note` with ``arranged`` set (its parts-file extras: ``"simplified": 1``, a lyric) and no
+    score note (``src``): its accent and velocity are the arrangement's, its hand-edit identity the simplified
+    part's."""
+
+    def __init__(self, pr, score):
+        al, orch = pr.al, pr.orch
+        self.al = al
+        self.seconds = orch.seconds
+        self.drums = drum_staves(score)
+        out, self.stats, self.arr_sounds = retime_arrangement(pr.solo_notes, al, orch.seconds, orch.tpb,
+                                                              pr.solo.notes, orch.notes)
+        self.arranged = {h: [d for _t, _s, d in sorted(v, key=lambda x: (x[0], x[1]))] for h, v in out.items()}
+        self.stats.silent_mapped = _silent_mapped(al, self.arr_sounds, orch.piano_sounding)
+
+    def __call__(self, streams) -> None:
+        from .pvjson import Note
+        O = self.al.orch
+        fills = set(self.al.fills)
+        st = self.stats
+        st.fill_notes = st.fill_clipped = 0
+        # hand -> the staff of its first piano note (the arrangement notes' MIDI track, informational)
+        tracks = {h: streams.primary[h][0].track for h in (0, 1) if streams.primary[h]}
+        for which in ("primary", "simplified"):
+            hands = getattr(streams, which)
+            for h in (0, 1):
+                kept = []
+                for n in hands[h]:
+                    j = O.measure_at(n.ticks)
+                    if j not in fills or n.track in self.drums:
+                        continue
+                    end = fill_end(O, fills, j, n.ticks + n.duration_ticks)
+                    if end is not None:
+                        n.duration_ticks = end - n.ticks
+                        n.duration = max(self.seconds(end) - n.time, 0)
+                        st.fill_clipped += which == "primary"
+                    st.fill_notes += which == "primary"
+                    kept.append(n)
+                hands[h] = kept
+        for h, hand in enumerate(("right", "left")):
+            arranged = []
+            for d in self.arranged[hand]:
+                t = int(d["ticksStart"])
+                extra = {k: v for k, v in d.items() if k not in _NOTE_KEYS}
+                arranged.append(Note(midi=int(d["note"]), time=d["start"], velocity=d["velocity"],
+                                     duration=d["duration"], ticks=t, duration_ticks=int(d["durationTicks"]),
+                                     staff=h + 1, group=streams.get_measure_for_tick(t) - 1,
+                                     accent=int(d.get("accent", 0)),
+                                     raw_velocity=int(round(d["velocity"] * 127)), track=tracks.get(h, -1),
+                                     arranged=extra))
+            # in time order, the orchestral notes first (they never share a measure with the arrangement's)
+            streams.primary[h] = sorted(streams.primary[h] + arranged, key=lambda n: n.time)
+
+
+# the fields of a parts-file NOTE that the note itself gives (pianovision.parts.build_parts); the rest are extras
+_NOTE_KEYS = ("note", "ticksStart", "durationTicks", "start", "duration", "velocity", "measureInd", "accent")
 
 
 def _note_dict(n: dict, on: int, off: int, seconds: Callable[[int], float], tpb: int, simplified: bool) -> dict:
@@ -1161,26 +1261,34 @@ def arrange(orch: Side, arr: Side, measure_map: Any = "auto") -> Alignment:
     return align(S, arr.timeline, orch.timeline, anchors, ov, arr.feats[0], orch.feats, orch.piano_sounding)
 
 
-def apply_arrangement(spec: dict, pr, score, parts_out: dict) -> dict:
+def apply_arrangement(spec: dict, pr, score, parts_out: dict, piano: Optional[PianoFrom] = None) -> dict:
     """Make the arrangement the simplified part of the orchestral score's parts (``parts_out``:
     :func:`pianovision.pvjson.build_song`'s ``parts`` of the orchestral score rendered on the arrangement's clock,
     its ``doc`` changed in place).  ``pr``: the pair (:func:`pianovision.timeline.pair`: the alignment, the
     arrangement's notes, the orchestral side on that clock); ``spec``: the build options' partner (``rel``,
-    ``measure_map``); ``score``: the orchestral score's model.  Returns the report (:func:`report_dict`)."""
+    ``measure_map``); ``score``: the orchestral score's model.  ``piano``: the arrangement is already the song's
+    piano part (``piano_from``, :class:`PianoFrom` gave it to :func:`pianovision.pvjson.build_song`): the parts stay
+    as built, the original part being the arrangement with the fills, and there is no separate simplified part (it
+    would be the same notes).  Returns the report (:func:`report_dict`)."""
     from .timeline import plan_report
     al, orch = pr.al, pr.orch
     doc = parts_out["doc"]
-    # the cuts are filled with the original part's notes, drum sounds left out (a drum staff counted as piano)
-    original = doc["parts"]["original"]
-    objs = (parts_out.get("notes") or {}).get("original")
-    drums = drum_staves(score)
-    if objs and drums:
-        original = {hand: [d for d, n in zip(original[hand], objs[h]) if getattr(n, "track", -1) not in drums]
-                    for h, hand in enumerate(("right", "left"))}
-    simplified, stats = retime(pr.solo_notes, original, al, orch.seconds, orch.tpb, orch.piano_sounding,
-                               pr.solo.notes, orch.notes)
-    doc["simplified"] = True
+    if piano is not None:
+        stats = piano.stats
+    else:
+        # the cuts are filled with the original part's notes, drum sounds left out (a drum staff counted as piano)
+        original = doc["parts"]["original"]
+        objs = (parts_out.get("notes") or {}).get("original")
+        drums = drum_staves(score)
+        if objs and drums:
+            original = {hand: [d for d, n in zip(original[hand], objs[h]) if getattr(n, "track", -1) not in drums]
+                        for h, hand in enumerate(("right", "left"))}
+        simplified, stats = retime(pr.solo_notes, original, al, orch.seconds, orch.tpb, orch.piano_sounding,
+                                   pr.solo.notes, orch.notes)
+        doc["simplified"] = True
     rep = report_dict(al, stats, spec, orch, kind="simplified")
+    if piano is not None:
+        rep["piano_from"] = True
     rep["timeline"] = plan_report(pr.plan, pr)
     rest = {k: v for k, v in doc.items() if k != "parts"}
     old = doc["parts"]
@@ -1188,6 +1296,11 @@ def apply_arrangement(spec: dict, pr, score, parts_out: dict) -> dict:
     doc.update(rest)
     doc["arrangement"] = {"score": spec.get("rel") or os.path.basename(spec["path"]), "revision": ARRANGEMENT_REVISION,
                           "measures": {k: rep["measures"][k] for k in ("mapped", "filled", "dropped")}}
+    if piano is not None:
+        # the arrangement is the original part (and PianoVision's hands); its notes carry "simplified": 1
+        doc["arrangement"]["part"] = "original"
+        doc["parts"] = old
+        return rep
     doc["parts"] = {"original": old["original"], "simplified": simplified,
                     **{k: v for k, v in old.items() if k not in ("original", "simplified")}}
     # the simplified part's notes are no notes of this score's simplified staves (hand edits: pianovision.handedits)
@@ -1309,7 +1422,9 @@ def report_markdown(rep: dict, song: str = "") -> str:
                  f"{m['orchestra']}; {m['mapped']} solo measures with the orchestra, {m['filled']} orchestral measures "
                  f"left out (the solo does not have them), {m['dropped']} solo measures without orchestra.")
     else:
-        L.append(f"Simplified part from *{rep.get('score')}* (measure_map: {json_text(rep.get('measure_map'))}); the "
+        what = ("The piano part (Note Waterfall's original part and PianoVision's hands; piano_from) and its clock"
+                if rep.get("piano_from") else "Simplified part")
+        L.append(f"{what} from *{rep.get('score')}* (measure_map: {json_text(rep.get('measure_map'))}); the "
                  f"song plays on its clock. Measures as played (repeats unrolled; `n:2` = the second pass through "
                  f"measure n): arrangement {m['arrangement']}, orchestral score {m['orchestra']}; {m['mapped']} "
                  f"arrangement measures mapped, {m['filled']} orchestral measures filled from the orchestral piano "
