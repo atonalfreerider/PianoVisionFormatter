@@ -1105,9 +1105,10 @@ def _note_table(rd: Rendered) -> Dict[int, List[tuple]]:
     tl = rd.timeline
     out: Dict[int, List[tuple]] = {}
     for n in sounding_notes(rd.midi, range(min(len(rd.midi.tracks), len(rd.score.staves))), tl):
-        u = tl.utick(n.on)
+        u = n.on                        # sounding_notes gives unrolled ticks already (a pause's ticks taken out)
         j = tl.measure_at_utick(u)
-        out.setdefault(j, []).append((u - tl.measures[j].utick, tl.utick(n.off) - u, n.pitch, n.track, n.on, n.off))
+        out.setdefault(j, []).append((u - tl.measures[j].utick, n.off - u, n.pitch, n.track, tl.tick(n.on),
+                                      tl.tick(n.off)))
     return {j: sorted(v) for j, v in out.items()}
 
 

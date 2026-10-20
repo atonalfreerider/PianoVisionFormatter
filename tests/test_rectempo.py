@@ -79,6 +79,27 @@ class OffsetTest(unittest.TestCase):
         self.assertEqual(RT.offset_of([]), 0.0)
 
 
+class NoteTableTest(unittest.TestCase):
+    def test_notes_after_a_pause_stay_in_their_measures(self):
+        # a caesura with a pause: the render gives it ticks of its own; the table's measures are the score's
+        tmp = tempfile.mkdtemp()
+        try:
+            breath = E("Breath", E("symbol", text="caesura"), E("pause", text="0.5"))
+            rh = [[[chord("half", 60), breath, chord("half", 62)]], [[chord("whole", 64)]], [[chord("whole", 65)]]]
+            lh = [[[rest("whole")]] for _ in range(3)]
+            path = make_piano_score(os.path.join(tmp, "p.mscz"), rh, lh, title="Pause")
+            rd = RT.render(path)
+            table = RT._note_table(rd)
+            got = {j: [(rt, pitch) for rt, _d, pitch, _tr, _on, _off in v] for j, v in table.items()}
+            self.assertEqual(got, {0: [(0, 60), (960, 62)], 1: [(0, 64)], 2: [(0, 65)]})
+            # the last two fields are MIDI ticks (the pause's ticks in them)
+            on = {pitch: on for v in table.values() for _rt, _d, pitch, _tr, on, _off in v}
+            self.assertGreater(on[62] - on[60], 960)
+            self.assertEqual(on[64] - on[62], 960)
+        finally:
+            shutil.rmtree(tmp)
+
+
 class AnchorsTest(unittest.TestCase):
     def test_measure_times_you_give(self):
         tmp = tempfile.mkdtemp()
