@@ -899,6 +899,14 @@ kept (one tempo for both passes: off by up to 265 ms, inside a muted solo); the 
 solo passages muted, 504 s of 986 (1:09-1:52, 1:57-2:03, 2:07-2:58, 4:43-4:49, 5:56-7:55, 8:24-10:38, 12:27-14:46,
 15:59-16:05).
 
+Later the same day the user asked for the song on the piano solo's clock again, with the solo's orchestra reduction
+as the orchestra (`reduction`), and the recording stretched onto that clock: the measures placed in the recording as
+above (`bars.json` of the anchored analysis) against the same measures on the solo's clock give a measure-by-measure
+plan for `recording_align.py retime` (rubberband; 2 passes, within 6.7 ms of the plan at p95). A measure alone
+needing a stretch beyond 0.5-2x where the recording is heard is played across a neighbour (up to 4 measures, never
+across an anchor: 12 downbeats, m. 108, 137, 323, 437-455). Then `mute-solos --source STRETCHED --offset 0`: 7
+passages, 537 s of 1037. The anchored score's tempo marks stay in the orchestral score (its fills keep that shape).
+
 ## Score structure fixes (scorefix)
 
 `python3 -m pianovision scorefix report SCORE` prints what the score plays, with repeats, voltas and jumps unrolled
