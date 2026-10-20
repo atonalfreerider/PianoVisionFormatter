@@ -1192,7 +1192,8 @@ def verify_copy(score_path: str, copy: str, rd0: Rendered, targets: Sequence[Tar
             continue
         pa = sorted(a, key=lambda x: (x[2], x[3], x[0]))
         pb = sorted(b, key=lambda x: (x[2], x[3], x[0]))
-        if len(pa) == len(pb) and all(x[2:] == y[2:] and abs(x[0] - y[0]) <= 120 and abs(x[1] - y[1]) <= 120
+        eighth = rd0.midi.ticks_per_beat // 2
+        if len(pa) == len(pb) and all(x[2:] == y[2:] and abs(x[0] - y[0]) <= eighth and abs(x[1] - y[1]) <= eighth
                                       for x, y in zip(pa, pb)):
             rolled.append(label)            # an arpeggio or ornament: its notes' offsets are seconds, not ticks
             continue
