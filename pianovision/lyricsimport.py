@@ -79,6 +79,7 @@ C_HELD = 0.35            # per note more than the line's syllables (held syllabl
 C_SHORT = 1.0            # per syllable more than the notes (merged)
 C_SKIP_NOTE = 0.2        # per note of a phrase no line is sung on (less than C_HELD: no bias to long phrases)...
 C_SKIP_PHRASE = 2.0      # ... plus this
+C_SKIP_SUNG = 0.6        # per note of such a phrase when the recording says it is sung (``sung``): more than holding
 C_SKIP_SYL = 1.2         # per syllable of a line sung nowhere ...
 C_SKIP_LINE = 2.0        # ... plus this
 C_SPLIT = 0.4            # a line over one more phrase (plus the rest between them) ...
@@ -652,6 +653,7 @@ class VocalLine:
     other_voices: List[int]           # measures where voices 2-4 of the staff have notes
     existing: int                     # syllables already on the staff
     existing_measures: List[int]
+    unsung: int = 0                   # notes where the recording's singer is silent (vocal_line's ``sung``)
 
 
 def vocal_staves(score) -> List[int]:
@@ -662,8 +664,16 @@ def vocal_staves(score) -> List[int]:
     return [t for t, _p in staff_roles(midi).vocal]
 
 
-def vocal_line(score, staff: int) -> VocalLine:
-    """The first voice of ``staff`` in playback order, as slots and phrases."""
+def _span_of(spans: Sequence[Tuple[int, int]], u: int) -> Optional[int]:
+    import bisect
+    k = bisect.bisect_right([a for a, _b in spans], u) - 1
+    return k if k >= 0 and u < spans[k][1] else None
+
+
+def vocal_line(score, staff: int, sung: Optional[Sequence[Tuple[int, int]]] = None) -> VocalLine:
+    """The first voice of ``staff`` in playback order, as slots and phrases.  ``sung``: the stretches (unrolled ticks,
+    ``[from, to)``, in order) where the recording's singer sings (``recordings vocal-spans``): a chord outside them is
+    not sung (a rest for the phrases) and a chord in another stretch than the one before starts a phrase (a breath)."""
     from .lyrics import staff_name
     from .repeats import build_repeat_list
     track = staff * VOICES
@@ -675,6 +685,8 @@ def vocal_line(score, staff: int) -> VocalLine:
     gap = 0.0
     passes: Dict[int, int] = {}
     last: Optional[Slot] = None
+    cur_span: Optional[int] = None
+    unsung = 0
     for si, rs in enumerate(build_repeat_list(score)):
         off = rs.utick - rs.tick
         end = rs.end_tick
@@ -700,6 +712,20 @@ def vocal_line(score, staff: int) -> VocalLine:
                                             for n in cr.notes):
                     last.ties.append((cr, m.index + 1, si))
                     continue
+                if sung is not None:
+                    sp = _span_of(sung, t + off)
+                    if sp is None:                      # the singer is silent here: a rest for the lyrics
+                        unsung += 1
+                        if cur:
+                            phrases.append(Phrase(len(phrases), cur, gap))
+                            cur, gap = [], 0.0
+                        gap += float(cr.actual_ticks()) * 4
+                        last = None
+                        continue
+                    if cur and sp != cur_span:          # a breath between two sung stretches
+                        phrases.append(Phrase(len(phrases), cur, gap))
+                        cur, gap = [], 0.5
+                    cur_span = sp
                 slot = Slot(cr, m.index + 1, k, t + off, si, cr.notes[-1].pitch,
                             any(a < cr.tick <= b for a, b in slurs), any(a == cr.tick < b for a, b in slurs))
                 cur.append(slot)
@@ -722,7 +748,7 @@ def vocal_line(score, staff: int) -> VocalLine:
                     ex_meas.add(m.index + 1)
     ins = st.part.instrument()
     return VocalLine(staff, staff_name(st), ins.instrument_id or "", slots, phrases,
-                     {k + 1: v for k, v in passes.items()}, sorted(other), existing, sorted(ex_meas))
+                     {k + 1: v for k, v in passes.items()}, sorted(other), existing, sorted(ex_meas), unsung)
 
 
 # ==============================================================================
@@ -756,10 +782,12 @@ def _anchor(line: TextLine, gap: float) -> float:
 
 
 def align(lines: Sequence[TextLine], phrases: Sequence[Phrase],
-          pins: Optional[Dict[int, Set[int]]] = None) -> List[Match]:
+          pins: Optional[Dict[int, Set[int]]] = None, sung: bool = False) -> List[Match]:
     """The cheapest monotone matching of the sung lines to the phrases (module docstring); ``pins``: line index ->
-    the phrases its match must start with."""
+    the phrases its match must start with; ``sung``: the phrases are where the recording's singer sings (a phrase
+    without a line costs more than a held syllable)."""
     pins = pins or {}
+    skip_note = C_SKIP_SUNG if sung else C_SKIP_NOTE
     n, m = len(lines), len(phrases)
     notes = [len(p.slots) for p in phrases]
     INF = float("inf")
@@ -778,7 +806,7 @@ def align(lines: Sequence[TextLine], phrases: Sequence[Phrase],
             if c0 == INF:
                 continue
             if j0 < m:          # (on a tie, sing the earlier phrase: skipping costs a hair more early on)
-                relax(i0, j0 + 1, c0 + C_SKIP_PHRASE + C_SKIP_NOTE * notes[j0] + 1e-3 * (m - j0) / m,
+                relax(i0, j0 + 1, c0 + C_SKIP_PHRASE + skip_note * notes[j0] + 1e-3 * (m - j0) / m,
                       Match("phrase", [], [j0]))
             if i0 >= n:
                 continue
@@ -1012,10 +1040,26 @@ def _pins(text: LyricsText, phrases: Sequence[Phrase], warnings: List[str]) -> D
     return pins
 
 
+def read_sung(path: str) -> List[Tuple[int, int]]:
+    """``recordings vocal-spans``' file: {"spans": [[from, to], ...]} in unrolled ticks."""
+    import json
+    try:
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+        spans = sorted((int(a), int(b)) for a, b in d["spans"])
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise LyricsImportError(f"--sung {path}: {e}")
+    if any(b <= a for a, b in spans) or any(spans[k][1] > spans[k + 1][0] for k in range(len(spans) - 1)):
+        raise LyricsImportError(f"--sung {path}: the stretches must be in order and not overlap")
+    return spans
+
+
 def plan_import(score_path: str, text: str, staff: Optional[int] = None, keep_parentheses: bool = False,
-                replace: bool = False, split: Optional[Callable[[str], List[str]]] = None) -> ImportPlan:
+                replace: bool = False, split: Optional[Callable[[str], List[str]]] = None,
+                sung: Optional[Sequence[Tuple[int, int]]] = None) -> ImportPlan:
     """Everything :func:`build_mscz` writes, and the report (:func:`format_plan`); writes nothing.  ``staff``:
-    the vocal staff, 1-based (default: the score's one vocal staff)."""
+    the vocal staff, 1-based (default: the score's one vocal staff); ``sung``: where the recording's singer sings
+    (:func:`vocal_line`)."""
     from .mscx import read_score
     with open(score_path, "rb") as f:
         mscz = f.read()
@@ -1036,7 +1080,10 @@ def plan_import(score_path: str, text: str, staff: Optional[int] = None, keep_pa
                                      "several vocal staves (" + ", ".join(str(v + 1) for v in vs) + ")")
                                     + f"; name one with --staff N (staves: {names})")
         st = vs[0]
-    vocal = vocal_line(score, st)
+    vocal = vocal_line(score, st, sung)
+    if sung is not None:
+        warnings.append(f"{vocal.unsung} notes of the vocal line fall where the recording's singer is silent: no "
+                        f"syllable there")
     if vocal.existing and not replace:
         from .scorefix import ranges
         raise LyricsImportError(f"staff {st + 1} already has {vocal.existing} syllables "
@@ -1048,7 +1095,7 @@ def plan_import(score_path: str, text: str, staff: Optional[int] = None, keep_pa
     if not lt.sung:
         raise LyricsImportError("the lyrics file has no sung line")
     pins = _pins(lt, vocal.phrases, warnings)
-    matches = align(lt.sung, vocal.phrases, pins)
+    matches = align(lt.sung, vocal.phrases, pins, sung=sung is not None)
     reports = [LineReport(i, ln, -1, []) for i, ln in enumerate(lt.sung)]
     placements: List[Placement] = []
     unsung_phrases: List[int] = []

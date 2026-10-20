@@ -546,6 +546,8 @@ def cmd_recordings(args) -> int:
         if args.action == "confirm":
             return R.decide_link(lib, s, args.items[0], args.items[1] if len(args.items) > 1 else None,
                                  args.variant, log=_p)
+        if args.action == "vocal-spans":
+            return R.vocal_spans(lib, s, args.items[0], vocals=args.vocals, log=_p)
         if args.action == "mute-solos":
             return R.mute_solos(lib, s, args.items[0], source=args.source, offset=args.offset,
                                 min_seconds=args.min_seconds, log=_p)
@@ -677,7 +679,7 @@ def cmd_lyrics(args) -> int:
     try:
         text = LI.read_text(args.lyrics)
         plan = LI.plan_import(args.score, text, staff=args.staff, keep_parentheses=args.keep_parentheses,
-                              replace=args.replace)
+                              replace=args.replace, sung=LI.read_sung(args.sung) if args.sung else None)
     except LI.LyricsImportError as e:
         _p(f"error: {e}")
         return 2
@@ -940,13 +942,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             your decision: use the pick (or RECORDING, a path below the music folder)
   reject SONG
             your decision: no recording for this song
+  vocal-spans SONG [--vocals FILE]
+            where the recording's singer sings, on the score's clock (tempo first), for lyrics import --sung
   mute-solos SONG [--source FILE] [--offset S] [--min-seconds S]
             a concerto's recording as its companion, the passages where the piano plays alone muted (the score
             follows the recording: tempo first); <solo_mute_dir>/<song>.mp3 and the audio_map entry
 
 Settings: [recordings] in pianovision.toml (music_dir, out_dir, work_dir, python, model, thresholds).""")
     p.add_argument("action", choices=("match", "align", "retime", "tempo", "status", "confirm", "reject", "route",
-                                      "mute-solos"))
+                                      "mute-solos", "vocal-spans"))
     p.add_argument("items", nargs="*", metavar="ARG",
                    help="confirm: SONG [RECORDING]; reject: SONG; route: SONG vocals|generated|auto; tempo: [SONG ...]")
     p.add_argument("--only", action="append", default=[], metavar="GLOB",
@@ -976,6 +980,8 @@ Settings: [recordings] in pianovision.toml (music_dir, out_dir, work_dir, python
                         "a second pass); the alignment keeps to them and the measures start there exactly")
     p.add_argument("--mscore", help="tempo: MuseScore executable (default: [accompaniment] mscore)")
     p.add_argument("--source", metavar="FILE", help="mute-solos: the audio to mute (default: the link's full mix)")
+    p.add_argument("--vocals", metavar="FILE", help="vocal-spans: the recording's vocals stem (default: separated "
+                                                    "with Demucs, cached)")
     p.add_argument("--offset", type=float, help="mute-solos: the audio's offset (default: recordings tempo's)")
     p.add_argument("--min-seconds", type=float, help="mute-solos: shortest piano-alone stretch muted "
                                                      "(default: [recordings] solo_min_seconds)")
@@ -1034,6 +1040,9 @@ and MuseScore 4.7 headless opens and exports it; on a failure nothing is written
     p.add_argument("--replace", action="store_true", help="remove the staff's existing lyrics first (otherwise a "
                                                           "staff with lyrics is refused)")
     p.add_argument("--keep-parentheses", action="store_true", help="sing parenthesized text too")
+    p.add_argument("--sung", metavar="FILE", help="where the recording's singer sings (recordings vocal-spans): notes "
+                                                  "outside it get no syllable, a breath between two stretches starts "
+                                                  "a phrase")
     p.add_argument("--no-musescore", action="store_true", help="skip MuseScore's check of the edited score")
     p.add_argument("--mscore", help="MuseScore executable (default: [accompaniment] mscore of pianovision.toml)")
     p.add_argument("--work", help="scratch folder for the check (default: ~/.cache/nw-lyricsimport)")
