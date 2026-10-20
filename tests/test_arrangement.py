@@ -16,7 +16,7 @@ from pianovision.library import Config, Library, scan_library
 from pianovision.pvjson import TRACK_PRIMARY, classify_tracks
 from pianovision.smf import MidiFile, Msg
 
-from tests.scoregen import chord, make_piano_score
+from tests.scoregen import rest, chord, make_piano_score
 
 Q = 480
 W = 4 * Q
@@ -486,8 +486,47 @@ class PianoFromTest(ScoreFixtures):
         self.assertEqual(sorted((n["note"], n["velocity"], n["accent"]) for n in mine),
                          sorted((n["note"], n["velocity"], n["accent"]) for n in own))
 
+    def test_the_solos_orchestra_reduction_is_the_orchestra(self):
+        # the orchestral piano part rests in measures 3-4 while the violin plays; the solo plays the music there
+        rh, lh = piano_measures(range(10))
+        for i in (2, 3):
+            rh[i], lh[i] = [[rest("whole")]], [[rest("whole")]]
+        vln = [[[chord("whole", HARMONY[i][1][-1] + 12)]] for i in range(10)]
+        orch = make_piano_score(os.path.join(self.scores, "Test", "orch.mscz"), rh, lh, title="Song",
+                                parts=(("Violin", 40, [vln]),))
+        opts = self.piano_options()
+        opts["partner"]["reduction"] = "orchestra"
+        c = convert_mscz(orch, parts=True, options=opts)
+        plain = convert_mscz(orch, parts=True, options=self.piano_options())
+        measures = lambda notes: sorted({n["ticksStart"] // W for n in notes})
+        orig = [n for h in ("right", "left") for n in c.parts["parts"]["original"][h]]
+        orchestra = [n for h in ("right", "left") for n in c.parts["parts"]["orchestra"][h]]
+        self.assertNotIn(2, measures(orig))
+        self.assertNotIn(3, measures(orig))
+        # the solo's chords and bass of measures 3-4 are the orchestra now, in their hands; the violin's notes there go
+        got = sorted((n["ticksStart"] // W, n["note"]) for n in c.parts["parts"]["orchestra"]["right"]
+                     if n["ticksStart"] // W in (2, 3))
+        self.assertEqual(got, sorted([(2, p) for p in HARMONY[2][1]] + [(3, p) for p in HARMONY[3][1]]))
+        self.assertEqual(sorted(n["note"] for n in c.parts["parts"]["orchestra"]["left"] if n["ticksStart"] // W in (2, 3)),
+                         sorted([HARMONY[2][0], HARMONY[3][0]]))
+        # elsewhere the orchestra is the violin as before
+        before = [n for h in ("right", "left") for n in plain.parts["parts"]["orchestra"][h] if n["ticksStart"] // W not in (2, 3)]
+        after = [n for n in orchestra if n["ticksStart"] // W not in (2, 3)]
+        self.assertEqual(sorted((n["ticksStart"], n["note"]) for n in after), sorted((n["ticksStart"], n["note"]) for n in before))
+        notes = c.arrangement["notes"]
+        self.assertEqual((notes["to_orchestra"], notes["replaced_orchestra"]), (8, 2))
+        self.assertEqual(c.arrangement["to_orchestra"], ["3-4"])
+        self.assertIn("The orchestra arranged for piano", A.report_markdown(c.arrangement))
+        # without the option the solo plays them as the piano part
+        self.assertIn(2, measures(n for h in ("right", "left") for n in plain.parts["parts"]["original"][h]))
+
     def test_options(self):
         o = buildopts.BuildOptions.from_dict("a.mscz", {"simplified_from": "b.mscz", "piano_from": "simplified_from"})
+        r = buildopts.BuildOptions.from_dict("a.mscz", {"simplified_from": "b.mscz", "piano_from": "simplified_from",
+                                                        "reduction": "orchestra"})
+        self.assertEqual(r.render_options("/s")["partner"]["reduction"], "orchestra")
+        with self.assertRaises(buildopts.OptionsError):
+            buildopts.BuildOptions.from_dict("a.mscz", {"simplified_from": "b.mscz", "reduction": "orchestra"})
         self.assertEqual(o.render_options("/s")["partner"]["piano"], True)
         plain = buildopts.BuildOptions.from_dict("a.mscz", {"simplified_from": "b.mscz"})
         self.assertNotIn("piano", plain.render_options("/s")["partner"])

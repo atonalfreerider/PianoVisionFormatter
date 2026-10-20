@@ -153,7 +153,7 @@ def convert_mscz(mscz_path: str, compat: Optional[Compat] = None, orchestra: boo
     if partner and partner["kind"] == "simplified" and partner.get("piano"):
         # piano_from: the solo is the song's piano part where the alignment maps its measures
         from .arrangement import PianoFrom
-        piano = PianoFrom(pr, score)
+        piano = PianoFrom(pr, score, reduction=partner.get("reduction") == "orchestra")
     prov: Optional[Dict[str, list]] = {} if provenance else None
     parts_out: Optional[dict] = {} if parts else None
     c = _finish(midi, root, mscz_path, orchestra, simplified, keep_midi, compat.metadata, prov,
