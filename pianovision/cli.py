@@ -525,6 +525,16 @@ def cmd_recordings(args) -> int:
             return 1 if stats.get("errors") else 0
         if args.action in ("align", "retime"):
             return R.run(lib, s, only=args.only, force=args.force, retime=args.action == "retime", log=_p)
+        if args.action == "tempo":
+            mscore = None
+            if not args.no_musescore and not args.dry_run:
+                mscore = args.mscore
+                if not mscore:
+                    from .accompaniment import load_settings as acc_settings
+                    mscore = acc_settings(lib.cfg.path).path("mscore")
+            return R.tempo(lib, s, list(args.items) + list(args.only), dry_run=args.dry_run, out=args.copy,
+                           in_place=args.in_place, backup=args.backup, yes=args.yes, unroll=args.unroll,
+                           mscore=mscore, force=args.force, log=_p)
         if args.action == "status":
             return R.status(lib, s, log=_p)
         if not args.items:
@@ -869,6 +879,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         description="Recordings from the music folder ([recordings] music_dir, read only) as Note Waterfall's "
                     "companion audio, on each song's own timeline.",
         epilog="""actions:
+  tempo [SONG ...]
+            sung songs: the recording leads (the default for sung pop and film songs). The score's tempo map
+            is rewritten so every measure as played lasts what the recording's lasts, and Note Waterfall plays
+            the ORIGINAL recording, unstretched, at an offset (audioFileTime = songTime + offset). Measures in
+            the recording: the alignment, refined on the recording's detected beats (madmom with
+            [recordings] beats_python, and librosa), a confidence per measure. Repeats whose passes the
+            recording plays at other tempi (one tempo per written measure off by more than
+            repeat_tolerance_ms, 40) are written out, each pass's lyrics on its own copy as verse 1. Writes a
+            verified copy (formatter render within 30 ms of the recording's measures and beats, same notes and
+            lyrics, the parts file, MuseScore opens it) to <tempo_dir>/<song>/ with report.md and
+            audio_map.entry.json; -o COPY also there; --in-place --backup DIR puts that copy over the score
+            (refused if the score changed since; asks unless --yes); --dry-run reports without writing a copy.
+            Default SONG: every sung song with a usable recording.
   match     every song's route: 'vocals' (sung pop/film songs: the singing of a recording you own) or
             'generated' (classical and instrumental: the score's orchestra rendered by `accompaniment`, never a
             recording), from the score's vocal staves and lyrics and a TypeSafe judgment (sung? what kind of
@@ -889,13 +912,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             your decision: no recording for this song
 
 Settings: [recordings] in pianovision.toml (music_dir, out_dir, work_dir, python, model, thresholds).""")
-    p.add_argument("action", choices=("match", "align", "retime", "status", "confirm", "reject", "route"))
+    p.add_argument("action", choices=("match", "align", "retime", "tempo", "status", "confirm", "reject", "route"))
     p.add_argument("items", nargs="*", metavar="ARG",
-                   help="confirm: SONG [RECORDING]; reject: SONG; route: SONG vocals|generated|auto")
+                   help="confirm: SONG [RECORDING]; reject: SONG; route: SONG vocals|generated|auto; tempo: [SONG ...]")
     p.add_argument("--only", action="append", default=[], metavar="GLOB",
                    help="only songs whose score path or song name matches (repeatable)")
     p.add_argument("--refresh", action="store_true", help="match: ask again even where the question is unchanged")
-    p.add_argument("--dry-run", action="store_true", help="match: list the candidates, ask nothing, write nothing")
+    p.add_argument("--dry-run", action="store_true", help="match: list the candidates, ask nothing, write nothing; "
+                                                          "tempo: the analysis and decisions, no copy")
     p.add_argument("--force", action="store_true", help="align/retime: again even if nothing changed")
     p.add_argument("--variant", choices=("vocals", "full", "no_piano"),
                    help="confirm: the file to retime and deliver (default for a sung song: its vocals)")
@@ -904,6 +928,16 @@ Settings: [recordings] in pianovision.toml (music_dir, out_dir, work_dir, python
     p.add_argument("--out", help="output folder (default: [recordings] out_dir)")
     p.add_argument("--work", help="scratch folder (default: [recordings] work_dir)")
     p.add_argument("--python", help="a Python with numpy, scipy, soundfile, librosa (default: [recordings] python)")
+    p.add_argument("-o", "--copy", metavar="COPY", help="tempo: also write the verified copy here")
+    p.add_argument("--in-place", action="store_true", help="tempo: put the verified copy over the score (needs "
+                                                           "--backup)")
+    p.add_argument("--backup", metavar="DIR", help="tempo --in-place: the original is copied here first")
+    p.add_argument("-y", "--yes", action="store_true", help="tempo --in-place: do not ask")
+    p.add_argument("--unroll", choices=("auto", "always", "never"), default="auto",
+                   help="tempo: write the repeats out (auto: when one tempo per written measure would be off by "
+                        "more than [recordings] repeat_tolerance_ms)")
+    p.add_argument("--no-musescore", action="store_true", help="tempo: skip MuseScore's check of the copy")
+    p.add_argument("--mscore", help="tempo: MuseScore executable (default: [accompaniment] mscore)")
     p.set_defaults(fn=cmd_recordings)
 
     p = sub.add_parser("scorefix", help="a score's repeat structure; structural fixes (tempo, voltas, repeats, "

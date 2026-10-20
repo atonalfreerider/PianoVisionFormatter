@@ -15,8 +15,12 @@ put on the song's timeline (``python -m pianovision recordings match | align | r
 2. **Align** (``tools/recording_align.py align``, with ``[recordings] python``): the recording's full mix against a
    synthesis of the song's notes (the parts file's original piano part and orchestra, on the song's clock):
    transposition, chroma DTW, the matched pieces and the structural gaps, beat-level refinement on onsets.
-3. **Retime**: the delivered variant (the piano-removed stem when the recording has one, else the full mix; your
-   ``decision`` may choose) cut, padded and stretched onto the song's timeline (rubberband), retuned to A440 when it
+3. **The recording leads** (sung songs, the default: ``recordings tempo``, :mod:`pianovision.rectempo`): the
+   score's tempo map is rewritten so its measures last what the recording's do, and the original file plays at an
+   offset, never stretched; ``align`` / ``retime`` propose it once the score carries that tempo map.
+   **Retime** (``"timing": "score"`` in a link's decision): the delivered variant (the piano-removed stem when the
+   recording has one, else the full mix; your ``decision`` may choose) cut, padded and stretched onto the song's
+   timeline (rubberband), retuned to A440 when it
    is off by ``retune_cents`` or more, then loudness-normalised and encoded like the accompaniment
    (:func:`pianovision.accompaniment.encode_mp3`: lands at sample 0 in every decoder).  Verified: the retimed audio
    against the song's notes per measure (chroma agreement, onset lag).
@@ -111,6 +115,15 @@ class Settings:
     timeout: int = 7200
     api_timeout: float = 60.0
     workers: int = 6
+    # the recording leads (recordings tempo): the score's tempo map follows the recording, the original file plays
+    sung_timing: str = "recording"      # sung songs: "recording" (the score follows the recording, nothing is
+                                        # stretched) or "score" (the recording stretched onto the score: retime)
+    tempo_dir: str = "~/.cache/nw-rectempo"             # per song: analysis, the proposed copy, its report
+    beats_python: str = ""              # a Python with madmom (beat detection; "" = librosa's beats only)
+    beats_script: str = "tools/beat_activations.py"
+    tempo_tolerance_ms: float = 20.0    # a position inside a measure lands this close to the recording's time
+    repeat_tolerance_ms: float = 40.0   # repeats stay when one tempo per written measure keeps within this
+    min_free_mb: int = 6144             # heavy steps wait for this much available memory
 
     def path(self, name: str) -> str:
         return os.path.abspath(os.path.expanduser(getattr(self, name)))
@@ -133,7 +146,7 @@ def load_settings(config_path: Optional[str], **overrides) -> Settings:
     for k, v in overrides.items():
         if v is not None:
             setattr(s, k, v)
-    for name in ("links", "script", "separator_script"):
+    for name in ("links", "script", "separator_script", "beats_script"):
         v = os.path.expanduser(getattr(s, name))
         if v and not os.path.isabs(v):
             setattr(s, name, os.path.normpath(os.path.join(base, v)))
@@ -819,7 +832,9 @@ LINKS_COMMENT = [
     "  judged        model, time, the question's hash, the candidates and the raw answers",
     "  decision      yours (`recordings confirm|reject`): {} confirms the pick; {\"recording\": \"<path>\"} links",
     "                another recording; {\"recording\": null} rejects; \"variant\": \"vocals\", \"full\" or",
-    "                \"no_piano\"",
+    "                \"no_piano\"; \"timing\": \"recording\" (the score follows the recording, which plays",
+    "                unstretched: `recordings tempo`; the default for sung songs) or \"score\" (the recording is",
+    "                stretched onto the score: `recordings retime`)",
 ]
 FORMAT = 2
 
@@ -858,6 +873,16 @@ def effective_link(entry: dict) -> Optional[Tuple[str, str, str]]:
     if entry.get("status") == STATUS_LINKED and entry.get("recording"):
         return entry["recording"], entry.get("variant") or "", "auto"
     return None
+
+
+def effective_timing(entry: Optional[dict], s: "Settings") -> str:
+    """Who leads for a sung song: "recording" (the score's tempo map follows the recording, which plays as it is:
+    ``recordings tempo``) or "score" (the recording is stretched onto the score: ``recordings retime``); your
+    ``decision`` ``"timing"`` in the links file, else ``[recordings] sung_timing``."""
+    d = (entry or {}).get("decision")
+    t = d.get("timing") if isinstance(d, dict) else None
+    return t if t in ("recording", "score") else (s.sung_timing if s.sung_timing in ("recording", "score")
+                                                    else "recording")
 
 
 def raw_answers(answers: Dict[str, dict], n: int) -> dict:
@@ -1279,6 +1304,9 @@ def process(lib, s: Settings, job: Job, recs: Dict[str, Recording], state: dict,
         state[song.output] = res
         return res
 
+    if effective_timing(job.entry, s) == "recording":
+        return _recording_led(lib, s, job, res, al, src, state)
+
     # deliver: the vocals (or a full mix / stem you chose) on the song's timeline
     separated = deliver is None
     if separated:
@@ -1359,6 +1387,46 @@ def process(lib, s: Settings, job: Job, recs: Dict[str, Recording], state: dict,
         for k in CACHED:
             res[k] = prev.get(k)
     _finish_deliver(s, res, al, ref, song)
+    state[song.output] = res
+    return res
+
+
+def tempo_state(s: Settings, song: Song) -> dict:
+    """What ``recordings tempo`` last did for the song (``<tempo_dir>/<song>/tempo.json``), or {}."""
+    return _load_cache(os.path.join(s.path("tempo_dir"), song.stem, "tempo.json"))
+
+
+def _recording_led(lib, s: Settings, job: Job, res: dict, al: dict, src: str, state: dict) -> dict:
+    """A sung song whose recording leads: nothing is stretched; the companion is the original recording at the
+    offset ``recordings tempo`` found, usable once the score carries the recording's tempo map (its verified copy
+    applied) and the key is the same."""
+    from .rectempo import sha256_file
+    song = job.song
+    res["timing"] = "recording"
+    res["audio"] = src
+    st = tempo_state(s, song)
+    score = os.path.join(lib.cfg.scores, song.rel)
+    problems = []
+    if not st:
+        problems.append("the score does not follow the recording yet: `recordings tempo SONG`, then apply its copy "
+                        "(`recordings tempo SONG --in-place --backup DIR`)")
+    else:
+        cur = sha256_file(score) if os.path.isfile(score) else None
+        applied = (st.get("applied") or {}).get("sha256")
+        if cur != applied:
+            problems.append("the verified copy is not applied yet (`recordings tempo SONG --in-place --backup DIR`)"
+                            if cur == st.get("score_sha256") else
+                            "the score changed since `recordings tempo` made its copy: run it again")
+        if not st.get("ok"):
+            problems.append("the copy failed its checks: " + ", ".join(c["name"] for c in st.get("checks", [])
+                                                                       if not c["ok"]))
+        if os.path.abspath(st.get("recording", "")) != os.path.abspath(src):
+            problems.append(f"the tempo map was made with another recording ({st.get('recording')})")
+        res["offset"] = st.get("offset")
+        res["tempo"] = {k: st.get(k) for k in ("copy", "offset", "repeats", "verify", "plan")}
+    if al["key"]["offset"]:
+        problems.append(f"the recording is {al['key']['offset']:+d} semitones from the score")
+    res["checks"] = {"ok": not problems, "problems": problems}
     state[song.output] = res
     return res
 
@@ -1539,6 +1607,23 @@ def proposal(s: Settings, state: dict) -> dict:
     have = current_audio_map(s)
     songs = {}
     for name, r in sorted(state.get("songs", {}).items()):
+        if r.get("kind") == "deliver" and r.get("timing") == "recording":
+            ok = r["checks"]["ok"]
+            t = r.get("tempo") or {}
+            v = (t.get("verify") or {}).get("bar_starts") or {}
+            note = (f"the original recording {r['recording']}, not stretched: the score's tempo map follows it "
+                    f"(pianovision recordings tempo"
+                    + (", repeats written out" if (t.get("repeats") or {}).get("unrolled") else "")
+                    + f"); offset = the recording time of the song's start; measure starts within "
+                    f"{v.get('p95_ms')} ms (p95) of the recording's")
+            if not ok:
+                note += "; NOT ENABLED: " + "; ".join(r["checks"]["problems"])
+            e = {"audio": _tilde(r["audio"]), "offset": round(float(r.get("offset") or 0.0), 3), "enabled": ok,
+                 "note": note}
+            if name in have:
+                e["replaces"] = have[name].get("audio")
+            songs[name] = e
+            continue
         if r.get("kind") != "deliver" or not r.get("mp3"):
             continue
         ok = r["checks"]["ok"]
@@ -1563,9 +1648,11 @@ def proposal(s: Settings, state: dict) -> dict:
             e["replaces"] = have[name].get("audio")
         songs[name] = e
     return {"_comment": "Proposed entries for Note Waterfall's Tools/audio_map.json from `python3 -m pianovision "
-                        "recordings retime`: sung songs, the singing of a recording you own (copy the ones you want; "
-                        "'replaces' is the entry there now). The mp3s are staged under [recordings] out_dir: move "
-                        "them somewhere durable before deploying.",
+                        "recordings align|retime`: sung songs. Where the recording leads (the default), the original "
+                        "file you own at the offset `recordings tempo` found (enabled once its copy is applied to "
+                        "the score); else the singing of the recording stretched onto the song (the mp3s are staged "
+                        "under [recordings] out_dir: move them somewhere durable before deploying). Copy the ones "
+                        "you want; 'replaces' is the entry there now.",
             "songs": songs}
 
 
@@ -1667,6 +1754,11 @@ def report_markdown(s: Settings, state: dict, links: dict, skipped: Sequence[str
         lines.append("")
         lines.append(f"* route {r.get('route')} ({r.get('kind')}): {r['recording']}"
                      + (f" [{r['variant']}]" if r.get("variant") else "") + f"; aligned with {r['source']}")
+        if r.get("timing") == "recording":
+            t = r.get("tempo") or {}
+            lines.append(f"* the recording leads (nothing stretched): the original file at offset {r.get('offset')} s; "
+                         f"tempo copy {t.get('copy')}"
+                         + (" (repeats written out)" if (t.get("repeats") or {}).get("unrolled") else ""))
         if r.get("vocal_activity"):
             va = r["vocal_activity"]
             lines.append(f"* singing in {va['activity']:.0%} of the matched recording (vocals {va['vocals_to_mix_db']} "
@@ -1759,6 +1851,111 @@ def run(lib, s: Settings, only: Sequence[str] = (), force: bool = False, retime:
     log(f"report: {md}")
     log(f"audio_map proposal: {prop}")
     return 1 if failures else 0
+
+
+# ------------------------------------------------------------------------------
+# tempo: the score follows the recording
+# ------------------------------------------------------------------------------
+
+def tempo(lib, s: Settings, specs: Sequence[str] = (), dry_run: bool = False, out: Optional[str] = None,
+          in_place: bool = False, backup: Optional[str] = None, yes: bool = False, unroll: str = "auto",
+          mscore: Optional[str] = None, force: bool = False, log: Log = print) -> int:
+    """``recordings tempo``: for the named sung songs (default: every sung song with a usable recording whose
+    timing is the recording's), the score timed to the recording (:mod:`pianovision.rectempo`): a verified copy in
+    ``<tempo_dir>/<song>/`` (``-o``: also there), or with ``in_place`` that copy over the score after a backup."""
+    import shutil
+    from . import rectempo as RT
+    links = load_links(s.links)
+    files, _videos = scan_music(s, log)
+    recs = {r.key: r for r in group_recordings(files)}
+    jobs, skipped = jobs_for(lib, s, links, specs)
+    jobs = [j for j in jobs if j.kind == "deliver" and (specs or effective_timing(j.entry, s) == "recording")]
+    for x in skipped:
+        log(f"skipped: {x}")
+    if not jobs:
+        log("no sung song with a usable recording" + (f" matches {', '.join(specs)}" if specs else ""))
+        return 2
+    if out and len(jobs) != 1:
+        log("error: -o COPY names one song's copy; name one song")
+        return 2
+    if in_place and not backup:
+        log("error: --in-place needs --backup DIR (the original is copied there first)")
+        return 2
+    failures = 0
+    for job in jobs:
+        song = job.song
+        src, _deliver, _variant = recording_files(s, job, recs)
+        score = os.path.join(lib.cfg.scores, song.rel)
+        e = lib.manifest.entries.get(song.rel) or {}
+        opts = RT.Options(work=os.path.join(s.path("tempo_dir"), song.stem), python=s.python, script=s.script,
+                          beats_python=s.beats_python, beats_script=s.beats_script,
+                          tolerance=s.tempo_tolerance_ms / 1000.0, repeat_tolerance=s.repeat_tolerance_ms / 1000.0,
+                          unroll=unroll, mscore=mscore, min_free_mb=s.min_free_mb, force=force, tail=s.tail,
+                          timeout=s.timeout)
+        log(f"{song.output}  <- {job.recording} (the original file; the score follows it)")
+        try:
+            st = tempo_state(s, song)
+            fresh = (st and not force and st.get("ok") and os.path.isfile(score)
+                     and RT.sha256_file(score) == st.get("score_sha256") and st.get("recording_sig") == RT._sig(src)
+                     and st.get("copy") and os.path.isfile(st["copy"]) and RT.sha256_file(st["copy"]) ==
+                     st.get("copy_sha256"))
+            if in_place and fresh:
+                res = st
+                log(f"  the verified copy {st['copy']} is current (the score and the recording unchanged)")
+            else:
+                res = RT.run_song(score, src, opts, RT_compat(lib, e), lib.render_options(song.rel),
+                                  lib.cfg.orchestra, lib.cfg.simplified, log, dry_run=dry_run)
+        except (RT.RecTempoError, RecordingsError, OSError, ValueError, KeyError, subprocess.TimeoutExpired) as ex:
+            log(f"  FAILED: {ex}")
+            failures += 1
+            continue
+        _log_tempo(res, log)
+        if dry_run:
+            continue
+        if out:
+            shutil.copyfile(res["copy"], out)
+            log(f"  copy: {out}")
+        if in_place:
+            if not res.get("ok"):
+                log("  not applied: the copy failed its checks")
+                failures += 1
+                continue
+            if not yes:
+                import sys
+                if not sys.stdin.isatty():
+                    log("error: no terminal to confirm; pass --yes")
+                    return 2
+                if input(f"overwrite {score} (original to {backup})? [y/N] ").strip().lower() != "y":
+                    continue
+            try:
+                RT.apply_copy(score, opts.work, backup, log)
+            except RT.RecTempoError as ex:
+                log(f"  not applied: {ex}")
+                failures += 1
+    return 1 if failures else 0
+
+
+def RT_compat(lib, entry: dict):
+    from .render import Compat
+    return Compat.from_dict(lib._verify_compat(entry))
+
+
+def _log_tempo(res: dict, log: Log) -> None:
+    b, r = res["bars"], res["repeats"]
+    log(f"  {b['measures']} measures as played in the recording {b['recording_seconds']} s; confidence "
+        f"{b['confidence']}; detector {b['primary_detector']}, {b['anchors']} beats placed")
+    log(f"  repeats {r['repeated_measures'] and 'm. ' + ','.join(map(str, r['repeated_measures'][:3])) + '...' or 'none'}:"
+        f" one tempo per written measure off by up to {r['shared_tempo_max_ms']} ms -> "
+        + ("written out" if r["unrolled"] else "kept"))
+    log(f"  offset {res['offset']:+.3f} s; key {res['key_offset']:+d}; tempo marks {res['plan']['marks']}")
+    for c in res.get("checks") or []:
+        log(f"  {c['name']}: {'ok' if c['ok'] else 'FAILED'}: {c['detail']}")
+    v = (res.get("verify") or {}).get("recording_vs_copy")
+    if v:
+        log(f"  the recording against the copy's notes: {v}")
+    if res.get("copy"):
+        log(f"  report: {os.path.join(os.path.dirname(res['copy']), 'report.md')}")
+        log(f"  audio_map entry: {json.dumps(res['audio_map'])}")
 
 
 # ------------------------------------------------------------------------------
