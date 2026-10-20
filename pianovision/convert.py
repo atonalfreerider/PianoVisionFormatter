@@ -49,10 +49,13 @@ class NoteSource:
     grace: Optional[int] = None
     tick: Optional[Fraction] = None   # score position (whole notes) of the chord
     track: int = -1                # the song's MIDI track (a staff; ``orchestra_from``: another score's after its own)
+    arranged: bool = False         # a piano solo's note standing in for the score's piano part (piano_from): no note
 
     def to_dict(self) -> dict:
         d = {"hand": self.hand, "index": self.index, "ticksStart": self.ticks, "midi": self.midi,
              "velocity": self.velocity}
+        if self.arranged:
+            d["arranged"] = True
         if self.note is not None:
             d.update(staff=self.staff, measure=self.measure, voice=self.voice, chord=self.chord,
                      element=self.element, tick=str(self.tick))
@@ -65,7 +68,7 @@ def note_source(hand: str, index: int, n) -> NoteSource:
     """NoteSource of a pvjson Note built from a provenance render."""
     src = n.src
     ns = NoteSource(hand=hand, index=index, ticks=n.ticks, midi=n.midi, velocity=n.raw_velocity, note=src,
-                    track=getattr(n, "track", -1))
+                    track=getattr(n, "track", -1), arranged=getattr(n, "arranged", None) is not None)
     if src is not None and src.chord is not None and src.chord.xml_path is not None:
         ns.staff, ns.measure, ns.voice, ns.chord = src.chord.xml_path
         ns.element = src.xml_index
@@ -117,8 +120,9 @@ def convert_mscz(mscz_path: str, compat: Optional[Compat] = None, orchestra: boo
     ``options``: the score's build options (:meth:`pianovision.buildopts.BuildOptions.render_options`): its title
     and composer, its piano staves and hands (:mod:`pianovision.handsplit`), and a partner score
     (:mod:`pianovision.timeline`): with ``simplified_from`` the song is this orchestral score on the piano solo's
-    clock and, with ``parts``, the solo's piano part its simplified part; with ``orchestra_from`` the song is this
-    solo with the orchestral score's orchestra (the report in ``Converted.arrangement``)."""
+    clock and, with ``parts``, the solo's piano part its simplified part (and, with the partner's ``piano``,
+    ``piano_from``, the song's piano part: :class:`pianovision.arrangement.PianoFrom`); with ``orchestra_from`` the
+    song is this solo with the orchestral score's orchestra (the report in ``Converted.arrangement``)."""
     from .handsplit import apply_piano_options
     compat = compat or Compat()
     partner = (options or {}).get("partner")
@@ -144,10 +148,15 @@ def convert_mscz(mscz_path: str, compat: Optional[Compat] = None, orchestra: boo
         pr = pair(partner["path"], partner.get("compat"), partner.get("options"), mscz_path, compat, own, SONG_SOLO,
                   partner.get("measure_map", "auto"), solo_render=Rendered(score, renderer, midi))
         orch_stats = inject_orchestra(midi, pr, partner.get("rel", ""))
+    piano = None
+    if partner and partner["kind"] == "simplified" and partner.get("piano"):
+        # piano_from: the solo is the song's piano part where the alignment maps its measures
+        from .arrangement import PianoFrom
+        piano = PianoFrom(pr, score)
     prov: Optional[Dict[str, list]] = {} if provenance else None
     parts_out: Optional[dict] = {} if parts else None
     c = _finish(midi, root, mscz_path, orchestra, simplified, keep_midi, compat.metadata, prov,
-                parts_out, own)
+                parts_out, own, piano)
     c.staves_revised = staves_revised(midi)
     if provenance:
         c.score = score
@@ -156,7 +165,7 @@ def convert_mscz(mscz_path: str, compat: Optional[Compat] = None, orchestra: boo
     if parts:
         if partner and partner["kind"] == "simplified":
             from .arrangement import apply_arrangement
-            c.arrangement = apply_arrangement(partner, pr, score, parts_out)
+            c.arrangement = apply_arrangement(partner, pr, score, parts_out, piano)
         elif partner:
             from .arrangement import orchestra_report
             c.arrangement = orchestra_report(partner, pr, orch_stats, parts_out)
@@ -187,9 +196,9 @@ def convert_midi(midi_path: str, mscz_path: Optional[str] = None, orchestra: boo
 
 def _finish(midi: MidiFile, root: Optional[ET.Element], path: str, orchestra: bool, simplified: bool,
             keep_midi: bool, rules: str, provenance: Optional[dict] = None,
-            parts: Optional[dict] = None, options: Optional[dict] = None) -> Converted:
+            parts: Optional[dict] = None, options: Optional[dict] = None, piano=None) -> Converted:
     song = build_song(midi, root, path, orchestra_mode=orchestra, simplified_mode=simplified,
-                      legacy_metadata=rules, provenance=provenance, parts=parts)
+                      legacy_metadata=rules, provenance=provenance, parts=parts, piano=piano)
     title, artist = song["name"], song["artist"]
     if root is not None:
         title, artist = title_artist(root, path, rules)

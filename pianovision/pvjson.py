@@ -16,7 +16,7 @@ import dataclasses
 import os
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from .metadata import extract_accented_notes, extract_merge_markers, title_artist
 from .smf import MidiFile, merged_messages_seconds
@@ -37,6 +37,10 @@ class Note:
     src: Any = field(default=None, repr=False, compare=False)
     raw_velocity: int = field(default=0, repr=False, compare=False)
     track: int = field(default=-1, repr=False, compare=False)     # MIDI track = content staff of the score
+    # a note of a piano solo arrangement standing in for the score's piano part (pianovision.arrangement.PianoFrom,
+    # piano_from): the parts-file fields it carries besides its own ("simplified": 1, a lyric); its accent and
+    # velocity are the arrangement's (PianoVision's accents are not matched again); None for the score's notes
+    arranged: Optional[Dict[str, Any]] = field(default=None, repr=False, compare=False)
 
 
 @dataclass
@@ -626,6 +630,8 @@ def _apply_accents(result: List[List[Note]], accented_notes, get_measure_for_tic
     by_tick_hand: Dict[Tuple[int, int], List[Note]] = {}
     for hand_idx, hand in enumerate(result):
         for note in hand:
+            if note.arranged is not None:            # an arrangement's note: its accent is the arrangement's
+                continue
             by_tick_hand.setdefault((note.ticks, hand_idx), []).append(note)
     for (tick, _hand_idx), notes in by_tick_hand.items():
         if not notes:
@@ -837,7 +843,8 @@ def build_song(mid: MidiFile, mscx_root: Optional[ET.Element], source_path: str,
                orchestra_mode: bool = True, simplified_mode: bool = True,
                legacy_metadata: Union[bool, str] = True,
                provenance: Optional[Dict[str, List[Note]]] = None,
-               parts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+               parts: Optional[Dict[str, Any]] = None,
+               piano: Optional[Callable[["NoteStreams"], None]] = None) -> Dict[str, Any]:
     """Assemble the PianoVision JSON document.
 
     ``mscx_root`` supplies title/composer, merge markers and accents; without
@@ -849,6 +856,8 @@ def build_song(mid: MidiFile, mscx_root: Optional[ET.Element], source_path: str,
     (``src`` is the score note when the MIDI came from the renderer with provenance).
     ``parts``, when given, receives Note Waterfall's parts of the song (:func:`pianovision.parts.build_parts`:
     ``"doc"``, ``"notes"``, ``"simplified_staff"``); the JSON is the same either way.
+    ``piano``, when given, changes the piano part's notes before anything is built from them (called with the
+    :class:`NoteStreams`; :class:`pianovision.arrangement.PianoFrom`: a piano solo's notes as the piano part).
     """
     tempos = extract_tempo_events(mid)
     if mscx_root is not None:
@@ -863,6 +872,8 @@ def build_song(mid: MidiFile, mscx_root: Optional[ET.Element], source_path: str,
         accents = {}
 
     streams = note_streams(mid)
+    if piano is not None:
+        piano(streams)
     if parts is not None:
         # copies of the notes, taken before PianoVision's accents change them in place
         from .parts import build_parts

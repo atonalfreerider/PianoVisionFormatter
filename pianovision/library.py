@@ -796,6 +796,8 @@ class Library:
                 else:
                     how = (f"{n['mapped']} of {n['arrangement']} arrangement measures mapped, {n['filled']} orchestral "
                            f"measures filled, {n['dropped']} dropped")
+                    if rep.get("piano_from"):
+                        how = f"piano part from {rep['score']}: " + how
                 report.arrangements.append((a.rel, os.path.relpath(md, self.out), how + clock))
         if prune_orphans:
             self._retire_orphans(self.orphans(), report)

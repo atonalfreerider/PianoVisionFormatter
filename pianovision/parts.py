@@ -35,7 +35,11 @@ JSON has for it: ``note`` (MIDI), ``ticksStart``, ``durationTicks``, ``start`` a
 Streams are in time order, as tracksV2 is.  Extra fields:
 
 * simplified part: ``"simplified": 1`` on the notes written on the simplified staves (the others are the
-  original part's notes of measures the simplified staves leave empty);
+  original part's notes of measures the simplified staves leave empty), and on the notes of a piano solo
+  arrangement (``simplified_from``, :mod:`pianovision.arrangement`);
+* original part: ``"simplified": 1`` on the notes of a piano solo arrangement that is the song's piano part
+  (``piano_from``; the others are the score's own notes, in the measures the solo leaves out); Note Waterfall reads
+  a note so marked as one of the simplified notes wherever it is (its hand-edit identity, below);
 * orchestra: ``"staff"``: the score's staff (0-based) the note is written on (an orchestra from a partner score,
   ``orchestra_from``: that score's staves count on after the song's own); ``"program"``: the General MIDI
   program of an orchestra instrument or vocal staff (absent for the 'piano-orchestral' staves); ``"vocal": 1`` on
@@ -55,9 +59,10 @@ matched per part exactly as PianoVision's JSON matches them.
 
 Hand edits (the sidecar's note identity): a note of the ORIGINAL part is (hand, ticksStart, note, occurrence)
 counted among the original part's notes; a note written on the simplified staves is counted among the
-simplified part's notes that carry ``"simplified": 1``.  Notes with the same hand, ticksStart and pitch always
-come from the same staves (same tick, same measure), so the original part's notes have the same identity in
-the simplified part, and in PianoVision's tracksV2 (merged orchestra notes come after them).
+simplified part's notes that carry ``"simplified": 1`` (an arrangement's note in the original part, ``piano_from``,
+among the original part's notes that carry it: the same identity it has in a simplified part).  Notes with the same
+hand, ticksStart and pitch always come from the same staves (same tick, same measure), so the original part's notes
+have the same identity in the simplified part, and in PianoVision's tracksV2 (merged orchestra notes come after them).
 """
 
 from __future__ import annotations
@@ -145,7 +150,10 @@ def build_parts(streams: NoteStreams, accented_notes, pv_notes: List[List[Note]]
                 d = {"note": n.midi, "ticksStart": n.ticks, "durationTicks": n.duration_ticks, "start": n.time,
                      "duration": n.duration, "velocity": n.velocity, "measureInd": int((n.ticks / tpb) / 4),
                      "accent": int(n.accent)}
-                if name == "simplified" and id(n) in staff_ids:
+                if n.arranged is not None:
+                    # a piano solo's note standing in for the score's (piano_from): "simplified": 1 and its lyric
+                    d.update((k, v) for k, v in n.arranged.items() if k not in d)
+                elif name == "simplified" and id(n) in staff_ids:
                     d["simplified"] = 1
                 elif name == "orchestra":
                     d["staff"] = n.track

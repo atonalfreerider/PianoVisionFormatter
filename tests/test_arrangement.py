@@ -401,6 +401,185 @@ class LibraryOptionsTest(ScoreFixtures):
 
 
 # ------------------------------------------------------------------------------
+# piano_from: the arrangement is the song's piano part
+# ------------------------------------------------------------------------------
+
+def pv_notes(data, hand):
+    """A PianoVision JSON's notes of one hand as parts-file NOTE fields, in time order."""
+    doc = json.loads(data)
+    return sorted(((n["start"], n["ticksStart"], n["note"], n["durationTicks"], n["duration"], n["velocity"],
+                    n["accent"]) for m in doc["tracksV2"][hand] for n in m["notes"]))
+
+
+def part_notes(part, hand):
+    return sorted((n["start"], n["ticksStart"], n["note"], n["durationTicks"], n["duration"], n["velocity"],
+                   n["accent"]) for n in part[hand])
+
+
+class PianoFromTest(ScoreFixtures):
+    def piano_options(self):
+        o = self.options()
+        o["partner"]["piano"] = True
+        return o
+
+    def test_the_arrangement_is_the_piano_part_where_it_plays(self):
+        orch = self.orchestral()
+        simp = convert_mscz(orch, parts=True, options=self.options())
+        c = convert_mscz(orch, parts=True, provenance=True, options=self.piano_options())
+        doc = c.parts
+        # no separate simplified part: the original part is what the simplified part was
+        self.assertFalse(doc["simplified"])
+        self.assertEqual(list(doc["parts"]), ["original", "orchestra"])
+        self.assertEqual(doc["parts"]["original"], simp.parts["parts"]["simplified"])
+        self.assertEqual(doc["parts"]["orchestra"], simp.parts["parts"]["orchestra"])
+        self.assertEqual(doc["arrangement"], dict(simp.parts["arrangement"], part="original"))
+        right = doc["parts"]["original"]["right"]
+        self.assertEqual({n["ticksStart"] // W for n in right if n.get("simplified")}, {0, 1, 2, 3, 6, 7, 8, 9})
+        self.assertEqual(sorted((n["ticksStart"], n["note"]) for n in right if not n.get("simplified")),
+                         [(4 * W, p) for p in HARMONY[4][1]] + [(5 * W, p) for p in HARMONY[5][1]])
+        # PianoVision's hands are the same notes (the piano plays every measure: nothing of the orchestra merged)
+        for hand in ("right", "left"):
+            self.assertEqual(pv_notes(c.data, hand), part_notes(doc["parts"]["original"], hand))
+        # the clock does not change: the same tempo map and measures
+        a, b = json.loads(c.data), json.loads(simp.data)
+        self.assertEqual((a["tempos"], a["measures"], a["timeSignatures"]),
+                         (b["tempos"], b["measures"], b["timeSignatures"]))
+        # the arrangement's notes have no note of this score; the fills have theirs
+        prov = c.provenance["right"]
+        self.assertEqual(sum(ns.arranged for ns in prov), sum(1 for n in right if n.get("simplified")))
+        self.assertTrue(all(ns.note is None for ns in prov if ns.arranged))
+        self.assertTrue(all(ns.note is not None for ns in prov if not ns.arranged))
+        self.assertTrue(c.arrangement["piano_from"])
+        self.assertEqual(c.arrangement["notes"], simp.arrangement["notes"])
+        self.assertIn("The piano part", A.report_markdown(c.arrangement))
+        # without parts the JSON is the same
+        self.assertEqual(convert_mscz(orch, options=self.piano_options()).data, c.data)
+
+    def test_accents_are_the_arrangements(self):
+        from tests.scoregen import accent
+        rh, lh = piano_measures(range(10))
+        rh[1] = [[chord("whole", *HARMONY[1][1], extra=[accent()])]]     # the orchestral score's, mapped
+        rh[4] = [[chord("whole", *HARMONY[4][1], extra=[accent()])]]     # ... in the cut: kept
+        vln = [[[chord("whole", HARMONY[i][1][-1] + 12)]] for i in range(10)]
+        orch = make_piano_score(os.path.join(self.scores, "Test", "orch.mscz"), rh, lh, title="Song",
+                                parts=(("Violin", 40, [vln]),))
+        opts = self.piano_options()
+        srh, slh = piano_measures([0, 1, 2, 3, 6, 7, 8, 9])
+        srh[2] = [[chord("whole", *HARMONY[2][1], extra=[accent()])]]    # the solo's own accent
+        solo = make_piano_score(opts["partner"]["path"], srh, slh, title="Song")
+        solo_own = convert_mscz(solo, parts=True)
+        c = convert_mscz(orch, parts=True, options=opts)
+
+        def accents(notes):
+            out = {}
+            for n in notes:
+                out[n["ticksStart"] // W] = max(out.get(n["ticksStart"] // W, 0), n["accent"])
+            return out
+
+        for notes in ([n for m in json.loads(c.data)["tracksV2"]["right"] for n in m["notes"]],
+                      c.parts["parts"]["original"]["right"]):
+            acc = accents(notes)
+            self.assertEqual((acc[1], acc[2], acc[4]), (0, 1, 1))
+        # the solo's accented chord: its velocity boosted once, as in the solo's own song
+        own = [n for n in solo_own.parts["parts"]["original"]["right"] if n["ticksStart"] // W == 2]
+        mine = [n for n in c.parts["parts"]["original"]["right"] if n["ticksStart"] // W == 2]
+        self.assertEqual(sorted((n["note"], n["velocity"], n["accent"]) for n in mine),
+                         sorted((n["note"], n["velocity"], n["accent"]) for n in own))
+
+    def test_options(self):
+        o = buildopts.BuildOptions.from_dict("a.mscz", {"simplified_from": "b.mscz", "piano_from": "simplified_from"})
+        self.assertEqual(o.render_options("/s")["partner"]["piano"], True)
+        plain = buildopts.BuildOptions.from_dict("a.mscz", {"simplified_from": "b.mscz"})
+        self.assertNotIn("piano", plain.render_options("/s")["partner"])
+        for bad in ({"piano_from": "simplified_from"}, {"orchestra_from": "b.mscz", "piano_from": "simplified_from"},
+                    {"simplified_from": "b.mscz", "piano_from": "b.mscz"},
+                    {"simplified_from": "b.mscz", "piano_from": "orchestra_from"}):
+            with self.assertRaises(buildopts.OptionsError, msg=bad):
+                buildopts.BuildOptions.from_dict("a.mscz", bad)
+
+
+class PianoFromLibraryTest(ScoreFixtures):
+    OPTS = LibraryOptionsTest.OPTS
+    PIANO = {k: dict(v, piano_from="simplified_from") for k, v in OPTS.items()}
+
+    def lib(self, options):
+        return LibraryOptionsTest.lib(self, options)
+
+    def test_build_follows_the_option_and_only_this_song_changes(self):
+        self.orchestral()
+        self.arrangement()
+        self.lib(self.OPTS).build()
+        out = os.path.join(self.tmp, "PV")
+        with open(os.path.join(out, ".manifest.json")) as f:
+            before = json.load(f)["entries"]
+        lib = self.lib(self.PIANO)
+        acts = {a.rel: a for a in lib.plan(scan_library(self.scores))}
+        self.assertEqual((acts["Test/orch.mscz"].kind, acts["Test/orch.mscz"].reason),
+                         ("render", "build options changed (scores.json)"))
+        self.assertNotEqual(acts["Test/solo.mscz"].kind, "render")
+        rep = lib.build()
+        self.assertEqual([r for r, _md, _s in rep.arrangements], ["Test/orch.mscz"])
+        self.assertTrue(rep.arrangements[0][2].startswith("piano part from Test/solo.mscz"))
+        with open(os.path.join(out, "NoteWaterfall", "test_Song_Piano_and_Orchestra.parts.json")) as f:
+            parts = json.load(f)
+        self.assertEqual((parts["simplified"], list(parts["parts"])), (False, ["original", "orchestra"]))
+        with open(os.path.join(out, ".manifest.json")) as f:
+            after = json.load(f)["entries"]
+        self.assertEqual(after["Test/solo.mscz"], before["Test/solo.mscz"])
+        self.assertEqual(after["Test/orch.mscz"]["options"]["partner"], before["Test/orch.mscz"]["options"]["partner"])
+        self.assertEqual(self.lib(self.PIANO).build().written, [])           # nothing changed
+
+    def test_hand_edits_of_the_solos_notes_go_through_the_solos_song(self):
+        from pianovision import handedits as H
+        self.orchestral()
+        self.arrangement()
+        lib = self.lib(self.PIANO)
+        self.assertEqual(lib.build().failed, [])
+        name = lib.manifest.entries["Test/orch.mscz"]["output"]
+        solo_song = lib.manifest.entries["Test/solo.mscz"]["output"]
+        with open(lib.out_path(name), "rb") as f:
+            data = f.read()
+        top, bass5 = HARMONY[0][1][-1], HARMONY[4][0]
+
+        def edit(fr, to, tick, midi, part=None):
+            e = {"from": fr, "to": to, "ticksStart": tick, "midi": midi, "occurrence": 0, "votes": 2, "against": 0}
+            if part:
+                e["part"] = part
+            return e
+
+        edits = [edit("right", "left", 0, top, "simplified"),     # the solo's note, as Note Waterfall names it
+                 edit("right", "left", W, HARMONY[1][1][0]),       # the solo's note in PianoVision's song
+                 edit("right", "left", 0, top, "original"),        # the orchestral score's note it replaced
+                 edit("left", "right", 4 * W, bass5, "original")]  # the orchestral score's note in the cut
+        side = os.path.join(self.tmp, H.sidecar_name(name))
+        with open(side, "w") as f:
+            json.dump({"format": 2, "song": name, "songMd5": H._md5(data), "updated": "2026-10-20T10:00:00Z",
+                       "edits": edits}, f)
+        rv = H.review_song(lib, name, [H.read_sidecar(side)])
+        self.assertEqual(rv.error, "")
+        res = [(r.edit.part, r.edit.ticks, r.edit.midi, r.status, r.reason) for r in rv.results]
+        by = {(p, t, m): (s, why) for p, t, m, s, why in res}
+        for key in (("simplified", 0, top), (None, W, HARMONY[1][1][0])):
+            status, why = by[key]
+            self.assertEqual(status, "skip", res)
+            self.assertIn("piano solo Test/solo.mscz", why)
+            self.assertIn(solo_song, why)
+        self.assertEqual(by[("original", 0, top)][0], "stale")
+        self.assertEqual(by[("original", 4 * W, bass5)][0], "move", H.format_review(rv))
+
+    def test_the_companion_audios_clock_key_stays(self):
+        from types import SimpleNamespace
+        from pianovision import accompaniment as AC
+        orch = self.orchestral()
+        self.arrangement()
+        keys = []
+        for opts in (self.OPTS, self.PIANO):
+            ro = self.lib(opts).render_options("Test/orch.mscz")
+            keys.append(AC.timeline_key(SimpleNamespace(partner=ro["partner"], path=orch, entry={})))
+        self.assertEqual(keys[0], keys[1])
+
+
+# ------------------------------------------------------------------------------
 # the hand split
 # ------------------------------------------------------------------------------
 
