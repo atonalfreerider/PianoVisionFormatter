@@ -69,6 +69,8 @@ PRECISION = 6                 # decimals of beats per second (MuseScore 4.7's ro
 
 SONG_ORCHESTRA = "orchestra"  # the song is the orchestral score (simplified_from)
 SONG_SOLO = "solo"            # the song is the piano solo (orchestra_from)
+CLOCK_SOLO = "solo"           # the song plays on the solo's clock (default)
+CLOCK_OWN = "own"             # simplified_from, clock "own": on the orchestral score's own clock (its tempo marks)
 
 
 @dataclass
@@ -214,11 +216,14 @@ def _shape(points: Sequence[int], times: Sequence[float], tolerance: float) -> T
     return marks, t, worst, clamped
 
 
-def plan(al, solo, orch, score, song: str, tolerance: float = TOLERANCE) -> Plan:
+def plan(al, solo, orch, score, song: str, tolerance: float = TOLERANCE, clock: str = CLOCK_SOLO) -> Plan:
     """The tempo marks that put the orchestral score on the solo's clock (module docstring).  ``al``: the alignment
     (:func:`pianovision.arrangement.arrange`; ``al.arr`` the solo, ``al.orch`` the orchestral score as rendered with
     its own timing), ``solo`` / ``orch``: their :class:`pianovision.arrangement.Side` s, ``score``: the orchestral
-    score's model (where marks can go), ``song``: :data:`SONG_ORCHESTRA` or :data:`SONG_SOLO`."""
+    score's model (where marks can go), ``song``: :data:`SONG_ORCHESTRA` or :data:`SONG_SOLO`.  ``clock``
+    :data:`CLOCK_OWN` (``simplified_from`` with ``clock: "own"``): every measure keeps the orchestral score's own
+    timing (the marks write out its tempo map, fermatas and pauses as they are; nothing is stretched)."""
+    own_clock = clock == CLOCK_OWN
     from .arrangement import unit_warp, _warp
     A, O = al.arr, al.orch
     positions = write_positions(score)
@@ -247,7 +252,9 @@ def plan(al, solo, orch, score, song: str, tolerance: float = TOLERANCE) -> Plan
         if not pos or pos[0] != 0:
             pos = [0] + pos
         pts = pos + [m.length]
-        if mapped[j] and regular[unit_of[j]]:
+        if own_clock:
+            ts = [own_time(m.utick + c) for c in pts]
+        elif mapped[j] and regular[unit_of[j]]:
             k = unit_of[j]
             base = m.utick - O.measures[al.units[k].orch[0]].utick
             ts = [solo_time(k, base + c) for c in pts]
@@ -270,7 +277,7 @@ def plan(al, solo, orch, score, song: str, tolerance: float = TOLERANCE) -> Plan
     stretch_of: Dict[int, float] = {}
     j = 0
     while j < n:
-        if mapped[j]:
+        if mapped[j] or own_clock:
             j += 1
             continue
         e = j
@@ -322,13 +329,15 @@ def plan(al, solo, orch, score, song: str, tolerance: float = TOLERANCE) -> Plan
         kept.append(mk)
     lengths = [length_of[m.number - 1] for m in O.measures]
     p = Plan(song, kept, lengths)
-    own_shape = [O.label(j) for j in range(n) if mapped[j] and not regular[unit_of[j]]]
+    own_shape = [O.label(j) for j in range(n) if mapped[j] and not regular[unit_of[j]] and not own_clock]
     p.stats = {"marks": len(kept), "measures": n, "mapped": sum(mapped), "filled": n - sum(mapped),
                "own_shape": own_shape,
                "max_inside_ms": round(worst * 1000, 1), "repeats_spread_ms": round(spread * 1000, 1),
                "clamped": clamped, "tolerance_ms": round(tolerance * 1000, 1),
                "stretch": {O.label(j): round(s, 3) for j, s in sorted(stretch_of.items())},
                "seconds": round(sum(lengths), 2)}
+    if own_clock:
+        p.stats["clock"] = CLOCK_OWN
     if song == SONG_SOLO:
         p.pieces = pieces(al, solo)
     return p
@@ -562,9 +571,10 @@ class Pair:
 
 def pair(orch_path: str, orch_compat, orch_options: Optional[dict], solo_path: str, solo_compat,
          solo_options: Optional[dict], song: str, measure_map: Any = "auto", solo_render: Optional[Rendered] = None,
-         provenance: bool = False) -> Pair:
+         provenance: bool = False, clock: str = CLOCK_SOLO) -> Pair:
     """Align the solo with the orchestral score and render the orchestral score on the solo's clock (``provenance``:
-    the notes of that render carry their score notes; ``solo_render``: the solo as already rendered, the song)."""
+    the notes of that render carry their score notes; ``solo_render``: the solo as already rendered, the song;
+    ``clock``: :data:`CLOCK_OWN`: on the orchestral score's own clock instead, :func:`plan`)."""
     from .arrangement import arrange, render_arrangement, side_of
     first = render(orch_path, orch_compat, orch_options)
     orch_own = side_of(first.score, first.renderer, first.midi, False)
@@ -574,7 +584,7 @@ def pair(orch_path: str, orch_compat, orch_options: Optional[dict], solo_path: s
     else:
         solo, solo_notes = render_arrangement(solo_path, solo_compat, solo_options)
     al = arrange(orch_own, solo, measure_map)
-    p = plan(al, solo, orch_own, first.score, song)
+    p = plan(al, solo, orch_own, first.score, song, clock=clock if song == SONG_ORCHESTRA else CLOCK_SOLO)
     again = render(orch_path, orch_compat, orch_options, p, provenance=provenance)
     orch = side_of(again.score, again.renderer, again.midi, False, features=False)
     if len(orch.timeline.measures) != len(al.orch.measures):

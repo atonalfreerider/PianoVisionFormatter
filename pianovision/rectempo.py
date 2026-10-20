@@ -748,9 +748,55 @@ class Options:
     tail: float = 8.0
     key: int = 0
     timeout: int = 7200
+    anchors: Optional[List[Tuple[str, float]]] = None   # (measure "12" or "387:2", recording seconds) you give
 
 
 Log = Any
+
+
+_ANCHOR = re.compile(r"^\s*(\d+)(?::(\d+))?\s*[|,;\t ]\s*(?:(\d+):)?(\d+(?:\.\d*)?)\s*$")
+
+
+def read_anchors(path: str) -> List[Tuple[str, float]]:
+    """Measure starts you timed in the recording, one per line: ``measure|time`` (``019|00:56.149``, ``387:2|870.5``
+    for the second pass of measure 387; the time as m:ss.sss or seconds); ``#`` starts a comment."""
+    out = []
+    with open(path, encoding="utf-8") as f:
+        for k, line in enumerate(f, 1):
+            line = line.split("#", 1)[0].strip()
+            if not line:
+                continue
+            m = _ANCHOR.match(line)
+            if not m:
+                raise RecTempoError(f"{path}:{k}: not 'measure|time': {line!r}")
+            label = str(int(m.group(1))) + (f":{int(m.group(2))}" if m.group(2) else "")
+            out.append((label, int(m.group(3) or 0) * 60 + float(m.group(4))))
+    return out
+
+
+def resolve_anchors(ref: dict, anchors: Sequence[Tuple[str, float]]) -> List[dict]:
+    """The anchors as pins of ``tools/recording_align.py`` (``--pins``): the measure as played each names (its index,
+    its start on the score's own clock) and its recording time.  A measure played more than once needs its pass."""
+    played: Dict[Tuple[int, int], int] = {}
+    passes: Dict[int, int] = {}
+    for j, m in enumerate(ref["measures"]):
+        played[(int(m["number"]), int(m.get("pass", 1)))] = j
+        passes[int(m["number"])] = passes.get(int(m["number"]), 0) + 1
+    pins = []
+    for label, t in anchors:
+        num, _c, ps = label.partition(":")
+        n = int(num)
+        if n not in passes:
+            raise RecTempoError(f"anchor m. {label}: the score has no measure {n}")
+        if not ps and passes[n] > 1:
+            raise RecTempoError(f"anchor m. {label}: measure {n} is played {passes[n]} times; say which pass "
+                                f"({n}:1 .. {n}:{passes[n]})")
+        j = played.get((n, int(ps or 1)))
+        if j is None:
+            raise RecTempoError(f"anchor m. {label}: measure {n} has no pass {ps}")
+        pins.append({"index": j, "label": f"m. {label}", "song": float(ref["measures"][j]["start"]),
+                     "recording": float(t)})
+    return pins
 
 
 def mem_available_mb() -> Optional[int]:
@@ -835,12 +881,21 @@ def analyse(score_path: str, audio: str, opts: Options, compat=None, options: Op
     ref_path = os.path.join(opts.work, "ref.json")
     _write_json(ref_path, ref)
     tools = f"align{_version(opts.script)}-bars{_version(opts.script, 'BARS_VERSION')}"
-    akey = hashlib.sha256(f"{ref['sig']}|{_sig(audio)}|{tools}|{opts.tail}".encode()).hexdigest()[:16]
+    pin_args: List[str] = []
+    pins_key = ""
+    if opts.anchors:
+        pins = resolve_anchors(ref, opts.anchors)
+        pins_path = os.path.join(opts.work, "pins.json")
+        _write_json(pins_path, {"pins": pins, "tolerance": 0.3})
+        pin_args = ["--pins", pins_path]
+        pins_key = hashlib.sha256(json.dumps(pins, sort_keys=True).encode()).hexdigest()[:16]
+    akey = hashlib.sha256(f"{ref['sig']}|{_sig(audio)}|{tools}|{opts.tail}|{pins_key}".encode()).hexdigest()[:16]
     if not _cached(opts.work, akey, "align.json", opts.force):
-        log(f"  aligning the score with {os.path.basename(audio)} ...")
+        log(f"  aligning the score with {os.path.basename(audio)}"
+            + (f" through your {len(opts.anchors)} anchors" if opts.anchors else "") + " ...")
         _tool(opts, opts.python, opts.script, ["align", "--ref", ref_path, "--audio", audio, "--out",
-                                               os.path.join(opts.work, "align.json"), "--tail", str(opts.tail)],
-              "alignment", log)
+                                               os.path.join(opts.work, "align.json"), "--tail", str(opts.tail)]
+              + pin_args, "alignment", log)
         _remember(opts.work, akey, "align.json")
     act = os.path.join(opts.work, "act.npz")
     have_act = False
@@ -862,7 +917,7 @@ def analyse(score_path: str, audio: str, opts: Options, compat=None, options: Op
     if not _cached(opts.work, bk, "bars.json", opts.force):
         log("  placing the song's measures in the recording ...")
         args = ["bars", "--ref", ref_path, "--align", os.path.join(opts.work, "align.json"), "--audio", audio,
-                "--out", bars_path]
+                "--out", bars_path] + pin_args
         if have_act:
             args += ["--activations", act]
         _tool(opts, opts.python, opts.script, args, "bars", log)
@@ -976,6 +1031,16 @@ def run_song(score_path: str, audio: str, opts: Options, compat=None, options: O
                        "worst": _worst(shared, tl0, 8), "tolerance_ms": round(opts.repeat_tolerance * 1000, 1),
                        "unrolled": unroll, "unroll": urep.lines() if urep else None},
            "verify": ver.get("summary"), "checks": ver.get("checks")}
+    if opts.anchors:
+        with open(os.path.join(opts.work, "pins.json"), encoding="utf-8") as f:
+            pins = json.load(f)["pins"]
+        res["anchors"] = [{"label": q["label"], "recording": round(q["recording"], 3),
+                           "placed": round(targets[q["index"]].start, 3),
+                           "diff_ms": round((targets[q["index"]].start - q["recording"]) * 1000.0, 1)} for q in pins]
+        worst = max(abs(a["diff_ms"]) for a in res["anchors"])
+        if not dry_run:
+            res["checks"].append({"name": "anchors", "ok": worst <= 1.0,
+                                  "detail": f"{len(pins)} measure starts you timed, placed within {worst:.1f} ms"})
     res["ok"] = bool(res["checks"]) and all(c["ok"] for c in res["checks"])
     res["audio_map"] = audio_map_entry(audio, p.offset, res)
     if dry_run:
@@ -1040,9 +1105,10 @@ def _note_table(rd: Rendered) -> Dict[int, List[tuple]]:
     tl = rd.timeline
     out: Dict[int, List[tuple]] = {}
     for n in sounding_notes(rd.midi, range(min(len(rd.midi.tracks), len(rd.score.staves))), tl):
-        u = tl.utick(n.on)
+        u = n.on                        # sounding_notes gives unrolled ticks already (a pause's ticks taken out)
         j = tl.measure_at_utick(u)
-        out.setdefault(j, []).append((u - tl.measures[j].utick, tl.utick(n.off) - u, n.pitch, n.track, n.on, n.off))
+        out.setdefault(j, []).append((u - tl.measures[j].utick, n.off - u, n.pitch, n.track, tl.tick(n.on),
+                                      tl.tick(n.off)))
     return {j: sorted(v) for j, v in out.items()}
 
 

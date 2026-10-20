@@ -194,15 +194,54 @@ def block(c, k):
 # align
 # ------------------------------------------------------------------------------
 
-def coarse_dtw(S, R, penalty):
+def read_pins(path):
+    """Fixed points you give (``--pins``): {"pins": [{"index": measure as played (0-based), "song": s, "recording": s,
+    "label": "m. 166"}, ...], "tolerance": s}; None without a file."""
+    if not path:
+        return None
+    with open(path, encoding="utf-8") as f:
+        d = json.load(f)
+    pins = sorted(d.get("pins") or [], key=lambda q: q["song"])
+    for a, b in zip(pins, pins[1:]):
+        if not b["recording"] > a["recording"]:
+            raise SystemExit(f"pins: {b.get('label')} is not after {a.get('label')} in the recording")
+    return {"pins": pins, "tolerance": float(d.get("tolerance", 0.3))}
+
+
+def pin_band(n, m, hop, pins, tol):
+    """Per song frame (0..n-1) the recording frames the path may use: after every pin before it and before every pin
+    after it, ``tol`` seconds of slack (the path passes within ``tol`` of each pin)."""
+    lo = np.zeros(n, dtype=int)
+    hi = np.full(n, m - 1, dtype=int)
+    if not pins:
+        return lo, hi
+    ps = np.array([q["song"] for q in pins]) / hop
+    pr = np.array([q["recording"] for q in pins]) / hop
+    t = tol / hop
+    i = np.arange(n)
+    k = np.searchsorted(ps, i, side="right")             # pins at or before frame i: [0, k)
+    has_lo = k > 0
+    lo[has_lo] = np.maximum(0, np.floor(pr[k[has_lo] - 1] - t)).astype(int)
+    has_hi = k < len(ps)
+    hi[has_hi] = np.minimum(m - 1, np.ceil(pr[k[has_hi]] + t)).astype(int)
+    return lo, np.maximum(hi, lo)
+
+
+def coarse_dtw(S, R, penalty, band=None):
     """Subsequence DTW of song frames ``S`` against recording frames ``R`` (columns are unit vectors): path
     (song frame, recording frame) ascending, the cost matrix and its median, the mean cost along the path.  The start
     and end are free on the recording's side only; a song longer than the recording gets columns of the median cost
-    after the recording's end (librosa would otherwise free the song's side), which the path leaves out."""
+    after the recording's end (librosa would otherwise free the song's side), which the path leaves out.  ``band``:
+    (lo, hi) recording frames per song frame (:func:`pin_band`); the path keeps within them."""
     import librosa
     C = (1.0 - S.T @ R).astype(np.float64)
     n, m = C.shape
     med = float(np.median(C))
+    if band is not None:
+        lo, hi = band
+        cols = np.arange(m)
+        outside = (cols[None, :] < lo[:, None]) | (cols[None, :] > hi[:, None])
+        C = np.where(outside, 1e3 * max(med, 1e-3), C)
     Cp = np.concatenate([C, np.full((n, n - m + 1), med)], axis=1) if n > m else C
     steps = np.array([[1, 1], [1, 0], [0, 1]])
     D, wp = librosa.sequence.dtw(C=Cp, subseq=True, step_sizes_sigma=steps,
@@ -354,9 +393,13 @@ def cmd_align(args):
         _wp, _C, med_q, cost_q = coarse_dtw(np.roll(Sq, sh, axis=0), Rq, args.penalty)
         quick[sh] = cost_q / med_q
     tries = sorted(quick, key=quick.get)[:2]
+    pins = read_pins(args.pins)
+    band = None
+    if pins:
+        band = pin_band(S.shape[1], R.shape[1], hop_c, pins["pins"], max(pins["tolerance"], 2 * hop_c))
     results = {}
     for sh in tries:
-        results[sh] = coarse_dtw(np.roll(S, sh, axis=0), R, args.penalty)
+        results[sh] = coarse_dtw(np.roll(S, sh, axis=0), R, args.penalty, band)
     best = min(results, key=lambda sh: results[sh][3] / results[sh][2])
     wp, C, med, cost = results[best]
     key_costs = {str((sh + 6) % 12 - 6): round(v, 4) for sh, v in sorted(quick.items(), key=lambda kv: kv[1])}
@@ -393,6 +436,9 @@ def cmd_align(args):
                      for m, q in zip(ms, mq)],
         "path": [[round(i * hop_c, 3), round(j * hop_c, 3)] for i, j in path[::max(1, len(path) // 4000)]],
     }
+    if pins:
+        out["pins"] = [dict(q, map_recording=(lambda r: None if r is None else round(float(r), 3))(tm.rec_at(q["song"])))
+                       for q in pins["pins"]]
     write_json(args.out, out)
 
 
@@ -1280,6 +1326,25 @@ def cmd_bars(args):
             confirm[k] = k in o and abs(o[k] - bias - anchors[k][0]) <= AGREE_S
         stats["agreement"] = round(float(np.mean(list(confirm.values()))), 3) if confirm else None
         stats["bias_ms"] = round(bias * 1000.0, 1)
+    # your pins (--pins): measure starts at fixed recording times; detections that contradict them go
+    pins = read_pins(args.pins)
+    pinned = {}
+    if pins:
+        for q in pins["pins"]:
+            pinned[round(float(bs.b0[int(q["index"])]), 4)] = float(q["recording"])
+        PB = np.array(sorted(pinned))
+        PT = np.array([pinned[b] for b in PB])
+        for k in list(anchors):
+            i = int(np.searchsorted(PB, k))
+            near = (i < len(PB) and abs(PB[i] - k) < 0.5) or (i > 0 and abs(PB[i - 1] - k) < 0.5)
+            lo_t = PT[i - 1] if i > 0 else -np.inf
+            hi_t = PT[i] if i < len(PB) else np.inf
+            if near or not (lo_t < anchors[k][0] < hi_t):
+                del anchors[k]
+                confirm.pop(k, None)
+        for b, t in pinned.items():
+            anchors[b] = (t, 0.0)
+            confirm[b] = True
     keys = sorted(anchors)
     AB = np.array(keys)
     AT = np.array([anchors[k][0] for k in keys])
@@ -1319,6 +1384,8 @@ def cmd_bars(args):
             return (1.0 if AC[q] or not other else 0.75) * max(0.0, 1.0 - abs(AE[q]) / 0.5) * \
                 (0.6 + 0.4 * min(1.0, float(AS[q]) / 0.3))
         if dist < 1e-3:
+            if round(float(AB[k]), 4) in pinned:
+                return 1.0, "pinned"
             return round(qual(k), 3), "detected"
         lo_k = i - 1 if i - 1 >= 0 else None
         hi_k = i if i < len(AB) else None
@@ -1345,7 +1412,7 @@ def cmd_bars(args):
                      "conf": c0, "source": src, "beat_conf": bc, "beats": beats, "positions": pos_out})
     out = {"format": 1, "version": BARS_VERSION, "audio": os.path.abspath(args.audio), "duration": round(rec_end, 3),
            "song_end": song_end, "compound": compound, "primary": primary, "detectors": stats,
-           "anchors": int(len(AB)), "anchors_confirmed": int(AC.sum()) if len(AC) else 0,
+           "anchors": int(len(AB)), "anchors_confirmed": int(AC.sum()) if len(AC) else 0, "pinned": len(pinned),
            "anchor_residual_beats_median": round(float(np.median(np.abs(AE))), 3) if len(AE) else None,
            "coarse_minus_detected_ms_median": round(float(-np.median(resid)) * 1000.0, 1) if len(resid) else None,
            "coarse_map": [[round(float(a), 4), round(float(b), 4)] for a, b in zip(S, R)],
@@ -1377,6 +1444,7 @@ def main(argv=None):
     p.add_argument("--penalty", type=float, default=0.15, help="cost of a horizontal/vertical step, x median cost")
     p.add_argument("--tail", type=float, default=8.0, help="seconds of the recording kept after the song's end")
     p.add_argument("--no-refine", action="store_true", help="keep the coarse DTW map (no beat-level refinement)")
+    p.add_argument("--pins", help="JSON: measure starts at recording times you give (read_pins); the path keeps to them")
     p.set_defaults(fn=cmd_align)
     p = sub.add_parser("retime")
     p.add_argument("--ref", required=True)
@@ -1416,6 +1484,7 @@ def main(argv=None):
     p.add_argument("--estimate-odd", action="store_true",
                    help="a measure of another length counts the beats the coarse map gives it, not its time "
                         "signature's")
+    p.add_argument("--pins", help="JSON: measure starts at recording times you give (read_pins); exact anchors")
     p.add_argument("--out")
     p.set_defaults(fn=cmd_bars)
     p = sub.add_parser("latency")

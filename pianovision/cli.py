@@ -537,7 +537,7 @@ def cmd_recordings(args) -> int:
                     mscore = acc_settings(lib.cfg.path).path("mscore")
             return R.tempo(lib, s, list(args.items) + list(args.only), dry_run=args.dry_run, out=args.copy,
                            in_place=args.in_place, backup=args.backup, yes=args.yes, unroll=args.unroll,
-                           mscore=mscore, force=args.force, log=_p)
+                           mscore=mscore, force=args.force, anchors=args.anchors, log=_p)
         if args.action == "status":
             return R.status(lib, s, log=_p)
         if not args.items:
@@ -546,6 +546,9 @@ def cmd_recordings(args) -> int:
         if args.action == "confirm":
             return R.decide_link(lib, s, args.items[0], args.items[1] if len(args.items) > 1 else None,
                                  args.variant, log=_p)
+        if args.action == "mute-solos":
+            return R.mute_solos(lib, s, args.items[0], source=args.source, offset=args.offset,
+                                min_seconds=args.min_seconds, log=_p)
         if args.action == "route":
             if len(args.items) != 2 or args.items[1] not in ("vocals", "generated", "auto"):
                 _p("recordings route SONG vocals|generated|auto")
@@ -937,9 +940,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             your decision: use the pick (or RECORDING, a path below the music folder)
   reject SONG
             your decision: no recording for this song
+  mute-solos SONG [--source FILE] [--offset S] [--min-seconds S]
+            a concerto's recording as its companion, the passages where the piano plays alone muted (the score
+            follows the recording: tempo first); <solo_mute_dir>/<song>.mp3 and the audio_map entry
 
 Settings: [recordings] in pianovision.toml (music_dir, out_dir, work_dir, python, model, thresholds).""")
-    p.add_argument("action", choices=("match", "align", "retime", "tempo", "status", "confirm", "reject", "route"))
+    p.add_argument("action", choices=("match", "align", "retime", "tempo", "status", "confirm", "reject", "route",
+                                      "mute-solos"))
     p.add_argument("items", nargs="*", metavar="ARG",
                    help="confirm: SONG [RECORDING]; reject: SONG; route: SONG vocals|generated|auto; tempo: [SONG ...]")
     p.add_argument("--only", action="append", default=[], metavar="GLOB",
@@ -964,7 +971,14 @@ Settings: [recordings] in pianovision.toml (music_dir, out_dir, work_dir, python
                    help="tempo: write the repeats out (auto: when one tempo per written measure would be off by "
                         "more than [recordings] repeat_tolerance_ms)")
     p.add_argument("--no-musescore", action="store_true", help="tempo: skip MuseScore's check of the copy")
+    p.add_argument("--anchors", metavar="FILE",
+                   help="tempo: measure starts you timed in the recording, 'measure|m:ss.sss' per line ('387:2' for "
+                        "a second pass); the alignment keeps to them and the measures start there exactly")
     p.add_argument("--mscore", help="tempo: MuseScore executable (default: [accompaniment] mscore)")
+    p.add_argument("--source", metavar="FILE", help="mute-solos: the audio to mute (default: the link's full mix)")
+    p.add_argument("--offset", type=float, help="mute-solos: the audio's offset (default: recordings tempo's)")
+    p.add_argument("--min-seconds", type=float, help="mute-solos: shortest piano-alone stretch muted "
+                                                     "(default: [recordings] solo_min_seconds)")
     p.set_defaults(fn=cmd_recordings)
 
     p = sub.add_parser("scorefix", help="a score's repeat structure; structural fixes (tempo, voltas, repeats, "

@@ -124,6 +124,9 @@ class Settings:
     tempo_tolerance_ms: float = 20.0    # a position inside a measure lands this close to the recording's time
     repeat_tolerance_ms: float = 40.0   # repeats stay when one tempo per written measure keeps within this
     min_free_mb: int = 6144             # heavy steps wait for this much available memory
+    # a concerto's recording with the piano's solo passages muted (recordings mute-solos, pianovision.solomute)
+    solo_mute_dir: str = "~/Music/Note Waterfall Recordings"   # <song>.mp3 + <song>.solo-mute.json
+    solo_min_seconds: float = 2.0       # a stretch where the piano plays alone shorter than this is not muted
 
     def path(self, name: str) -> str:
         return os.path.abspath(os.path.expanduser(getattr(self, name)))
@@ -1859,7 +1862,7 @@ def run(lib, s: Settings, only: Sequence[str] = (), force: bool = False, retime:
 
 def tempo(lib, s: Settings, specs: Sequence[str] = (), dry_run: bool = False, out: Optional[str] = None,
           in_place: bool = False, backup: Optional[str] = None, yes: bool = False, unroll: str = "auto",
-          mscore: Optional[str] = None, force: bool = False, log: Log = print) -> int:
+          mscore: Optional[str] = None, force: bool = False, anchors: Optional[str] = None, log: Log = print) -> int:
     """``recordings tempo``: for the named sung songs (default: every sung song with a usable recording whose
     timing is the recording's), the score timed to the recording (:mod:`pianovision.rectempo`): a verified copy in
     ``<tempo_dir>/<song>/`` (``-o``: also there), or with ``in_place`` that copy over the score after a backup."""
@@ -1881,6 +1884,10 @@ def tempo(lib, s: Settings, specs: Sequence[str] = (), dry_run: bool = False, ou
     if in_place and not backup:
         log("error: --in-place needs --backup DIR (the original is copied there first)")
         return 2
+    if anchors and len(jobs) != 1:
+        log("error: --anchors are one recording's measure times; name one song")
+        return 2
+    anchor_list = RT.read_anchors(anchors) if anchors else None
     failures = 0
     for job in jobs:
         song = job.song
@@ -1891,14 +1898,16 @@ def tempo(lib, s: Settings, specs: Sequence[str] = (), dry_run: bool = False, ou
                           beats_python=s.beats_python, beats_script=s.beats_script,
                           tolerance=s.tempo_tolerance_ms / 1000.0, repeat_tolerance=s.repeat_tolerance_ms / 1000.0,
                           unroll=unroll, mscore=mscore, min_free_mb=s.min_free_mb, force=force, tail=s.tail,
-                          timeout=s.timeout)
+                          timeout=s.timeout, anchors=anchor_list)
         log(f"{song.output}  <- {job.recording} (the original file; the score follows it)")
         try:
             st = tempo_state(s, song)
             fresh = (st and not force and st.get("ok") and os.path.isfile(score)
                      and RT.sha256_file(score) == st.get("score_sha256") and st.get("recording_sig") == RT._sig(src)
                      and st.get("copy") and os.path.isfile(st["copy"]) and RT.sha256_file(st["copy"]) ==
-                     st.get("copy_sha256"))
+                     st.get("copy_sha256")
+                     and [(a["label"], a["recording"]) for a in st.get("anchors") or []] ==
+                     [(f"m. {lb}", round(t, 3)) for lb, t in anchor_list or []])
             if in_place and fresh:
                 res = st
                 log(f"  the verified copy {st['copy']} is current (the score and the recording unchanged)")
@@ -1948,6 +1957,10 @@ def _log_tempo(res: dict, log: Log) -> None:
         f" one tempo per written measure off by up to {r['shared_tempo_max_ms']} ms -> "
         + ("written out" if r["unrolled"] else "kept"))
     log(f"  offset {res['offset']:+.3f} s; key {res['key_offset']:+d}; tempo marks {res['plan']['marks']}")
+    if res.get("anchors"):
+        worst = max(res["anchors"], key=lambda a: abs(a["diff_ms"]))
+        log(f"  your anchors: {len(res['anchors'])} measure starts, the furthest {worst['label']} "
+            f"{worst['diff_ms']:+.1f} ms")
     for c in res.get("checks") or []:
         log(f"  {c['name']}: {'ok' if c['ok'] else 'FAILED'}: {c['detail']}")
     v = (res.get("verify") or {}).get("recording_vs_copy")
@@ -2030,6 +2043,68 @@ def decide_route_for(lib, s: Settings, song_spec: str, route: str, log: Log = pr
     save_links(s.links, links)
     log(f"{song.output}: route {effective_route(e)}" + (" (yours)" if "decision" in e else f" ({e.get('why')})"))
     return 0
+
+
+def mute_solos(lib, s: Settings, spec: str, source: Optional[str] = None, offset: Optional[float] = None,
+               min_seconds: Optional[float] = None, log: Log = print) -> int:
+    """``recordings mute-solos SONG``: the song's recording (its link's full mix, or ``source``: the same audio)
+    with the passages where the piano plays alone muted (:mod:`pianovision.solomute`), at ``<solo_mute_dir>/<song>.mp3``
+    with its report; the audio_map entry to use.  The song's score must follow the recording (``recordings tempo``):
+    its offset is the one that run found (or ``offset``)."""
+    from . import solomute as SM
+    from .parts import parts_name
+    song = _one_song(lib, spec, log)
+    if song is None:
+        return 2
+    link = load_links(s.links)["links"].get(song.rel) or {}
+    rec = (link.get("variants") or {}).get("full") or link.get("recording")
+    src = os.path.abspath(os.path.expanduser(source)) if source else (os.path.join(s.path("music_dir"), rec)
+                                                                       if rec else None)
+    if not src or not os.path.isfile(src):
+        log(f"{song.output}: no recording" + (f" ({src})" if src else " linked") + "; give --source FILE")
+        return 2
+    import hashlib
+    st = tempo_state(s, song)
+    score = os.path.join(lib.cfg.scores, song.rel)
+    if offset is None and st and os.path.isfile(score):
+        with open(score, "rb") as f:
+            sha = hashlib.sha256(f.read()).hexdigest()
+        if sha not in (st.get("score_sha256"), st.get("copy_sha256")):
+            log(f"  note: {song.rel} changed since `recordings tempo` timed it; its offset may be stale")
+    try:
+        off = SM.offset_of(st, offset)
+    except ValueError as e:
+        log(f"{song.output}: {e}")
+        return 2
+    parts_path = os.path.join(lib.out, "NoteWaterfall", parts_name(song.output))
+    song_path = os.path.join(lib.out, song.output)
+    with open(parts_path, encoding="utf-8") as f:
+        doc = json.load(f)
+    with open(song_path, "rb") as f:
+        if doc.get("songMd5") != hashlib.md5(f.read()).hexdigest():
+            log(f"{song.output}: its parts file is not the song's (build first)")
+            return 2
+    out_dir = s.path("solo_mute_dir")
+    os.makedirs(out_dir, exist_ok=True)
+    mp3 = os.path.join(out_dir, song.stem + ".mp3")
+    log(f"{song.output}  <- {os.path.basename(src)} with the piano's solo passages muted (offset {off:+.3f} s)")
+    rep_ = SM.write(src, mp3, doc, off, bitrate=max(256, s.bitrate), min_seconds=min_seconds or s.solo_min_seconds,
+                    title=song.title, artist=song.artist,
+                    comment=f"Note Waterfall: {os.path.basename(src)}, the piano's solo passages muted", log=log)
+    entry = {"audio": _tilde(mp3), "offset": round(off, 3), "enabled": True,
+             "note": (f"the original recording ({os.path.basename(src)}), not stretched, with the {len(rep_['passages'])} "
+                      f"passages where the piano plays alone muted ({rep_['muted_seconds']} s; pianovision recordings "
+                      f"mute-solos); the score follows the recording (recordings tempo); offset {off:+.3f} s")}
+    log(f"  {mp3}")
+    log(f"  audio_map entry: {json.dumps(entry, ensure_ascii=False)}")
+    with open(os.path.splitext(mp3)[0] + ".audio_map.entry.json", "w", encoding="utf-8") as f:
+        json.dump({song.output: entry}, f, indent=2, ensure_ascii=False)
+    return 0
+
+
+def _tilde(path: str) -> str:
+    home = os.path.expanduser("~")
+    return "~" + path[len(home):] if path.startswith(home + os.sep) else path
 
 
 def _one_song(lib, spec: str, log: Log) -> Optional[Song]:

@@ -152,6 +152,35 @@ class AlignRetimeVerifyTest(unittest.TestCase):
 
 
 @unittest.skipUnless(HAVE, "needs numpy, soundfile and librosa (run with the [recordings] python)")
+class PinsTest(unittest.TestCase):
+    def test_the_band_keeps_the_path_to_the_pins(self):
+        sys.path.insert(0, TOOLS)
+        import recording_align as A
+        pins = [{"index": 0, "song": 1.0, "recording": 3.0}, {"index": 5, "song": 5.0, "recording": 6.0}]
+        lo, hi = A.pin_band(8, 10, 1.0, pins, 0.5)
+        # before the first pin: up to it (+ slack); between: from the one to the other; after the last: from it on
+        self.assertEqual(list(zip(lo, hi)), [(0, 4), (2, 7), (2, 7), (2, 7), (2, 7), (5, 9), (5, 9), (5, 9)])
+        lo, hi = A.pin_band(3, 4, 1.0, [], 0.5)
+        self.assertEqual((list(lo), list(hi)), ([0, 0, 0], [3, 3, 3]))
+
+    def test_a_path_through_the_pins(self):
+        sys.path.insert(0, TOOLS)
+        import recording_align as A
+        rng = np.random.RandomState(5)
+        # a song of 40 frames of random unit chroma; the recording plays it at half speed with a repeated passage that
+        # a free DTW could take either copy of; the pin says which
+        S = rng.rand(12, 40)
+        S /= np.linalg.norm(S, axis=0)
+        R = np.concatenate([np.repeat(S[:, :20], 2, axis=1), np.repeat(S[:, 10:20], 2, axis=1),
+                            np.repeat(S[:, 20:], 2, axis=1)], axis=1)
+        pin = [{"index": 0, "song": 20.0, "recording": 60.0}]
+        band = A.pin_band(40, R.shape[1], 1.0, pin, 1.0)
+        wp, _C, _m, _c = A.coarse_dtw(S, R, 0.15, band)
+        at = dict((int(i), int(j)) for i, j in wp)
+        self.assertLessEqual(abs(at[20] - 60), 1)
+
+
+@unittest.skipUnless(HAVE, "needs numpy, soundfile and librosa (run with the [recordings] python)")
 class VocalsCheckTest(unittest.TestCase):
     """The vocals check on a sung line 40 ms later than the score's vocal notes, with a little bleed where it rests."""
 

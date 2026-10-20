@@ -133,7 +133,8 @@ def convert_mscz(mscz_path: str, compat: Optional[Compat] = None, orchestra: boo
         # the song is this orchestral score, rendered on the solo's clock
         from .timeline import SONG_ORCHESTRA, pair
         pr = pair(mscz_path, compat, own, partner["path"], partner.get("compat"), partner.get("options"),
-                  SONG_ORCHESTRA, partner.get("measure_map", "auto"), provenance=provenance or parts)
+                  SONG_ORCHESTRA, partner.get("measure_map", "auto"), provenance=provenance or parts,
+                  clock=partner.get("clock", "solo"))
         score, renderer, midi = pr.orch_render.score, pr.orch_render.renderer, pr.orch_render.midi
     else:
         score = read_score(mscz_path)

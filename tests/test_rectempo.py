@@ -79,6 +79,54 @@ class OffsetTest(unittest.TestCase):
         self.assertEqual(RT.offset_of([]), 0.0)
 
 
+class NoteTableTest(unittest.TestCase):
+    def test_notes_after_a_pause_stay_in_their_measures(self):
+        # a caesura with a pause: the render gives it ticks of its own; the table's measures are the score's
+        tmp = tempfile.mkdtemp()
+        try:
+            breath = E("Breath", E("symbol", text="caesura"), E("pause", text="0.5"))
+            rh = [[[chord("half", 60), breath, chord("half", 62)]], [[chord("whole", 64)]], [[chord("whole", 65)]]]
+            lh = [[[rest("whole")]] for _ in range(3)]
+            path = make_piano_score(os.path.join(tmp, "p.mscz"), rh, lh, title="Pause")
+            rd = RT.render(path)
+            table = RT._note_table(rd)
+            got = {j: [(rt, pitch) for rt, _d, pitch, _tr, _on, _off in v] for j, v in table.items()}
+            self.assertEqual(got, {0: [(0, 60), (960, 62)], 1: [(0, 64)], 2: [(0, 65)]})
+            # the last two fields are MIDI ticks (the pause's ticks in them)
+            on = {pitch: on for v in table.values() for _rt, _d, pitch, _tr, on, _off in v}
+            self.assertGreater(on[62] - on[60], 960)
+            self.assertEqual(on[64] - on[62], 960)
+        finally:
+            shutil.rmtree(tmp)
+
+
+class AnchorsTest(unittest.TestCase):
+    def test_measure_times_you_give(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            path = os.path.join(tmp, "timing.txt")
+            with open(path, "w", newline="") as f:
+                f.write("# timed by ear\r\n001|00:00.700\r\n019|00:56.149\r\n\r\n387:2|14:40.5\r\n400, 900.25\r\n")
+            self.assertEqual(RT.read_anchors(path), [("1", 0.7), ("19", 56.149), ("387:2", 880.5), ("400", 900.25)])
+            with open(path, "w") as f:
+                f.write("19 at 0:56\n")
+            with self.assertRaises(RT.RecTempoError):
+                RT.read_anchors(path)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_anchors_name_measures_as_played(self):
+        ref = {"measures": [{"number": 1, "start": 0.0}, {"number": 2, "start": 2.0}, {"number": 2, "pass": 2,
+                                                                                       "start": 4.0},
+                            {"number": 3, "start": 6.0}]}
+        pins = RT.resolve_anchors(ref, [("1", 0.5), ("2:2", 5.0), ("3", 7.5)])
+        self.assertEqual([(q["index"], q["song"], q["recording"], q["label"]) for q in pins],
+                         [(0, 0.0, 0.5, "m. 1"), (2, 4.0, 5.0, "m. 2:2"), (3, 6.0, 7.5, "m. 3")])
+        for bad in (("2", 3.0), ("2:3", 3.0), ("9", 1.0)):     # a repeated measure needs its pass; no such measure
+            with self.assertRaises(RT.RecTempoError):
+                RT.resolve_anchors(ref, [bad])
+
+
 class Scores(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
