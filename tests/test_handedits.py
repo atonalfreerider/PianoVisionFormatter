@@ -123,13 +123,14 @@ class SidecarTest(unittest.TestCase):
         self.assertEqual(sc.song, "song.json")
         self.assertEqual([(e.midi, e.votes) for e in sc.edits], [(62, 5)])
         self.assertEqual(len(sc.warnings), 3)
+        self.assertEqual(sc.unreadable, 1)          # the revert and the duplicate are read, not refused
 
     def test_fields_the_app_leaves_unknown_read_as_the_app_reads_them(self):
         # The app writes measureInd -1 for a note without one and reads a missing/null occurrence as 0.
         sc = H.parse_sidecar(json.dumps({"format": 1, "edits": [
             dict(edit("left", 0, 60), measureInd=-1, occurrence=None), {"from": "left", "to": "right", "ticksStart": 0,
                                                                         "midi": 62}]}).encode(), "a.hands.json")
-        self.assertEqual(sc.warnings, [])
+        self.assertEqual((sc.warnings, sc.unreadable), ([], 0))
         self.assertEqual([(e.midi, e.occurrence, e.measure) for e in sc.edits], [(60, 0, None), (62, 0, None)])
 
     def test_garbage_is_an_error_not_an_exception(self):

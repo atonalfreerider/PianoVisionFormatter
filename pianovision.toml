@@ -19,6 +19,10 @@ serial = ""           # empty = the attached Quest
 # hand edits recorded with Note Waterfall's HAND REC (python -m pianovision hands pull|review|apply)
 device_dir = "/sdcard/Android/data/com.atonalfreerider.notewaterfall/files/HandEdits"
 waterfall_deploy = "python3 /home/john/Desktop/Note-Waterfall/Tools/deploy_songs.py"   # run with --only <song>... after apply
+# automatic sync while the headset is connected (python -m pianovision hands sync; desktop/nw-handsync.service)
+sync_dir = "~/.cache/nw-handsync"   # sync.log, state.json (the ledger of what was applied), status.json, locks
+sync_interval = 45                  # seconds between looks at HandEdits/ while connected
+min_free_mb = 4096                  # a review or a build waits for this much available memory
 
 [accompaniment]
 # Note Waterfall's companion audio (python -m pianovision accompaniment): the scores minus the piano part,

@@ -1,0 +1,28 @@
+# Hand edits from Note Waterfall -> the MuseScore scores, by themselves while the Quest is connected:
+# `python3 -m pianovision hands sync` (README: "Hand edits sync"). Installed by desktop/install-handsync.sh,
+# which points the paths below at the repository it is run from.
+# Log: ~/.cache/nw-handsync/sync.log (also `journalctl --user -u nw-handsync`).
+
+[Unit]
+Description=Note Waterfall hand edits -> MuseScore scores (pianovision hands sync)
+Documentation=file://%h/Desktop/Piano/PianoVisionFormatter/README.md
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Desktop/Piano/PianoVisionFormatter
+# adb (platform-tools) and the python3 / ffmpeg that Note Waterfall's Tools/deploy_songs.py runs with
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/lib/android-sdk/platform-tools
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m pianovision hands sync
+Restart=on-failure
+RestartSec=60
+# SIGTERM ends it after the current step (a build and deploy can take a few minutes); then the rest is killed
+KillMode=mixed
+TimeoutStopSec=300
+# polling adb is cheap; a review or build renders one score and waits for 4 GB of available memory first
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=default.target

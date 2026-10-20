@@ -109,6 +109,7 @@ class Sidecar:
     edits: List[HandEdit] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     error: str = ""                       # set when nothing could be read
+    unreadable: int = 0                   # edits that could not be read (skipped, with a warning)
     path: str = ""
     md5: str = ""                         # of the file's bytes (the copy on the headset must still match to archive it)
 
@@ -172,6 +173,7 @@ def parse_sidecar(data: bytes, name: str = "") -> Sidecar:
     for i, e in enumerate(edits):
         if not isinstance(e, dict):
             sc.warnings.append(f"edit {i}: not an object")
+            sc.unreadable += 1
             continue
         fr, to = _hand(e.get("from")), _hand(e.get("to"))
         # as the app reads it: a missing (or null) occurrence is the first, a negative measureInd is unknown
@@ -181,6 +183,7 @@ def parse_sidecar(data: bytes, name: str = "") -> Sidecar:
         if fr is None or to is None or tk is None or midi is None or occ is None or not 0 <= midi <= 127 \
                 or occ < 0 or (part is not None and part not in PARTS):
             sc.warnings.append(f"edit {i}: unreadable ({json.dumps(e)[:80]})")
+            sc.unreadable += 1
             continue
         start = e.get("start")
         measure = _int(e.get("measureInd"))
