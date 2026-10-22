@@ -1869,7 +1869,8 @@
             "classical": 0.0
           }
         }
-      }
+      },
+      "decision": "vocals"
     },
     "Film/Didn't-I-Do-Well-James-Newton-Howard.mscz": {
       "song": "howa_Didnt_I_Do_Well__Red_Sparrow.json",
@@ -1909,7 +1910,8 @@
             "classical": 0.0
           }
         }
-      }
+      },
+      "decision": "vocals"
     },
     "Film/Disney/A_Dream_Is_A_Wish_Your_Heart_Makes.mscz": {
       "song": "disn_A_Dream_Is_a_Wish_Your_Heart_Makes__from_2015_Disneys_Cinderella.json",
@@ -3030,6 +3032,19 @@
           }
         }
       }
+    },
+    "Film/band-of-brothers-piano-solo.mscz": {
+      "song": "kame_Band_of_Brothers__Main_Title__Piano_Solo.json",
+      "title": "Band of Brothers - Main Title — Piano Solo",
+      "artist": "Kamen Michael",
+      "route": "review",
+      "why": "not judged yet",
+      "facts": {
+        "vocal_notes": 0,
+        "lyric_syllables": 0,
+        "orchestra_notes": 0
+      },
+      "decision": "vocals"
     },
     "Film/shrek-medley.mscz": {
       "song": "shre_Shrek_3_Bad.json",
@@ -6664,6 +6679,10 @@
             0.94
           ]
         }
+      },
+      "decision": {
+        "recording": "Didn't I Do Well.mp3",
+        "variant": "full"
       }
     },
     "Film/Didn't-I-Do-Well-James-Newton-Howard.mscz": {
@@ -6706,6 +6725,10 @@
             0.95
           ]
         }
+      },
+      "decision": {
+        "recording": "Didn't I Do Well.mp3",
+        "variant": "full"
       }
     },
     "Film/Disney/A_Dream_Is_A_Wish_Your_Heart_Makes.mscz": {
@@ -7159,6 +7182,15 @@
             0.07
           ]
         }
+      }
+    },
+    "Film/band-of-brothers-piano-solo.mscz": {
+      "song": "kame_Band_of_Brothers__Main_Title__Piano_Solo.json",
+      "status": "review",
+      "recording": null,
+      "decision": {
+        "recording": "Band of Brothers - Main theme Soundtrack.mp3",
+        "variant": "full"
       }
     },
     "Gershwin/Concerto_in_F_Easy__George_Gershwin.mscz": {
