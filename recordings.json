@@ -1749,7 +1749,8 @@
             "classical": 0.0
           }
         }
-      }
+      },
+      "decision": "vocals"
     },
     "Film/Cha-Cha-West-Side-Story-Bernstein.mscz": {
       "song": "bern_ChaCha__West_Side_Story.json",
@@ -2951,7 +2952,8 @@
             "classical": 0.0
           }
         }
-      }
+      },
+      "decision": "vocals"
     },
     "Film/The_Hunt_for_Red_October.mscz": {
       "song": "pole_The_Hunt_for_Red_October__Hymn_to_Red_October.json",
@@ -6637,6 +6639,10 @@
             0.95
           ]
         }
+      },
+      "decision": {
+        "recording": "soundtrack/22 - All In A Day's Work.mp3",
+        "variant": "full"
       }
     },
     "Film/Didn't-I-Do-Well-James-Newton-Howard-piano-solo.mscz": {
@@ -7182,6 +7188,15 @@
             0.07
           ]
         }
+      }
+    },
+    "Film/The-Dance.mscz": {
+      "song": "horn_The_Dance__From_The_Four_Feathers.json",
+      "status": "review",
+      "recording": null,
+      "decision": {
+        "recording": "The Dance.mp3",
+        "variant": "full"
       }
     },
     "Film/band-of-brothers-piano-solo.mscz": {
